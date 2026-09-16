@@ -101,6 +101,24 @@ Game:\Data\Databases\fsd2data.db        <- conteúdo e assets
 Game:\Data\Databases\fsd2settings.db    <- anexado como "Settings"
 ```
 
+**Atenção ao `Game:`** — no Xbox 360 ele é relativo ao **título em execução**, não um lugar fixo.
+Quando o FreeStyle roda, `Game:` é a pasta de instalação dele; quando o **nosso** `.xex` rodar,
+`Game:` vai ser a pasta *do nosso app*, e esse caminho não acha nada. Então o app precisa do
+**caminho absoluto** da instalação do FSD — algo como `Hdd1:\Freestyle\Data\Databases\fsd2data.db`,
+com o nome do dispositivo e da pasta a confirmar no console. Como isso não é descobrível por
+adivinhação, o app deve **procurar** o banco nos dispositivos montados (`Hdd*:`, `Usb*:`) em vez de
+assumir um caminho, e guardar o que achou.
+
+### Como pegar o arquivo para inspecionar
+
+O FreeStyle já tem **servidor FTP embutido** (`Freestyle/Tools/FTP/FTPServer.cpp` no fonte, mais o
+plugin `FtpDll` que acompanha o FSD 3). Basta ligar e puxar o `fsd2data.db` pela rede — não é
+preciso instalar homebrew nenhum para isso.
+
+Para registro, o **Freestyle WebUI** (painel web servido pelo *Freestyle Plugin*) **não** serve:
+ele mostra o jogo em execução e mexe em configurações, e não há componente de filesystem no fonte
+do dash. Não é um navegador de arquivos.
+
 Tabelas que interessam:
 
 | tabela | o que tem |
