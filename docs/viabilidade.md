@@ -270,6 +270,56 @@ XuiTool em vez de eliminá-lo; são 495 arquivos `.cpp/.h` próprios e 2,8 MB de
 arquitetonicamente é um *dashboard* — tem cena de FileBrowser, DualPane, CopyDVD, Achievements,
 AvatarRenderer —, de modo que boa parte do esforço seria apagar coisa até sobrar o que queremos.
 
+### Modificar o FreeStyle instalado, sem o fonte
+
+Diferente de forkar: partir dos **arquivos que já estão no console**. Há três camadas, da mais
+barata para a mais cara.
+
+**1. Skins (`.xzp` com XUR) — dados, feitos para serem trocados.** O `SkinManager` do FSD carrega a
+cena do arquivo de skin (`loadScene("Main.xur")`), e trocar isso não exige fonte nem patch: é o que
+a cena de skins faz há anos. Muda a **aparência**, não o comportamento. Autorar XUR pede o XuiTool
+do XDK ou o [XUIHelper](https://github.com/SGCSam/XUIHelper) open source.
+
+**2. Plugin DLL injetado no dash em execução — o caminho de verdade.** O
+[imgui-xbox360](https://github.com/ClementDreptin/imgui-xbox360) traz um **exemplo de DLL** que faz
+exatamente isso, em `examples/dll/main.cpp`:
+
+```cpp
+#define DASH_TITLE_ID 0xFFFE07D1          // mira o dashboard
+Detour *g_pXuiRenderEndDetour = NULL;      // detoura o fim do render do XUI
+// pega o D3DDevice do título em execução, importado de xam.xex pelo ordinal 2095
+XuiRenderGetDevice = ResolveExport("xam.xex", 2095);
+```
+
+Injeta a DLL, engancha no loop de render e desenha ImGui **por cima** da UI existente. Não se
+reescreve o dash: monta-se a interface em cima dele, herdando de graça a varredura, as capas, o
+banco e o lançamento. O `XexUtils` já tem `Detour`. O carregamento em RGH/JTAG é pelo **Dashlaunch**
+(o [X360PluginManager](https://github.com/ClementDreptin/X360PluginManager) existe para quem está no
+BadUpdate e não tem Dashlaunch).
+
+**Ressalva:** aquele `0xFFFE07D1` é o dashboard oficial da Microsoft, não o FSD, que é um título
+comum com title id próprio. O mecanismo é o mesmo e o FSD também renderiza via XUI, então o gancho
+tem tudo para valer — mas isso é **hipótese a testar**, não fato verificado.
+
+**3. Patch binário do `.xex` — possível, e a cena já faz.** A prova está no próprio
+`data/homebrew.json` do xbox-vault: *"Freestyle Dash 3 - Fixed (Unofficial) — build comunitário do
+FSD 3.0.775 com as falhas conhecidas corrigidas"*. Alguém corrigiu bugs do FSD 3 **sem o fonte**.
+Mas é desempacotar o XEX, achar o código no IDA e remendar assembly: o caminho mais caro e o mais
+frágil dos três.
+
+#### O que muda se o projeto virar um plugin
+
+**Ganha:** não precisa varrer disco, nem baixar capa, nem fazer arqueologia do schema do banco — o
+código roda *dentro* do processo que mantém tudo isso —, e o risco do lançamento de jogo
+desaparece.
+
+**Perde:** deixa de ser "abre como um jogo" e vira uma camada sobre o dash, contrariando a decisão
+1; fica acoplado a um binário fechado, com gancho que pode quebrar a cada atualização do FSD; e
+depurar DLL injetada é mais chato que depurar app próprio.
+
+**Não muda:** os três caminhos continuam exigindo o **XDK** — skin precisa do XuiTool, plugin
+precisa compilar DLL, patch precisa do ferramental.
+
 ### O que o Aurora tem de melhor, e vale registrar
 
 O Aurora é fechado, mas seus formatos estão **melhor documentados e mais atuais** que os do FSD 3,

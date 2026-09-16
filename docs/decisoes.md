@@ -175,8 +175,23 @@ Ficam registradas porque custaram uma rodada e não devem voltar:
 - **As capas do Aurora são D3DTexture** dentro dos `.asset`, ou seja, já em formato de textura de
   GPU — eliminaria a etapa de decodificar e converter para DDS que o FSD exige.
 
+- **Dá para modificar o FreeStyle instalado sem ter o fonte dele**, em três camadas: trocar a
+  **skin** (`.xzp`/XUR, dados puros, muda só a aparência); **injetar uma DLL** no dash em execução e
+  desenhar por cima; ou **patchar o `.xex`** (a cena já faz — o build "FSD 3 Fixed (Unofficial)" do
+  3.0.775 existe sem fonte).
+- **A injeção de DLL é um caminho real e documentado**: o `examples/dll/main.cpp` do imgui-xbox360
+  detoura `XuiRenderEnd`, pega o `D3DDevice` do título em execução via `XuiRenderGetDevice`
+  (importado de `xam.xex`, ordinal 2095) e renderiza ImGui sobre a UI existente. O `XexUtils` tem
+  `Detour`, e em RGH/JTAG o carregamento é pelo Dashlaunch. **Mas o exemplo mira o dashboard oficial
+  (`0xFFFE07D1`), não o FSD** — que o mesmo gancho pegue no FSD é hipótese plausível (ele também
+  renderiza via XUI), não fato verificado.
+
 ## Em aberto (novo)
 
 - **Recentes:** o `LaunchGame()` do FSD grava em `RecentlyPlayed` antes de lançar. Com o banco
   aberto só para leitura, jogo lançado pelo nosso app não entra na lista — nem na do FSD nem na
   nossa, que sai da mesma tabela. Ou se relaxa a regra nessa tabela, ou se mantém registro próprio.
+- **Plugin × app próprio.** O caminho do plugin elimina varredura, capas, arqueologia de schema e o
+  risco de lançamento, mas contraria a decisão 1 (deixa de ser algo que se abre como um jogo) e
+  acopla o projeto a um binário fechado. **Não está decidido.** O teste que resolve é pequeno:
+  descobrir o title id do FSD 3 instalado e verificar se o gancho de render do XUI pega nele.
