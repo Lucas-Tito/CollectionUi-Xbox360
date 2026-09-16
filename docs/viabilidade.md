@@ -149,6 +149,78 @@ Três cuidados:
    depois só carrega isso. A conversão não desaparece — ela **sai do PC e vira cache em runtime**,
    o que é melhor, porque acompanha automaticamente o que você instala e desinstala.
 
+### Quanto confiar nesse schema
+
+**Menos do que parece, e a diferença importa.** Tudo acima foi lido do fonte do **Freestyle Dash
+2.0 RC2.1**, e o repositório aberto é *um único despejo de código de 12/07/2011* — a branch `v2`
+tem exatamente dois commits ("(Added) Freestyle Dash 2.0 RC2.1 Source Code" e "(Removed) .user
+files") e a `master` é isso mais quatro commits que só tocam `LICENSE.md` e o nome do README. O
+**FSD 3** (o 3.0.775 que roda no console) e o **Aurora** nunca foram abertos.
+
+Ou seja: entre o que foi lido e o que está instalado há a linha 3 inteira, fechada. Até o nome
+`fsd2data.db` é o nome que o código **do 2** usa — não dá para garantir que o arquivo do FSD 3 se
+chame assim.
+
+Isso **não derruba o plano**, por um motivo específico: se o FSD 3 continuou em SQLite, **o
+arquivo carrega o próprio schema** (`sqlite_master` descreve todas as tabelas), e não é preciso o
+fonte do FSD 3 — é preciso o *arquivo* dele. Por isso a medição deixou de ser "conferir a
+resolução das capas" e passou a ser "descobrir se o arquivo existe, como se chama e qual é o
+schema real".
+
+### Está criptografado?
+
+**Não, e a evidência é indireta mas convergente:**
+
+- O fonte do FSD 2 abre o banco com `sqlite3_open` puro, e o que está na árvore é a amalgamação
+  **padrão** do SQLite — não há SQLCipher nem camada de cifra em lugar nenhum.
+- As capas são BLOB de PNG/JPG dentro dessa mesma base, sem envelope.
+- Do lado do Aurora, o [AuroraDbManager](https://github.com/XboxUnity/AuroraDbManager) lê a base
+  como SQLite comum a partir de um app C# no PC, e o
+  [AuroraAssetEditor](https://github.com/XboxUnity/AuroraAssetEditor) lê e escreve os `.asset`.
+  Nenhum dos dois trata chave ou senha.
+- O sistema de arquivos do console (FATX) também não é cifrado, e o que sai por FTP são os bytes
+  do arquivo.
+
+O que **é** assinado/cifrado no Xbox 360 é outra camada: os pacotes de jogo (STFS/GOD têm tabelas
+de hash e blocos cifrados) e os executáveis XEX. Mas nada disso está no nosso caminho — o que
+queremos é o índice e o cache de capas da dashboard.
+
+Verificação definitiva em um segundo, assim que o arquivo chegar: todo banco SQLite começa com a
+string mágica `SQLite format 3\0`.
+
+### O lançamento de jogo, resolvido
+
+Era o maior risco do projeto e o fonte do FSD 2 entrega pronto, em
+`ContentItemNew::LaunchGame()`:
+
+```cpp
+// XEX/XBE solto: lança direto
+if (fileType == CONTENT_FILE_TYPE_XEX || fileType == CONTENT_FILE_TYPE_XBE) {
+    PrepareForMultiDiscLaunch();
+    ConsolidateTitleUpdates();
+    XLaunchNewImage((itemRoot + itemPath).c_str(), 0);
+}
+// STFS/GOD: valida contentType, abre o container e lança por ele
+Xbox360Container container;
+if (container.OpenContainer(itemRoot + itemPath) != S_OK) return;
+container.CloseContainer();
+PrepareForMultiDiscLaunch();
+ConsolidateTitleUpdates();
+container.LaunchGame();
+```
+
+E o `xboxtools.cpp` ainda resolve a dúvida da API: sobre o `XamLoaderLaunchTitle`, o comentário
+deles é *"not really needed, just use xlaunchnewimage"*.
+
+**Ressalva de licença:** o FSD é **GPLv3**. Ler o fonte para descobrir qual API chamar é uma
+coisa; copiar a implementação para o nosso app torna o projeto derivado e obrigatoriamente GPLv3.
+É escolha a fazer conscientemente, não por descuido.
+
+**Detalhe de produto que caiu daí:** o `LaunchGame()` chama `FSDSql::updateRecentlyPlayed()` antes
+de lançar. Como decidimos abrir o banco só para leitura, um jogo lançado pelo nosso app não entra
+nos "recentes" — nem nos do FSD, nem nos nossos, que vêm da mesma tabela. Ou se relaxa a regra
+nessa tabela, ou se mantém um registro próprio ao lado. Em aberto.
+
 ### O papel do xbox-vault
 
 Com nome, id e capa vindo do console, o [xbox-vault](https://github.com/Lucas-Tito/xbox-vault)
@@ -172,6 +244,57 @@ Aí voltam os problemas do site: 6.900 títulos, capas em 240px WebP (que o 360 
 2,5 MB de JSON, exigindo pipeline de PC, conversão em lote para DDS e formato binário. É um modo
 "explorar o que existe" ao lado do "minha biblioteca", e deve ser tratado como uma segunda fase
 com orçamento próprio, não como parte da v1.
+
+## Panorama das dashboards abertas
+
+Levantado no `data/homebrew.json` do xbox-vault mais busca no GitHub. O resultado é mais pobre do
+que se imagina:
+
+| dashboard | fonte | serve de base? |
+|---|---|---|
+| **Freestyle Dash 2.0 RC2.1** | aberto, GPLv3, despejo único de 2011 | **é a única aberta que lança jogo de varejo** |
+| Xemini, Xenu, XMENU | abertos | **não** — são libxenon, rodam bare-metal e não lançam jogo de varejo |
+| Aurora, FSD 3, XeXMenu, XexDash, Viper360, IngeniouX, XeXLoader, 360Menu | fechados | não |
+| Emerald Dash | dito "open source", sem repositório localizável | não |
+
+Ou seja: para Xbox 360 existe **uma** dashboard aberta capaz de lançar jogo, e ela é de 2011. O
+contraste com o Xbox original é gritante — lá há NevolutionX, neXgen, UIX/UIX Lite, LithiumX,
+Theseus, PrometheOS, XBMC4Xbox e derivados, todos abertos e vivos.
+
+### Veredito sobre forkar
+
+**Não forkar, usar como referência.** Mesmo ignorando que o código é de 2011, os motivos são
+estruturais e sobreviveriam a qualquer versão mais nova: a UI do FSD é **XUR**
+(`SkinManager::loadScene("Main.xur")`), então o fork troca o trabalho de ImGui por trabalho de
+XuiTool em vez de eliminá-lo; são 495 arquivos `.cpp/.h` próprios e 2,8 MB de código; e
+arquitetonicamente é um *dashboard* — tem cena de FileBrowser, DualPane, CopyDVD, Achievements,
+AvatarRenderer —, de modo que boa parte do esforço seria apagar coisa até sobrar o que queremos.
+
+### O que o Aurora tem de melhor, e vale registrar
+
+O Aurora é fechado, mas seus formatos estão **melhor documentados e mais atuais** que os do FSD 3,
+porque o ferramental aberto em volta dele é mantido:
+
+- **[AuroraDbManager](https://github.com/XboxUnity/AuroraDbManager)** traz o schema em C#: a tabela
+  `ContentItems` do Aurora tem `TitleId`, `TitleName`, `Directory`, `Executable`, `FileType`,
+  `ContentType`, `Description`, `Developer`, `Publisher`, `ReleaseDate`, `DiscNum`, `DiscsInSet`,
+  `MediaId`, `GenreFlag`, `GameCapsOnline`, `GameCapsOffline`, `LiveRating`, `LiveRaters`,
+  `SystemLink`, `DateAdded`, `Hash` — mais rico que o do FSD 2.
+- **[AuroraAssetEditor](https://github.com/XboxUnity/AuroraAssetEditor)** (atualizado em jan/2026)
+  documenta os `.asset`, que guardam **D3DTexture** — isto é, a capa **já em formato de textura de
+  GPU**, o que eliminaria a etapa de decodificar PNG/JPG e converter para DDS.
+- **[Documentação de desenvolvedor do Aurora](https://github.com/jrobiche/xbox360-aurora-developer-documentation)**
+  cobre assets, banco e bibliotecas Lua, e documenta a **Nova**, uma **API HTTP com definição
+  OpenAPI**, com endpoints de `Filebrowser`, `Title`, `Image`, `Profile`, `Achievement`,
+  `Dashlaunch`, `Memory`, `System` e mais.
+
+Essa última é a resposta completa para "existe leitura remota dos arquivos do console": no
+**Aurora**, existe e é uma API HTTP documentada; no **FreeStyle**, o que há é o FTP embutido, e o
+WebUI do plugin não navega arquivos.
+
+Nada disso é recomendação de trocar de dashboard — é registro de que, do ponto de vista de *ler a
+biblioteca*, o FSD 3 é engenharia reversa de um arquivo e o Aurora é schema documentado com
+ferramenta viva.
 
 ## Sobre o Docker (resposta direta)
 

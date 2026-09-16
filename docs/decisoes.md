@@ -130,3 +130,53 @@ Ficam registradas porque custaram uma rodada e não devem voltar:
   listagem do FTP.
 - **Comportamento de `XamLoaderLaunchTitle`** com jogo em STFS, GOD e disco — mal documentado; o
   fonte do FSD é a consulta, já que ele faz exatamente isso.
+
+---
+
+# Rodada de 16/09/2026 — fork, dashboards abertas e confiança no schema
+
+## Batido
+
+15. **Não forkar o FreeStyle.** Usar como **implementação de referência**, não como base. Os
+    motivos são estruturais e não mudariam com um fonte mais novo: a UI é XUR (trocaria o trabalho
+    de ImGui por XuiTool, não o eliminaria), são 495 arquivos e 2,8 MB de código próprio, e
+    arquitetonicamente é um dashboard — boa parte do esforço seria apagar cena que não queremos.
+16. **Continuar no FreeStyle como fonte de dados**, apesar de o Aurora estar mais bem documentado.
+    Preferência do dono do projeto, e a medição dirá o tamanho real da diferença.
+17. **Atenção à GPLv3 do FSD:** ler para descobrir qual API chamar é uma coisa; copiar
+    implementação torna o projeto derivado e obrigatoriamente GPLv3. Decisão a tomar
+    conscientemente quando (e se) acontecer.
+
+## Descobertas
+
+- **O fonte aberto do FreeStyle é um despejo único de 2011.** A branch `v2` tem dois commits, os
+  dois de 12/07/2011; a `master` é isso mais quatro commits que só tocam `LICENSE.md` e o README.
+  FSD 3 e Aurora nunca foram abertos — o que a Team FSD/Phoenix abriu foi o *ferramental* do
+  Aurora, não os dashboards.
+- **Só existe uma dashboard aberta de Xbox 360 capaz de lançar jogo de varejo**, e é essa, de
+  2011. As outras abertas (Xemini, Xenu, XMENU) são libxenon e não lançam jogo. Aurora, FSD 3,
+  XeXMenu, XexDash, Viper360, IngeniouX, XeXLoader e 360Menu são fechadas.
+- **O lançamento de jogo está resolvido** — `ContentItemNew::LaunchGame()`: `XLaunchNewImage()`
+  para XEX/XBE solto, e `Xbox360Container` para STFS/GOD. Sobre o `XamLoaderLaunchTitle`, o
+  comentário no fonte deles é *"not really needed, just use xlaunchnewimage"*. Era o maior risco
+  da fase 3.
+- **Confiança no schema rebaixada:** o que foi lido é do FSD **2.0 RC2.1**; o console roda FSD
+  **3.0.775**. Nem o nome `fsd2data.db` é garantido. Mitigação: SQLite é auto-descritivo
+  (`sqlite_master`), então basta o **arquivo**, não o fonte.
+- **Não há criptografia no caminho.** `sqlite3_open` puro sobre a amalgamação padrão do SQLite,
+  capas como BLOB de PNG/JPG, FATX sem cifra, e as ferramentas de PC do Aurora leem tudo sem
+  chave. O que é assinado/cifrado no 360 são os pacotes de jogo (STFS/GOD) e os XEX — outra
+  camada, fora do nosso caminho.
+- **O Aurora tem API HTTP documentada (Nova)**, com definição OpenAPI e endpoints de
+  `Filebrowser`, `Title`, `Image`, `Profile`, `Achievement`, `Dashlaunch`, `Memory` e `System`
+  ([documentação](https://github.com/jrobiche/xbox360-aurora-developer-documentation)). É a
+  resposta completa para "leitura remota dos arquivos do console" — que no FreeStyle só existe via
+  FTP.
+- **As capas do Aurora são D3DTexture** dentro dos `.asset`, ou seja, já em formato de textura de
+  GPU — eliminaria a etapa de decodificar e converter para DDS que o FSD exige.
+
+## Em aberto (novo)
+
+- **Recentes:** o `LaunchGame()` do FSD grava em `RecentlyPlayed` antes de lançar. Com o banco
+  aberto só para leitura, jogo lançado pelo nosso app não entra na lista — nem na do FSD nem na
+  nossa, que sai da mesma tabela. Ou se relaxa a regra nessa tabela, ou se mantém registro próprio.
