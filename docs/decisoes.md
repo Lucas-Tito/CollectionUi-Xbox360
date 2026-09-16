@@ -30,9 +30,12 @@ que continua em aberto.
 
 ## Dados
 
-8. **Fonte primária: o banco do próprio FreeStyle**, em `Game:\Data\Databases\fsd2data.db`, aberto
-   **somente para leitura**. Nome, title id, caminho do executável, gênero, desenvolvedora,
-   publicadora, capa, banner, fundo, favoritos e recém-jogados já estão lá.
+8. **Fonte primária: o banco do próprio FreeStyle**, aberto **somente para leitura**. Nome, title
+   id, caminho do executável, gênero, desenvolvedora, publicadora, capa, banner, fundo, favoritos
+   e recém-jogados já estão lá. O arquivo é `Data\Databases\fsd2data.db` **dentro da pasta de
+   instalação do FSD** — o fonte dele escreve em `Game:\Data\Databases\`, e `Game:` é relativo ao
+   título em execução, então do nosso app aquele caminho aponta para a *nossa* pasta. O app
+   **procura** o banco nos dispositivos montados em vez de assumir caminho.
 9. **Nenhum pipeline de imagens no PC.** Não vamos rebaixar capas nem pré-compilar catálogo: a
    conversão para DDS acontece como **cache em runtime**, na primeira execução, o que acompanha
    sozinho o que se instala e desinstala.
@@ -54,6 +57,23 @@ que continua em aberto.
     fases iniciais, **com o teto estético assumido**: ImGui chega rápido ao funcional, mas tile
     grande, animação e foco de verdade pedem render próprio em D3D9 ou o XUI nativo. Decisão
     consciente de dívida, a revisitar no acabamento.
+
+## Ferramentas de acesso remoto avaliadas
+
+Levantadas no `data/homebrew.json` do próprio xbox-vault:
+
+- **FTP embutido no FreeStyle** (`Tools/FTP/FTPServer.cpp`; plugin `FtpDll`, que acompanha o FSD 3
+  e o Aurora) — **é o caminho**. Não exige instalar nada novo.
+- **Freestyle WebUI** — painel web do *Freestyle Plugin*: mostra o jogo em execução e mexe em
+  configurações. **Não navega arquivos**, e não há componente de filesystem no fonte do dash.
+  Avaliado e descartado para este fim.
+- **stfs-webjs** ([InvoxiPlayGames](https://github.com/InvoxiPlayGames/stfs-webjs)) — lê
+  contêineres STFS no navegador. Não serve para acesso remoto, mas guarda-se para quando for
+  preciso entender os pacotes dos títulos instalados.
+- **fatx** ([mborgerson](https://github.com/mborgerson/fatx)) — biblioteca, driver FUSE e
+  explorador de FATX. Relevante por ser Linux: permite montar um dump do HD aqui na máquina.
+- **ConnectX** e **SmbDll** — montam compartilhamento SMB da rede no console. Caminho inverso
+  (levar arquivo para o console), não o nosso.
 
 ## Descobertas desta rodada
 
@@ -102,8 +122,11 @@ Ficam registradas porque custaram uma rodada e não devem voltar:
 - **Conseguir o XDK.** É o bloqueio de entrada: sem ele nada compila, e toda a fase 0 depende
   disso.
 - **Medir o `fsd2data.db` de verdade** — próximo passo, não precisa de XDK nem de código: puxar o
-  arquivo por FTP e verificar quantos itens existem, quais tipos de asset estão preenchidos e,
-  principalmente, **em que resolução as capas estão** (o FSD deixa escolher isso ao baixar do
-  XboxUnity, então é medição e não suposição). É a maior incerteza restante.
+  arquivo pelo **FTP embutido do FreeStyle** (`Tools/FTP/FTPServer.cpp`, mais o plugin `FtpDll`) e
+  verificar quantos itens existem, quais tipos de asset estão preenchidos e, principalmente, **em
+  que resolução as capas estão** (o FSD deixa escolher isso ao baixar do XboxUnity, então é
+  medição e não suposição). É a maior incerteza restante.
+- **Onde exatamente o FSD está instalado** — define o caminho absoluto do banco, e sai da primeira
+  listagem do FTP.
 - **Comportamento de `XamLoaderLaunchTitle`** com jogo em STFS, GOD e disco — mal documentado; o
   fonte do FSD é a consulta, já que ele faz exatamente isso.
