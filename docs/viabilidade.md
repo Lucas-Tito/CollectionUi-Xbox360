@@ -92,101 +92,142 @@ ano; apostar nele agora é assumir que você vai debugar o toolchain além do se
 
 ## De onde vêm os dados
 
-**O FreeStyle já tem tudo, num SQLite, no console.** O
-[fonte do FSD é aberto](https://github.com/XboxUnity/freestyledash) e o
-`Freestyle/Tools/SQLite/FSDSql.cpp` diz onde e como:
+**Medido em 23/09/2026, com os arquivos reais.** O pendrive com a instalação do FreeStyle foi
+aberto no PC e inspecionado. O que segue não é leitura de fonte nem suposição: é o que está no
+console.
+
+### Qual instalação está em uso
+
+Havia duas no pendrive, e a distinção importa porque só uma tem dados vivos:
+
+| pasta | `default.xex` | último jogo lançado | veredito |
+|---|---|---|---|
+| `Freestyle.780/` | 16.531.456 bytes | **07/09/2026 14:15** | **é a ativa** |
+| `FreeStyle/` | 16.728.064 bytes | 09/09/2020 22:02 | abandonada há seis anos |
+
+A prova vem de dentro do banco (`RecentlyPlayedTitles.RecentlyPlayedTitleDateTime`, timestamp
+unix), não do sistema de arquivos: **os timestamps do FAT mentem aqui**, porque o Xbox 360 grava
+`2005-11-22` quando está com o relógio zerado, e essa data aparece espalhada pelas duas pastas.
+
+### O banco: `content.db`
+
+Fica em `<instalação>/Data/Databases/`, ao lado de `settings.db`. **Não** se chama `fsd2data.db` —
+esse era o nome no fonte do FSD 2, e a suposição anterior estava errada.
+
+**Não é criptografado:** os primeiros bytes são `SQLite format 3`.
+
+Tabelas: `ContentItems`, `ContentTypes`, `Favorites`, `HttpQueue`, `MountedDevices`,
+`RecentlyPlayedTitles`, `TitleUpdates`, `UserRatings` — exatamente as do fonte de 2011, com os
+mesmos nomes de coluna. **A arqueologia no FSD 2 valeu:** o FSD 3 só acrescentou dois campos.
+
+`ContentItems` — o schema real, 120 linhas nesta instalação:
+
+```sql
+CREATE TABLE ContentItems (
+  ContentItemId          INTEGER PRIMARY KEY,
+  ContentItemScanPathId  INTEGER,
+  ContentItemFileType    INTEGER,   -- 1 = XEX solto, 3 = container (STFS/GOD)
+  ContentItemContentType INTEGER,
+  ContentItemTab         INTEGER,
+  ContentItemPath        TEXT,      -- relativo ao dispositivo: \JOGOS\COD Black Ops\default.xex
+  ContentItemDirectory   TEXT,
+  ContentItemFileName    TEXT,
+  ContentItemTitleId     INTEGER,   -- decimal; 1096157269 = 0x41560817
+  ContentItemMediaId     INTEGER,
+  ContentItemDiscNum     INTEGER,
+  ContentItemDiscsInSet  INTEGER,
+  ContentItemName        TEXT,
+  ContentItemDescription TEXT,
+  ContentItemDeveloper   TEXT,
+  ContentItemPublisher   TEXT,
+  ContentItemGenre       TEXT,
+  ContentItemRating      TEXT,      -- nota do Marketplace, ex. "4.25"
+  ContentItemRaters      TEXT,      -- nº de avaliadores, ex. "582947"
+  ContentItemReleaseDate TEXT,
+  ContentItemHash        TEXT,      -- novo no FSD 3
+  ContentItemKinectFlag  INTEGER,   -- novo no FSD 3
+  UNIQUE (ContentItemPath)
+)
+```
+
+O `ContentItemFileType` separa exatamente os dois ramos do `LaunchGame()` (ver
+[O lançamento de jogo](#o-lançamento-de-jogo-resolvido)).
+
+As outras tabelas, com o que havia nesta instalação:
+
+- `RecentlyPlayedTitles` — **218 linhas**, com `...DateTime` em timestamp unix e `...Order`. A
+  fileira "jogados recentemente" sai daqui pronta.
+- `TitleUpdates` — 71 linhas. `Favorites` e `UserRatings` — vazias.
+- `MountedDevices` — mapeia o GUID do dispositivo para o nome: `Flash:`, `OnBoardMU:`, `Hdd1:`,
+  `HddX:`, `SysExt:`. É o que permite montar o caminho absoluto, já que `ContentItemPath` é
+  relativo ao dispositivo, com o vínculo vindo de `ContentItemScanPathId`.
+
+### A arte: `GameData/` e o container FSDA
+
+**O FSD 3 tirou a arte do banco.** No fonte do FSD 2 havia uma tabela `Assets` com BLOB de PNG/JPG;
+ela não existe mais. A arte está em `Data/GameData/<id em hex>/`, uma pasta por jogo:
 
 ```
-Game:\Data\Databases\fsd2data.db        <- conteúdo e assets
-Game:\Data\Databases\fsd2settings.db    <- anexado como "Settings"
+000000C4.assets      container com as imagens
+GameCoverInfo.bin    JSON (apesar da extensão) com as capas disponíveis no XboxUnity
+GameAssetInfo.bin    XML
+GameOfferInfo.bin    XML
+PluginData/
 ```
 
-**Atenção ao `Game:`** — no Xbox 360 ele é relativo ao **título em execução**, não um lugar fixo.
-Quando o FreeStyle roda, `Game:` é a pasta de instalação dele; quando o **nosso** `.xex` rodar,
-`Game:` vai ser a pasta *do nosso app*, e esse caminho não acha nada. Então o app precisa do
-**caminho absoluto** da instalação do FSD — algo como `Hdd1:\Freestyle\Data\Databases\fsd2data.db`,
-com o nome do dispositivo e da pasta a confirmar no console. Como isso não é descobrível por
-adivinhação, o app deve **procurar** o banco nos dispositivos montados (`Hdd*:`, `Usb*:`) em vez de
-assumir um caminho, e guardar o que achou.
+O `.assets` é um container próprio, **big-endian**, com header `FSDA`:
 
-### Como pegar o arquivo para inspecionar
+```
++0   char[4]   "FSDA"
++4   uint32    versão (1)
++8   uint32    0
++12  uint32    máscara de bits dos tipos presentes (ex.: 0xAF)
++16  uint32    número de entradas da tabela
++20  uint32    2
++24  tabela de entradas, 16 bytes cada:
+              uint32 tipo, uint32 offset, uint32 tamanho, uint32 tamanho (repetido)
+```
 
-O FreeStyle já tem **servidor FTP embutido** (`Freestyle/Tools/FTP/FTPServer.cpp` no fonte, mais o
-plugin `FtpDll` que acompanha o FSD 3). Basta ligar e puxar o `fsd2data.db` pela rede — não é
-preciso instalar homebrew nenhum para isso.
+Cada `offset` aponta para um **DDS** dentro do próprio arquivo — e aqui está o achado que muda o
+projeto: **tudo já está em DXT5**, textura comprimida que a GPU do 360 amostra direto.
 
-Para registro, o **Freestyle WebUI** (painel web servido pelo *Freestyle Plugin*) **não** serve:
-ele mostra o jogo em execução e mexe em configurações, e não há componente de filesystem no fonte
-do dash. Não é um navegador de arquivos.
+Os tipos, medidos nos 120 jogos desta instalação:
 
-Tabelas que interessam:
+| tipo | o que é | dimensão mais comum | cobertura |
+|---|---|---|---|
+| **128** | **capa grande** | **900×600** | **120/120** |
+| 2 | fundo | **1920×1080** | 51/120 |
+| 1 | ícone | 64×64 | 109/120 |
+| 64 | não identificado | 420×320 | 37/120 |
+| 8 | capa pequena | 220×300 | 30/120 |
+| 4 | banner | 420×96 | 29/120 |
 
-| tabela | o que tem |
-|---|---|
-| `ContentItems` | um registro por item instalado: `ContentItemTitleId`, `...Path`, `...Directory`, `...FileName`, `...Name`, `...Description`, `...Developer`, `...Publisher`, `...Genre`, `...Rating`, `...Raters`, `...ReleaseDate`, `...MediaId`, `...DiscNum`, `...DiscsInSet` |
-| `Assets` | `AssetFileData` **BLOB** com a imagem, ligada por `AssetContentId` ao item e por `AssetAssetTypeId` ao tipo |
-| `AssetTypes` | os tipos que o FSD popula: `0 Icon`, `1 BoxCover`, `2 Background`, `3 Banner`, `4 ScreentShot` (o typo é do FSD), `5 Video` |
-| `Favorites` | favoritos por perfil de gamer |
-| `RecentlyPlayedTitles` | item, data/hora e ordem — a fileira "jogados recentemente" sai de graça |
-| `TitleUpdates` | TUs conhecidos |
+São **991 MB de arte para 120 jogos**, uns 8 MB por jogo. **Todos os 120 têm capa grande**, e
+quase metade tem fundo em Full HD.
 
-Ou seja: **nome, title id, caminho do executável, gênero, desenvolvedora, capa, banner, fundo,
-favoritos e recentes já estão prontos no console.** Não há capa para rebaixar nem catálogo para
-pré-compilar: é abrir um SQLite e ler.
+Uma observação para quem for implementar o parser: além das entradas da tabela aparecem DDS
+contíguos ao fim do arquivo que **não** estão listados (num caso, dois de 1000×564, que são
+screenshots). A máscara de tipos do header acende um bit a mais do que o número de entradas, então
+provavelmente há um tipo — o 32 — que agrupa várias imagens sob uma entrada só. Detalhe a resolver
+na implementação; não é bloqueante.
 
-E dá para ler de dentro do `.xex`: a amalgamação do **sqlite3 está no próprio fonte do FSD**
-(`Freestyle/Tools/SQLite/sqlite3.c`, 4 MB), o que prova que compila para o 360 com o XDK. Nosso
-app linka o mesmo sqlite3 e abre o mesmo arquivo.
+O `GameCoverInfo.bin` é JSON e traz o **title id em hexadecimal, como string**:
 
-Três cuidados:
+```json
+[{"titleid":"58410B52","name":"Warhammer 40,000: Kill Team","official":true,
+  "url":"http://assets.xboxunity.net/api/boxart/2371", ...}]
+```
 
-1. **Somente leitura.** Nunca escrever no banco do FSD; o estado do dashboard dele não é nosso.
-2. **A resolução das capas é a que o FSD baixou.** O FSD deixa escolher a resolução ao baixar do
-   XboxUnity, então isso é coisa de **medir no seu console**, não de supor. Se estiverem pequenas,
-   a saída é remandar o FSD baixar maiores — não reconstruir um pipeline no PC.
-3. **Os blobs são PNG/JPG.** O `D3DX` cria textura a partir de memória, mas decodificar a cada
-   frame é caro: na primeira execução o app converte para **DDS (DXT1/DXT5)** num cache próprio e
-   depois só carrega isso. A conversão não desaparece — ela **sai do PC e vira cache em runtime**,
-   o que é melhor, porque acompanha automaticamente o que você instala e desinstala.
+É exatamente o formato que o `data/x360db.json` do xbox-vault usa.
 
-### Quanto confiar nesse schema
+### O que essa medição apagou do plano
 
-**Menos do que parece, e a diferença importa.** Tudo acima foi lido do fonte do **Freestyle Dash
-2.0 RC2.1**, e o repositório aberto é *um único despejo de código de 12/07/2011* — a branch `v2`
-tem exatamente dois commits ("(Added) Freestyle Dash 2.0 RC2.1 Source Code" e "(Removed) .user
-files") e a `master` é isso mais quatro commits que só tocam `LICENSE.md` e o nome do README. O
-**FSD 3** (o 3.0.775 que roda no console) e o **Aurora** nunca foram abertos.
+1. **Não há pipeline de imagem.** As capas já estão em 900×600 e os fundos em 1080p, no console.
+   A preocupação com capa de 240px era do acervo web do vault e não se aplica aqui.
+2. **Não há conversão para DDS.** Já é DXT5 — o cache em runtime que estava previsto é
+   desnecessário.
+3. **Não há incerteza de schema.** O banco foi aberto e lido.
 
-Ou seja: entre o que foi lido e o que está instalado há a linha 3 inteira, fechada. Até o nome
-`fsd2data.db` é o nome que o código **do 2** usa — não dá para garantir que o arquivo do FSD 3 se
-chame assim.
-
-Isso **não derruba o plano**, por um motivo específico: se o FSD 3 continuou em SQLite, **o
-arquivo carrega o próprio schema** (`sqlite_master` descreve todas as tabelas), e não é preciso o
-fonte do FSD 3 — é preciso o *arquivo* dele. Por isso a medição deixou de ser "conferir a
-resolução das capas" e passou a ser "descobrir se o arquivo existe, como se chama e qual é o
-schema real".
-
-### Está criptografado?
-
-**Não, e a evidência é indireta mas convergente:**
-
-- O fonte do FSD 2 abre o banco com `sqlite3_open` puro, e o que está na árvore é a amalgamação
-  **padrão** do SQLite — não há SQLCipher nem camada de cifra em lugar nenhum.
-- As capas são BLOB de PNG/JPG dentro dessa mesma base, sem envelope.
-- Do lado do Aurora, o [AuroraDbManager](https://github.com/XboxUnity/AuroraDbManager) lê a base
-  como SQLite comum a partir de um app C# no PC, e o
-  [AuroraAssetEditor](https://github.com/XboxUnity/AuroraAssetEditor) lê e escreve os `.asset`.
-  Nenhum dos dois trata chave ou senha.
-- O sistema de arquivos do console (FATX) também não é cifrado, e o que sai por FTP são os bytes
-  do arquivo.
-
-O que **é** assinado/cifrado no Xbox 360 é outra camada: os pacotes de jogo (STFS/GOD têm tabelas
-de hash e blocos cifrados) e os executáveis XEX. Mas nada disso está no nosso caminho — o que
-queremos é o índice e o cache de capas da dashboard.
-
-Verificação definitiva em um segundo, assim que o arquivo chegar: todo banco SQLite começa com a
-string mágica `SQLite format 3\0`.
 
 ### O lançamento de jogo, resolvido
 
@@ -229,11 +270,20 @@ jogo do HowLongToBeat com contagem de relatos, modos de jogo, co-op e número de
 que o FSD não tem e que são justamente o que faz uma tela de detalhe valer a pena.
 
 A chave de junção já existe no repo: **`data/x360db.json` tem `titleId`** em 100% das suas 4.892
-entradas (1.579 de Xbox 360 e 3.313 de XBLIG). Duas notas:
+entradas (1.579 de Xbox 360 e 3.313 de XBLIG). O `GameCoverInfo.bin` do FSD traz o id em hex como
+string, no mesmo formato do vault; o `ContentItemTitleId` do banco vem em decimal e precisa de
+conversão (`1096157269` → `41560817`).
 
-- O vault guarda o id em **hex, como texto** (`"584109A8"`); o FSD guarda em **INTEGER**. Converter.
-- 1.579 dos 2.155 jogos de 360 do vault têm `titleId`, ou **73%**. O resto precisa de fallback por
-  nome normalizado — e o `norm()` do `tools/taglib.py` já faz essa normalização.
+**Medido contra a biblioteca real:** dos 120 jogos instalados, **93 casaram por title id, ou 78%**.
+Os 27 que ficaram de fora se explicam, e cada grupo tem saída conhecida:
+
+- **Emuladores** (`Super Nintendo`, `Playstation 1`, `Arcade`) — não são jogos; o FSD os indexa
+  como conteúdo. Não deveriam casar mesmo.
+- **Jogos de Xbox original** rodando por retrocompatibilidade (Mortal Kombat: Armageddon, Star
+  Wars Battlefront 2, Quake 2, Digimon Rumble Arena 2…). Estão no `xbox.json` do vault, não no
+  `x360db.json` — é só olhar no arquivo certo.
+- **Jogos de 360 sem `titleId` no x360db** (Rainbow Six Vegas 2, Army of Two, Minecraft, Terraria).
+  Caem no fallback por nome normalizado, que o `norm()` do `tools/taglib.py` já implementa.
 
 Isso é um arquivo compacto indexado por title id, gerado por um script novo em `tools/`. É
 trabalho de um dia, e é **opcional para a v1**: o app roda só com o que o FSD dá.
@@ -367,7 +417,7 @@ Três limitações que valem saber antes de contar com ele:
 |---|---|---|---|
 | 0 | Imagem Docker do XDK e um `.xex` "hello" rodando no console | 1–2 dias | que o ciclo compilar → FTP → rodar fecha |
 | 1 | ImGui na tela, navegação por gamepad | 2–4 dias | que dá para iterar UI |
-| 2 | Ler o `fsd2data.db`: lista real, capas dos blobs, cache DDS | 3–5 dias | que os dados do console chegam na tela |
+| 2 | Ler o `content.db` e parsear o FSDA: lista real com as capas na tela | 2–4 dias | que os dados do console chegam na tela |
 | 3 | Lançar o jogo de verdade | 2–4 dias | que é um launcher, não um álbum |
 | 4 | Enriquecer com o vault (Metacritic, HLTB, modos) por title id | 1–2 dias | a tela de detalhe |
 | 5 | Acabamento: ordenação, busca, som, transições | aberto | que é agradável |
@@ -387,17 +437,20 @@ um ciclo de UI, não para validar — o veredito é no console.
    fases 1–4, mas "Big Picture" é tile grande, animação e foco — isso pede render próprio em D3D9
    ou o XUI nativo (feito para UI de TV, e dependente do XuiTool). Pode virar refactor na fase 5;
    melhor saber antes.
-3. **A qualidade das capas é a que o FSD baixou** (item 2 de
-   [De onde vêm os dados](#de-onde-vêm-os-dados)). Medir cedo, no console.
-4. **OpenXeChain imaturo:** hoje não é opção; em um ano talvez seja a casa do projeto.
+3. **OpenXeChain imaturo:** hoje não é opção; em um ano talvez seja a casa do projeto.
+
+O risco que existia sobre a qualidade das capas **foi eliminado por medição**: são 900×600 em
+DXT5, em 120 dos 120 jogos, com fundo em 1080p em metade deles.
 
 ## Recomendação
 
-Nada de pipeline de dados no PC: os dados estão no console, e o vault entra depois, como
-enriquecimento opcional.
+A medição de 23/09/2026 fechou as incertezas de dados. **Sobra um único bloqueio: o XDK.** Sem ele
+não se compila `.xex`, e a fase 0 não começa.
 
-O primeiro passo real é a **fase 0**, que depende do XDK. Enquanto ele não estiver em mãos, o que
-dá para adiantar sem nada instalado é **medir o terreno**: puxar o `fsd2data.db` do console por
-FTP e olhar de verdade quantos itens tem, que tipos de asset estão preenchidos e em que resolução
-as capas estão. Isso responde a maior incerteza restante do projeto com meia hora de trabalho e
-um cliente de FTP.
+Enquanto o XDK não aparece, o que anda — e anda bem — é **prototipar a interface no PC com os
+dados reais**: os 120 jogos do `content.db` e as capas de 900×600 extraídas dos `.assets`. Isso
+entrega três coisas de uma vez: resolve a única decisão de produto ainda aberta (como a coleção se
+parece), produz um parser FSDA que se traduz direto para C++ depois, e valida o desenho com o
+conteúdo verdadeiro em vez de capas de mentira.
+
+Não é trabalho jogado fora: é a fase 1 feita onde ela é barata.
