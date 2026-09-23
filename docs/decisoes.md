@@ -195,3 +195,44 @@ Ficam registradas porque custaram uma rodada e não devem voltar:
   risco de lançamento, mas contraria a decisão 1 (deixa de ser algo que se abre como um jogo) e
   acopla o projeto a um binário fechado. **Não está decidido.** O teste que resolve é pequeno:
   descobrir o title id do FSD 3 instalado e verificar se o gancho de render do XUI pega nele.
+
+---
+
+# Rodada de 23/09/2026 — a medição
+
+Os arquivos do FreeStyle foram abertos no PC, a partir do pendrive. Isto encerra a fase de
+suposição sobre dados.
+
+## Corrigido (estava errado nos docs)
+
+- O banco **não** é `fsd2data.db`, é **`Data/Databases/content.db`** (mais `settings.db`).
+- As capas **não** são BLOB de PNG/JPG no banco. O FSD 3 removeu a tabela `Assets` e pôs a arte em
+  `Data/GameData/<id>/`, num container `FSDA`.
+- **Não existe etapa de conversão para DDS**, nem no PC nem em runtime: a arte já está em **DXT5**.
+
+## Fatos, medidos
+
+- **`Freestyle.780/` é a instalação ativa** — último jogo lançado em 07/09/2026 14:15, contra
+  09/09/2020 da outra pasta. Timestamps do FAT não servem de prova aqui (o 360 grava `2005-11-22`
+  com relógio zerado); a prova saiu de `RecentlyPlayedTitles`.
+- **O banco é SQLite puro e não criptografado** (`SQLite format 3`).
+- **O fonte do FSD 2 era um mapa válido:** mesmas tabelas, mesmos nomes de coluna. O FSD 3 só
+  acrescentou `ContentItemHash` e `ContentItemKinectFlag`.
+- **A biblioteca tem 120 jogos**, com nome, descrição, desenvolvedora, publicadora, gênero, nota,
+  nº de avaliadores, data, title id e caminho. Mais 218 recém-jogados (timestamp unix) e 71 TUs.
+- **`ContentItemFileType` distingue `1` = XEX solto de `3` = container**, que são exatamente os
+  dois ramos do `LaunchGame()`.
+- **A arte é farta:** 991 MB para 120 jogos. **Capa grande em 120/120**, tipicamente **900×600**;
+  fundo em **1920×1080** em 51; além de ícone, banner e capa pequena. Tudo DXT5.
+- **A junção com o xbox-vault rende 78%** (93 de 120) por title id. Os 27 restantes são
+  emuladores (não são jogos), jogos de Xbox original (estão no `xbox.json`, não no `x360db.json`)
+  e jogos de 360 sem title id no x360db (caem no fallback por nome).
+- **O formato FSDA está documentado** em [viabilidade.md](viabilidade.md): header big-endian,
+  tabela de entradas de 16 bytes e os tipos 1/2/4/8/64/128.
+
+## Em aberto (atualizado)
+
+- **O XDK é o único bloqueio real que resta.** Todo o resto está medido ou resolvido.
+- Um detalhe do parser FSDA: há DDS contíguos ao fim do arquivo fora da tabela de entradas
+  (screenshots), e a máscara do header acende um bit a mais do que o número de entradas. Não é
+  bloqueante.
