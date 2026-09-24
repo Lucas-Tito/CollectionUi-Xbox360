@@ -270,3 +270,8 @@ O enxugamento tirou **Metacritic, tempo de jogo e ficha técnica** do desenho. �
 dos 120 jogos têm nota e 91 têm duração — e está registrada em
 [interface.md](interface.md#o-que-ficou-de-fora) junto com as outras duas pendências: o corte do
 nome e a tela de escolher jogo a jogo ao montar uma coleção.
+
+27. **Criar coleção pede só o nome, e ela nasce vazia.** Não vale escolher jogos na hora de criar.
+    Consequência assumida: passou a existir a **tela de escolher jogos**, aberta pelo `☰` de
+    dentro da coleção, com a biblioteca inteira na mesma grade e `A` marcando. Detalhe em
+    [interface.md](interface.md#tela-de-escolher-jogos).

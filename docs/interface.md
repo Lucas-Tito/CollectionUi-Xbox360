@@ -34,6 +34,8 @@ Não há terceira tela. Ficha de jogo, nota e duração **não existem** neste d
 - O menu (☰) traz **Renomear** e **Apagar**, e só. Apagar é ação destrutiva e por isso mora dentro
   do menu, não num botão solto.
 
+Criar pede **só o nome**. A coleção nasce **vazia** — não se escolhe jogo na hora de criar.
+
 ## Tela de jogos
 
 - **5 por linha**, ordem alfabética.
@@ -64,8 +66,11 @@ só aparece quando faz alguma coisa: com a lista de coleções vazia, o rodapé 
 | Coleções | `☰` (Menu/Start) | `M` | Renomear ou apagar |
 | Jogos | `A` | `Enter` | Jogar |
 | Jogos | `B` | `Esc` (ou `Backspace`) | Voltar às coleções |
+| Jogos | `☰` | `M` | Escolher jogos |
 | Jogos | `LB` / `RB` | `Q` / `E` | Pular por letra |
 | Jogos | segurar `↓` | segurar `↓` | Pular por letra |
+| Escolher | `A` | `Enter` | Marcar ou desmarcar |
+| Escolher | `B` | `Esc` | Concluir |
 
 **`X` não faz nada dentro de uma coleção**, por decisão: só `A` para jogar e `B` para voltar.
 
@@ -80,9 +85,19 @@ faz parte do desenho do app.
   [xbox-vault](https://github.com/Lucas-Tito/xbox-vault) não aparece em lugar nenhum do desenho
   atual. Foi consequência de enxugar a interface, e é uma perda real: 96 dos 120 jogos têm nota e
   91 têm duração. O lugar natural, se voltar, é uma ficha fora do caminho de quem só quer jogar.
-- **Escolher jogo a jogo ao criar a coleção.** No protótipo, criar uma coleção pede um nome e um
-  gênero, e ela nasce com os jogos daquele gênero. É atalho de protótipo, não desenho final: a
-  tela de escolher os jogos ainda não existe.
+- Nada mais. A tela de escolher jogos, que era pendência, passou a existir (abaixo).
+
+## Tela de escolher jogos
+
+Consequência direta de a coleção nascer vazia: precisa haver onde pôr jogos nela. Abre pelo `☰`
+de dentro da coleção — o mesmo botão que na tela de coleções significa "gerenciar isto aqui".
+
+Mostra a **biblioteca inteira** na mesma grade de 5 por linha, com o mesmo índice alfabético e o
+mesmo salto por letra. `A` marca e desmarca, `B` conclui. O marcado ganha um **✓ verde no canto
+da capa** e um contorno interno; o não marcado fica um pouco mais apagado, mas **legível** — a
+primeira tentativa dessaturava tudo que não estava marcado e a tela inteira parecia desativada.
+
+O contador no topo mostra `N de 120 marcados`.
 
 ## Em aberto
 
@@ -90,4 +105,5 @@ faz parte do desenho do app.
   "Call of Duty: Modern Wa…" e ficam indistinguíveis lado a lado. As saídas são aumentar o corte
   ou deixar o nome em duas linhas.
 - **A ficha do jogo**, se o enriquecimento do vault vai voltar e por qual botão.
-- **A tela de escolher jogos** ao montar uma coleção.
+- **Remover um jogo da coleção de dentro dela**, sem passar pela tela de escolher. Hoje só dá
+  para desmarcar no `☰`.
