@@ -159,8 +159,15 @@ As outras tabelas, com o que havia nesta instalação:
   fileira "jogados recentemente" sai daqui pronta.
 - `TitleUpdates` — 71 linhas. `Favorites` e `UserRatings` — vazias.
 - `MountedDevices` — mapeia o GUID do dispositivo para o nome: `Flash:`, `OnBoardMU:`, `Hdd1:`,
-  `HddX:`, `SysExt:`. É o que permite montar o caminho absoluto, já que `ContentItemPath` é
-  relativo ao dispositivo, com o vínculo vindo de `ContentItemScanPathId`.
+  `HddX:`, `SysExt:`.
+
+O vínculo com o dispositivo fecha pelo **`settings.db`**, na tabela **`ScanPaths`**
+(`ScanPathId`, `ScanPathDeviceId`, `ScanPathPath`, `ScanPathDepth`): o `ContentItemScanPathId` de
+cada jogo aponta para uma raiz de varredura, e o `ScanPathDeviceId` dela casa com o GUID em
+`MountedDevices`. Nesta instalação são cinco raízes, todas em `Hdd1:` — `\JOGOS\`, `\XBLA\`,
+`\ORIGINAL XBOX\`, `\EMULADORES\` e `\Content\0000000000000000\584E07D2\`. É também o que
+explica os 27 jogos que não casaram com o vault: saem justamente das raízes de Xbox original e de
+emuladores.
 
 ### A arte: `GameData/` e o container FSDA
 
@@ -219,6 +226,14 @@ O `GameCoverInfo.bin` é JSON e traz o **title id em hexadecimal, como string**:
 ```
 
 É exatamente o formato que o `data/x360db.json` do xbox-vault usa.
+
+### Onde os arquivos estão agora
+
+Em 24/09/2026 o necessário foi copiado do pendrive para `~/Documentos/CollectionUI-dados/`,
+**fora do repositório** (é 1 GB de arte de jogo e não tem por que entrar no git): os dois bancos,
+as 120 pastas de `GameData/` e o `default.xex` do FSD 3.0.780 — este guardado para descobrir o
+title id do dash, que é o que falta para testar o caminho do plugin. A cópia foi conferida byte a
+byte contra a origem, e o pendrive foi liberado.
 
 ### O que essa medição apagou do plano
 
