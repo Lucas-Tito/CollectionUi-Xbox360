@@ -236,3 +236,37 @@ suposição sobre dados.
 - Um detalhe do parser FSDA: há DDS contíguos ao fim do arquivo fora da tabela de entradas
   (screenshots), e a máscara do header acende um bit a mais do que o número de entradas. Não é
   bloqueante.
+
+---
+
+# Rodada de 23/09/2026 (parte 2) — a interface
+
+Um protótipo navegável em HTML, alimentado com os 120 jogos e as capas reais extraídas do console,
+serviu para fechar o desenho antes de escrever C++. O detalhe está em
+[interface.md](interface.md); aqui fica o que foi batido.
+
+18. **O desenho é seco.** A primeira versão, um Big Picture cinematográfico com arte de fundo,
+    desfoque, tipografia gigante e painel de metadados, foi recusada — *"exagerada demais pro
+    360"*. Vale tela chapada, borda fina e verde só no foco.
+19. **Duas telas:** coleções (quadrados) e jogos (grade). Não há terceira.
+20. **A tela de coleções começa vazia**, com uma linha só, e **sem quadrado de "+"** — com muitas
+    coleções ele se perderia no fim da lista. Criar é tecla.
+21. **O rodapé é o único lugar que documenta controle**, com símbolo e ação, e só mostra a dica
+    quando ela faz alguma coisa.
+22. **Coleções em ordem alfabética**, sem reordenar à mão e sem reordenar sozinho.
+23. **Grade de 5 por linha**, alfabética ignorando o artigo inicial, nome cortado em 24
+    caracteres.
+24. **Salto por letra pelos dois caminhos** (segurar `↓` e `LB`/`RB`), com **índice alfabético
+    fixo na borda direita** que acende a letra atual e apaga as ausentes — para o salto ser
+    visível antes de ser apertado.
+25. **`A` confirma, `B` volta**, em todas as telas. `X` cria coleção, `☰` renomeia ou apaga, e
+    **`X` não faz nada dentro de uma coleção**.
+26. **O protótipo HTML é jogável no PC**, por teclado e mouse, com as teclas impressas no próprio
+    rodapé ao lado do botão do controle.
+
+## Consequência a encarar
+
+O enxugamento tirou **Metacritic, tempo de jogo e ficha técnica** do desenho. É perda real — 96
+dos 120 jogos têm nota e 91 têm duração — e está registrada em
+[interface.md](interface.md#o-que-ficou-de-fora) junto com as outras duas pendências: o corte do
+nome e a tela de escolher jogo a jogo ao montar uma coleção.
