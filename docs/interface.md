@@ -70,7 +70,9 @@ só aparece quando faz alguma coisa: com a lista de coleções vazia, o rodapé 
 **`X` não faz nada dentro de uma coleção**, por decisão: só `A` para jogar e `B` para voltar.
 
 O protótipo em HTML aceita as teclas da coluna do meio e também o mouse — clicar num quadrado ou
-numa capa move o foco, clicar de novo confirma, e clicar numa letra do índice salta para ela.
+numa capa move o foco, clicar de novo confirma, e clicar numa letra do índice salta para ela. O
+botão `?` no canto superior esquerdo abre essa mesma tabela; ele existe **só no protótipo** e não
+faz parte do desenho do app.
 
 ## O que ficou de fora
 
