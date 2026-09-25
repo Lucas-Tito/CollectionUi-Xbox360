@@ -12,6 +12,7 @@
 #include <xgraphics.h>
 #include "diario.h"
 #include "biblioteca.h"
+#include "dispositivos.h"
 #include "fsda.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
@@ -202,8 +203,14 @@ void __cdecl main()
     }
     diario::Escrever("D3D pronto em 1280x720");
 
+    // Registrar a intencao ANTES de cada chamada arriscada: se o console cair, o log
+    // diz onde. Logar so o sucesso faz a falha aparecer como silencio -- foi assim que
+    // o primeiro crash aqui custou uma viagem ao pendrive para descobrir nada.
+    diario::Escrever("chamando SimpleShaders::Initialize (espera game:\\media\\effects\\simpleshaders.fxobj)");
     ATG::SimpleShaders::Initialize(NULL, NULL);
+    diario::Escrever("SimpleShaders ok");
 
+    diario::Escrever("carregando fonte game:\\media\\Arial_16.xpr");
     hr = g_fonte.Create("game:\\media\\Arial_16.xpr");
     if (FAILED(hr))
         diario::Escrever("AVISO: fonte nao carregou (0x%08X) — a tela sai sem texto", hr);
@@ -211,6 +218,11 @@ void __cdecl main()
         diario::Escrever("fonte carregada");
 
     // --- biblioteca ---
+    // Antes de procurar qualquer arquivo: um titulo so enxerga "game:" por padrao.
+    // Sem montar, o HD simplesmente nao existe para nos.
+    diario::Escrever("montando dispositivos");
+    dispositivos::MontarTodos();
+
     std::string caminhoBanco;
     std::vector<biblioteca::Jogo> jogos;
 
