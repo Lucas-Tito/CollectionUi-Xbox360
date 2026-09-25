@@ -48,3 +48,15 @@ if [ -n "$FONTE" ]; then
 else
     echo "aviso: não achei Arial_16.xpr no SDK"
 fi
+
+# O efeito do SimpleShaders. ATENÇÃO: passar NULL para Initialize() NÃO quer dizer
+# "sem arquivo" — quer dizer "use game:\media\effects\simpleshaders.fxobj". Sem ele,
+# FXLCreateEffect recebe ponteiro nulo e o console dá fatal crash.
+mkdir -p "$MEDIA/effects"
+EFEITO=$(find sdk/XDK -iname 'SimpleShaders.fxobj' 2>/dev/null | head -1)
+if [ -n "$EFEITO" ]; then
+    cp -f "$EFEITO" "$MEDIA/effects/"
+    echo "efeito copiado: $MEDIA/effects/$(basename "$EFEITO")"
+else
+    echo "aviso: não achei SimpleShaders.fxobj no SDK"
+fi

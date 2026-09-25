@@ -7,7 +7,9 @@
 
 namespace
 {
-    const char *DISPOSITIVOS[] = { "Hdd1:\\", "Hdd:\\", "Usb0:\\", "Usb1:\\", "Usb2:\\" };
+    // "game:" entra na lista porque o app pode estar no mesmo pendrive que uma
+    // instalacao do FreeStyle. Os demais so existem depois de dispositivos::MontarTodos().
+    const char *DISPOSITIVOS[] = { "Hdd:\\", "Usb0:\\", "Usb1:\\", "Usb2:\\", "game:\\" };
     const int   QUANTOS_DISPOSITIVOS = sizeof(DISPOSITIVOS) / sizeof(DISPOSITIVOS[0]);
 
     bool Existe(const char *caminho)
@@ -45,6 +47,7 @@ namespace biblioteca
 {
     bool AcharBanco(std::string &caminhoSaida)
     {
+        diario::Escrever("procurando content.db:");
         for (int d = 0; d < QUANTOS_DISPOSITIVOS; d++)
         {
             std::string busca = std::string(DISPOSITIVOS[d]) + "*";
@@ -52,8 +55,12 @@ namespace biblioteca
             WIN32_FIND_DATA achado;
             HANDLE h = FindFirstFile(busca.c_str(), &achado);
             if (h == INVALID_HANDLE_VALUE)
+            {
+                diario::Escrever("  %-8s nao abriu (erro %u)", DISPOSITIVOS[d], GetLastError());
                 continue;
+            }
 
+            int pastas = 0;
             do
             {
                 if ((achado.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
@@ -61,6 +68,7 @@ namespace biblioteca
                 if (achado.cFileName[0] == '.')
                     continue;
 
+                pastas++;
                 std::string candidato = std::string(DISPOSITIVOS[d]) + achado.cFileName +
                                         "\\Data\\Databases\\content.db";
                 if (Existe(candidato.c_str()))
@@ -73,6 +81,8 @@ namespace biblioteca
             }
             while (FindNextFile(h, &achado));
 
+            diario::Escrever("  %-8s %d pastas, nenhuma com Data\\Databases\\content.db",
+                             DISPOSITIVOS[d], pastas);
             FindClose(h);
         }
         return false;

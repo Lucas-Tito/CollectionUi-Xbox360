@@ -45,8 +45,8 @@ IMAGEXEX_FLAGS := -nologo
 
 # O xtl.h nao puxa o D3D sozinho: as libs entram explicitamente, e o nome muda
 # entre Debug e Release (o sufixo "d").
-LIBS_Debug   := d3d9d.lib d3dx9d.lib xgraphicsd.lib
-LIBS_Release := d3d9.lib d3dx9.lib xgraphics.lib
+LIBS_Debug   := d3d9d.lib d3dx9d.lib xgraphicsd.lib xboxkrnl.lib
+LIBS_Release := d3d9.lib d3dx9.lib xgraphics.lib xboxkrnl.lib
 
 ifeq ($(CONFIG),Debug)
 	CXX_FLAGS += -WX- -Od -D _DEBUG -MTd -Gy- -GF-
