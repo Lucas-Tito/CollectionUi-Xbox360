@@ -8,11 +8,11 @@ BUILD_DIR := build
 OUT_DIR := $(BUILD_DIR)/$(CONFIG)/bin
 INT_DIR := $(BUILD_DIR)/$(CONFIG)/obj
 
-SRCS_CPP := $(shell find src -name '*.cpp') main.cpp
+SRCS_CPP := $(shell find src vendor -name '*.cpp') main.cpp
 SRCS_C   := $(shell find src vendor -name '*.c')
 OBJS     := $(SRCS_CPP:%.cpp=$(INT_DIR)/%.obj) $(SRCS_C:%.c=$(INT_DIR)/%.obj)
 
-INCLUDES := -I"src" -I"vendor/sqlite"
+INCLUDES := -I"src" -I"vendor/sqlite" -I"vendor/atg"
 
 XDK_BIN_DIR := $(XEDK)/bin/win32
 CXX := "$(XDK_BIN_DIR)/cl.exe"
@@ -45,8 +45,8 @@ IMAGEXEX_FLAGS := -nologo
 
 # O xtl.h nao puxa o D3D sozinho: as libs entram explicitamente, e o nome muda
 # entre Debug e Release (o sufixo "d").
-LIBS_Debug   := d3d9d.lib xgraphicsd.lib
-LIBS_Release := d3d9.lib xgraphics.lib
+LIBS_Debug   := d3d9d.lib d3dx9d.lib xgraphicsd.lib
+LIBS_Release := d3d9.lib d3dx9.lib xgraphics.lib
 
 ifeq ($(CONFIG),Debug)
 	CXX_FLAGS += -WX- -Od -D _DEBUG -MTd -Gy- -GF-
