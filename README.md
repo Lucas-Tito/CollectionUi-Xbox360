@@ -18,7 +18,8 @@ do console já são lidos e documentados.
 | Lançar jogo | resolvido, com implementação de referência |
 | Interface | desenhada, com o mapeamento de botões fechado |
 | Toolchain | **compila `.xex` de ponta a ponta no Linux** |
-| Falta | rodar o primeiro `.xex` no console |
+| Primeiro `.xex` no console | **rodou** — 25/09/2026, D3D em 720p, laço de quadros e log em arquivo |
+| Falta | a interface, em C++ |
 
 ## Os documentos
 

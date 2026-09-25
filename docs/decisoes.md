@@ -275,3 +275,28 @@ nome e a tela de escolher jogo a jogo ao montar uma coleção.
     Consequência assumida: passou a existir a **tela de escolher jogos**, aberta pelo `☰` de
     dentro da coleção, com a biblioteca inteira na mesma grade e `A` marcando. Detalhe em
     [interface.md](interface.md#tela-de-escolher-jogos).
+
+---
+
+# Rodada de 25/09/2026 — o toolchain, provado no hardware
+
+28. **O XDK entrou e a fase 0 fechou.** `cl.exe`, `link.exe` e `imagexex.exe` rodam sob wine em
+    container no Linux, sem VM Windows e sem Visual Studio. As três armadilhas do caminho estão em
+    [toolchain/README.md](../toolchain/README.md), cada uma com o motivo — a poda de DLLs do
+    upstream que ficou velha, os headers de C/C++ que não moram em `include/xbox`, e o
+    `WINEPREFIX` fixo que parece otimização e quebra o build.
+29. **O primeiro `.xex` rodou no console**, a partir do pendrive: `Direct3DCreate9` ok,
+    `CreateDevice` ok em 1280x720, laço de apresentação até o quadro 1200, cores avançando.
+30. **O canal de log é arquivo, não XBDM.** O app escreve em `game:\<nome>.log`, que é a pasta de
+    onde o executável rodou, e se lê de volta pelo pendrive ou por FTP. Confirmado funcionando do
+    console para o USB. O XBDM exigiria plugin no console e um leitor do canal de notificação que
+    não existe pronto — fica para depuração ao vivo, se um dia precisar.
+31. **Compilar em Release para rodar no console.** O `d3d9d.lib` do Debug espera ambiente de
+    devkit com XBDM e pode falhar de um jeito que confunde o diagnóstico. O Debug continua útil
+    para pegar erro de API, mas não é o que se leva para o hardware.
+
+## Confirmado de novo
+
+O relógio do console está zerado: o log saiu datado de **2005-11-22**, a mesma data falsa que
+aparecia nas pastas do FreeStyle e que serviu para descobrir qual instalação estava ativa. Se um
+dia o app for gravar data de "jogado pela última vez", não dá para confiar no relógio da máquina.
