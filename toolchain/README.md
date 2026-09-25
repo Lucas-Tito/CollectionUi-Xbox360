@@ -10,6 +10,22 @@ address `82000000`.
 - **cabextract**
 - O **XDK 2.0.21256.x** — não está aqui e nunca estará: `/sdk/` é ignorado pelo git.
 
+### O SDK que foi usado
+
+Para conferir que uma cópia futura é a mesma coisa:
+
+| | |
+|---|---|
+| arquivo | `XBOX360 SDK 21256.3.exe` |
+| tamanho | 1.526.672.200 bytes |
+| md5 | `b329b79db2804e2989688bffbaf49691` |
+| formato | InstallShield self-extracting, PE de 2013-12-06 |
+| extraído | 5,11 GB em 6.536 arquivos |
+| versão que as ferramentas relatam | `2.0.21256.0` (pelo `imagexex -dump`) |
+
+O `cabextract` lê direto do `.exe`, sem wine e sem rodar o instalador. É por isso que o passo de
+preparação é uma linha e não uma sessão de `wine setup.exe`.
+
 ## Preparar uma vez
 
 ```bash
