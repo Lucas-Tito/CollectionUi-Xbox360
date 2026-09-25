@@ -1,95 +1,133 @@
-// CollectionUI — teste de fogo do toolchain.
+// CollectionUI — fase 2: ler a biblioteca do console.
 //
-// Prova três coisas de uma vez, e cada uma falha de um jeito visível:
-//   1. o .xex roda no console               -> a tela deixa de ser a do dashboard
-//   2. o D3D9 linka e o dispositivo inicia  -> a tela pinta
-//   3. a GPU está apresentando quadros      -> a cor muda, em vez de congelar
+// Abre o content.db do FreeStyle com SQLite, percorre os .assets de cada jogo e escreve
+// tudo no log. Os totais servem de conferencia cruzada: a mesma leitura foi feita no PC
+// em Python (prototipo/extrair.py) e deu 120 jogos, capa grande em 120 e fundo em 51.
+// Se o console disser outro numero, uma das duas implementacoes esta errada.
 //
-// Escreve também um log em game:\collectionui.log, que se lê por FTP. O canal visual
-// diz "funcionou"; o escrito diz "por que não". Sem XBDM e sem plugin no console.
+// A tela nao tem interface ainda, so cor: VERDE se a biblioteca carregou, VERMELHO se nao.
+// Da para saber do sofa se vale ir buscar o log.
 
 #include <xtl.h>
-#include <stdio.h>
+#include "diario.h"
+#include "biblioteca.h"
+#include "fsda.h"
 
-static FILE *g_log = NULL;
-
-static void LogOpen()
+namespace
 {
-    g_log = fopen("game:\\collectionui.log", "w");   // "w": cada execução começa limpo
-}
+    void Apresentar(unsigned int cor)
+    {
+        IDirect3D9 *d3d = Direct3DCreate9(D3D_SDK_VERSION);
+        if (d3d == NULL)
+        {
+            diario::Escrever("ERRO: Direct3DCreate9 devolveu NULL");
+            for (;;) {}
+        }
 
-static void Log(const char *fmt, ...)
-{
-    if (g_log == NULL)
-        return;
+        D3DPRESENT_PARAMETERS pp;
+        ZeroMemory(&pp, sizeof(pp));
+        pp.BackBufferWidth      = 1280;
+        pp.BackBufferHeight     = 720;
+        pp.BackBufferFormat     = D3DFMT_X8R8G8B8;
+        pp.BackBufferCount      = 1;
+        pp.SwapEffect           = D3DSWAPEFFECT_DISCARD;
+        pp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
 
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(g_log, fmt, args);
-    va_end(args);
+        IDirect3DDevice9 *device = NULL;
+        HRESULT hr = d3d->CreateDevice(0, D3DDEVTYPE_HAL, NULL,
+                                       D3DCREATE_HARDWARE_VERTEXPROCESSING, &pp, &device);
+        if (FAILED(hr) || device == NULL)
+        {
+            diario::Escrever("ERRO: CreateDevice falhou, hr = 0x%08X", hr);
+            for (;;) {}
+        }
 
-    fputc('\n', g_log);
-    fflush(g_log);   // sem isto, um travamento leva junto tudo que interessa saber
+        for (;;)
+        {
+            device->Clear(0, NULL, D3DCLEAR_TARGET, cor, 1.0f, 0);
+            device->Present(NULL, NULL, NULL, NULL);
+        }
+    }
 }
 
 void __cdecl main()
 {
-    LogOpen();
-    Log("CollectionUI v0 — teste de toolchain");
+    diario::Abrir("game:\\collectionui.log");
+    diario::Escrever("CollectionUI — fase 2: leitura da biblioteca");
 
-    IDirect3D9 *d3d = Direct3DCreate9(D3D_SDK_VERSION);
-    if (d3d == NULL)
+    std::string caminhoBanco;
+    if (!biblioteca::AcharBanco(caminhoBanco))
     {
-        Log("ERRO: Direct3DCreate9 devolveu NULL");
-        for (;;) {}   // não retorna: no 360, sair de main tira o título do ar
+        diario::Escrever("ERRO: nao achei content.db em nenhum dispositivo");
+        Apresentar(D3DCOLOR_XRGB(200, 40, 40));
     }
-    Log("Direct3DCreate9: ok");
 
-    D3DPRESENT_PARAMETERS pp;
-    ZeroMemory(&pp, sizeof(pp));
-    pp.BackBufferWidth        = 1280;
-    pp.BackBufferHeight       = 720;
-    pp.BackBufferFormat       = D3DFMT_X8R8G8B8;
-    pp.BackBufferCount        = 1;
-    pp.MultiSampleType        = D3DMULTISAMPLE_NONE;
-    pp.SwapEffect             = D3DSWAPEFFECT_DISCARD;
-    pp.EnableAutoDepthStencil = FALSE;
-    pp.PresentationInterval   = D3DPRESENT_INTERVAL_ONE;
-
-    IDirect3DDevice9 *device = NULL;
-    HRESULT hr = d3d->CreateDevice(
-        0, D3DDEVTYPE_HAL, NULL,
-        D3DCREATE_HARDWARE_VERTEXPROCESSING,
-        &pp, &device);
-
-    if (FAILED(hr) || device == NULL)
+    std::vector<biblioteca::Jogo> jogos;
+    if (!biblioteca::Ler(caminhoBanco.c_str(), jogos) || jogos.empty())
     {
-        Log("ERRO: CreateDevice falhou, hr = 0x%08X", hr);
-        for (;;) {}
+        diario::Escrever("ERRO: o banco abriu mas nao devolveu jogos");
+        Apresentar(D3DCOLOR_XRGB(200, 40, 40));
     }
-    Log("CreateDevice: ok, %dx%d", pp.BackBufferWidth, pp.BackBufferHeight);
-    Log("entrando no laço de apresentação");
 
-    // Cor que percorre o círculo de matiz. Se a tela ficar parada numa cor só,
-    // o Present não está acontecendo; se piscar, está.
-    unsigned int frame = 0;
-    for (;;)
+    diario::Escrever("jogos na biblioteca: %d", (int)jogos.size());
+    diario::Escrever("");
+    diario::Escrever("--- os 10 primeiros, em ordem alfabetica ---");
+
+    for (size_t i = 0; i < jogos.size() && i < 10; i++)
     {
-        unsigned int fase = (frame / 2) % 768;
-        unsigned int r, g, b;
-
-        if (fase < 256)        { r = 255 - fase; g = fase;       b = 0;          }
-        else if (fase < 512)   { r = 0;          g = 511 - fase; b = fase - 256; }
-        else                   { r = fase - 512; g = 0;          b = 767 - fase; }
-
-        device->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(r, g, b), 1.0f, 0);
-        device->Present(NULL, NULL, NULL, NULL);
-
-        // Os primeiros quadros provam que o laço começou; depois, um sinal de vida
-        // a cada ~10 s, para o log não crescer sem limite.
-        if (frame < 5 || frame % 600 == 0)
-            Log("quadro %u — rgb(%u, %u, %u)", frame, r, g, b);
-
-        frame++;
+        const biblioteca::Jogo &j = jogos[i];
+        diario::Escrever("%2d. %-42s  %08X  tipo %d  %s",
+                         (int)i + 1, j.nome.c_str(), j.titleId, j.tipoArquivo,
+                         j.genero.empty() ? "-" : j.genero.c_str());
     }
+
+    diario::Escrever("");
+    diario::Escrever("--- arte: percorrendo os %d .assets ---", (int)jogos.size());
+
+    int comArte = 0, comCapa = 0, comFundo = 0, comIcone = 0, comBanner = 0;
+    int maiorLargura = 0, maiorAltura = 0;
+
+    for (size_t i = 0; i < jogos.size(); i++)
+    {
+        std::string pasta = biblioteca::PastaArte(caminhoBanco, jogos[i].id);
+        if (pasta.empty())
+            continue;
+
+        char arquivo[512];
+        sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), jogos[i].id);
+
+        std::vector<fsda::Imagem> imagens;
+        if (!fsda::Ler(arquivo, imagens))
+            continue;
+
+        comArte++;
+
+        const fsda::Imagem *capa = fsda::Achar(imagens, fsda::TIPO_CAPA);
+        if (capa != NULL)
+        {
+            comCapa++;
+            if ((int)capa->largura > maiorLargura) maiorLargura = (int)capa->largura;
+            if ((int)capa->altura  > maiorAltura)  maiorAltura  = (int)capa->altura;
+
+            if (comCapa <= 3)
+                diario::Escrever("   %-36s capa %ux%u %s (offset %u, %u bytes)",
+                                 jogos[i].nome.c_str(), capa->largura, capa->altura,
+                                 capa->formato, capa->offset, capa->tamanho);
+        }
+        if (fsda::Achar(imagens, fsda::TIPO_FUNDO)  != NULL) comFundo++;
+        if (fsda::Achar(imagens, fsda::TIPO_ICONE)  != NULL) comIcone++;
+        if (fsda::Achar(imagens, fsda::TIPO_BANNER) != NULL) comBanner++;
+    }
+
+    diario::Escrever("");
+    diario::Escrever("--- totais (o PC mediu: 120 jogos, capa 120, fundo 51, icone 109, banner 29) ---");
+    diario::Escrever("  .assets lidos : %d de %d", comArte, (int)jogos.size());
+    diario::Escrever("  com capa      : %d   (maior: %dx%d)", comCapa, maiorLargura, maiorAltura);
+    diario::Escrever("  com fundo     : %d", comFundo);
+    diario::Escrever("  com icone     : %d", comIcone);
+    diario::Escrever("  com banner    : %d", comBanner);
+    diario::Escrever("");
+    diario::Escrever("leitura concluida. tela verde.");
+
+    Apresentar(D3DCOLOR_XRGB(40, 150, 60));
 }
