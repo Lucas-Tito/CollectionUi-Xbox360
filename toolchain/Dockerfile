@@ -142,6 +142,10 @@ COPY $XDK/lib/xbox/xapilibd.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xapilib.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xboxkrnl.lib /xdk/lib/xbox/
 
+# O d3d9d.lib (D3D de depuracao) referencia o xbdm: sem esta lib, o build em Debug
+# para com "LNK1104: cannot open file 'xbdm.lib'".
+COPY $XDK/lib/xbox/xbdm.lib /xdk/lib/xbox/
+
 # Other libraries, not always needed
 COPY $XDK/lib/xbox/d3d9d.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/d3d9.lib /xdk/lib/xbox/
