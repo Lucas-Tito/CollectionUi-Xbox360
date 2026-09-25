@@ -88,6 +88,26 @@ namespace fsda
         return !saida.empty();
     }
 
+    bool LerBytes(const char *caminho, const Imagem &imagem, std::vector<unsigned char> &saida)
+    {
+        saida.clear();
+        if (imagem.tamanho == 0)
+            return false;
+
+        HANDLE h = CreateFile(caminho, GENERIC_READ, FILE_SHARE_READ,
+                              NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE)
+            return false;
+
+        saida.resize(imagem.tamanho);
+        bool ok = LerDe(h, imagem.offset, &saida[0], imagem.tamanho);
+        CloseHandle(h);
+
+        if (!ok)
+            saida.clear();
+        return ok;
+    }
+
     const Imagem *Achar(const std::vector<Imagem> &imagens, unsigned int tipo)
     {
         for (size_t i = 0; i < imagens.size(); i++)

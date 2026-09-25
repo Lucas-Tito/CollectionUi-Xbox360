@@ -49,3 +49,10 @@ namespace fsda
 }
 
 #endif
+
+namespace fsda
+{
+    // Le os bytes de uma imagem para a memoria. O DDS sai inteiro, com cabecalho,
+    // pronto para D3DXCreateTextureFromFileInMemoryEx.
+    bool LerBytes(const char *caminho, const Imagem &imagem, std::vector<unsigned char> &saida);
+}
