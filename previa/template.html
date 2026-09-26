@@ -130,8 +130,16 @@ const F_BASE = 17, F_TITULO = 25, F_MINI = 13;
 
 // Coleções: quadrados. Medidas escolhidas AQUI, para depois virarem constantes no C++.
 const COL_LADO = 180, COL_GAP = 30, COL_POR_LINHA = 5, COL_LINHAS = 2;
+// Sem cabeçalho, a grade sobe: 64px fica dentro da área segura da TV (que corta uns
+// 8% das bordas) sem deixar uma faixa morta no topo.
+const COL_TOPO = 64;
 
 const cv = document.getElementById('tela'), ctx = cv.getContext('2d');
+
+// Zonas clicáveis, remontadas a cada desenho. No console não existe ponteiro, mas
+// aqui o mouse é o que torna a prévia utilizável para iterar.
+let zonas = [];
+const zona = (x,y,w,h,tipo,dado) => zonas.push({x,y,w,h,tipo,dado});
 const $ = s => document.querySelector(s);
 const imgs = {};
 
@@ -224,7 +232,9 @@ function cabecalho(titulo, sub){
 function telaColecoes(){
   const L = ordenadas();
   ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720);
-  cabecalho('Coleções', L.length ? `${L.length} ${L.length===1?'coleção':'coleções'}` : '');
+  // Sem título nem contagem: o rodapé já diz "1 de 4", e o quadrado em foco já diz
+  // onde se está. Cabeçalho aqui seria repetir o que a tela toda já mostra.
+  ctx.textBaseline = 'top';
 
   if (!L.length){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
@@ -242,7 +252,8 @@ function telaColecoes(){
     const i = inicio + k;
     if (i >= L.length) break;
     const x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-    const y = TOPO + 24 + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
+    const y = COL_TOPO + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
+    zona(x, y, COL_LADO, COL_LADO, 'colecao', i);
 
     ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, COL_LADO, COL_LADO);
     const sel = (i === iCol);
@@ -259,7 +270,7 @@ function telaColecoes(){
     ctx.fillStyle = COR_FRACO;
     ctx.fillText(L[i].ids.length ? `${L[i].ids.length} jogos` : 'vazia', x+14, y+COL_LADO-30);
   }
-  rodape([['A','Abrir'],['X','Nova coleção'],['menu','Renomear ou apagar']],
+  rodape([['A','Abrir'],['X','Nova coleção'],['menu','Opções']],
          `${iCol+1} de ${L.length}`);
 }
 
@@ -269,9 +280,11 @@ function telaJogos(){
   ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720);
 
   const escolhendo = tela === 'escolher';
+  // O nome da coleção fica: diz ONDE você está. A contagem sai, que o rodapé já
+  // traz "1 de 23". No escolhedor a contagem de marcados fica, porque essa não
+  // está em lugar nenhum.
   cabecalho(escolhendo ? 'Escolher jogos' : atual.nome,
-            escolhendo ? `${atual.ids.length} de ${JOGOS.length} marcados`
-                       : (total ? `${total} jogos` : ''));
+            escolhendo ? `${atual.ids.length} de ${JOGOS.length} marcados` : '');
 
   if (!total){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
@@ -321,6 +334,7 @@ function telaJogos(){
       ctx.strokeStyle = COR_ANEL; ctx.lineWidth = 3;
       ctx.strokeRect(x1-4+1.5, y1-4+1.5, CAPA_L+8-3, CAPA_A+8-3);
     }
+    zona(x1, y1, CAPA_L, CAPA_A + 24, 'jogo', indice);
     nomes.push({x:x1, y:y1+CAPA_A+8, indice, nome:g.nome});
   }
 
@@ -348,6 +362,7 @@ function indiceAlfabetico(L){
   for (let i = 0; i < letras.length; i++){
     const y = 92 + i * passo;
     const acesa = letras[i] === atualL;
+    if (presentes.has(letras[i])) zona(1204, y-1, 28, passo, 'letra', letras[i]);
     if (acesa){
       ctx.fillStyle = COR_ANEL;
       ctx.fillRect(1204, y-1, 28, passo-1);
@@ -362,6 +377,7 @@ function indiceAlfabetico(L){
 
 // ---- navegação -------------------------------------------------------------
 function desenhar(){
+  zonas = [];
   if (tela === 'colecoes') telaColecoes(); else telaJogos();
   const L = lista();
   $('#estado').textContent = tela === 'colecoes'
@@ -464,6 +480,33 @@ $('#dm-apagar').onclick = () => {
 };
 document.querySelectorAll('.dlg').forEach(d => d.onclick = e => {
   if (e.target === d){ d.hidden = true; editando = null; }
+});
+
+cv.addEventListener('click', e => {
+  const r = cv.getBoundingClientRect();
+  const x = (e.clientX - r.left) * (1280 / r.width);
+  const y = (e.clientY - r.top)  * (720  / r.height);
+
+  for (const z of zonas){
+    if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) continue;
+
+    if (z.tipo === 'colecao'){
+      // Clicar no que já está em foco abre; clicar em outro só move o foco. É o mesmo
+      // gesto de duas etapas do protótipo, e evita abrir sem querer.
+      if (z.dado === iCol) abrir(ordenadas()[iCol]);
+      else { iCol = z.dado; desenhar(); }
+    }
+    else if (z.tipo === 'jogo'){
+      if (tela === 'escolher' && z.dado === iJogo) alterna();
+      else { moverJogo(z.dado - iJogo); }
+    }
+    else if (z.tipo === 'letra'){
+      const L = lista();
+      const i = L.findIndex(g => inicial(g.nome) === z.dado);
+      if (i >= 0) moverJogo(i - iJogo);
+    }
+    return;
+  }
 });
 
 $('#bt-exemplos').onclick = () => {
