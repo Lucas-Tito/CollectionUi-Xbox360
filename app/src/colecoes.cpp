@@ -8,7 +8,11 @@
 namespace
 {
     const char *ARQUIVO = "game:\\colecoes.txt";
-    std::vector<colecoes::Colecao> g_lista;
+
+    // Ponteiros, não valores: main.cpp guarda o ponteiro da coleção aberta ENTRE
+    // QUADROS, e o endereço de um elemento de vector<Colecao> morre no primeiro
+    // push_back. Guardando ponteiros, o endereço de cada coleção é estável.
+    std::vector<colecoes::Colecao *> g_lista;
 
     const char *SemArtigo(const char *s)
     {
@@ -27,6 +31,8 @@ namespace colecoes
 {
     void Carregar()
     {
+        for (size_t i = 0; i < g_lista.size(); i++)
+            delete g_lista[i];
         g_lista.clear();
 
         FILE *f = fopen(ARQUIVO, "r");
@@ -50,14 +56,14 @@ namespace colecoes
                 continue;
             *barra = '\0';
 
-            Colecao c;
-            c.nome = linha;
+            Colecao *c = new Colecao();
+            c->nome = linha;
 
             for (char *p = strtok(barra + 1, ","); p != NULL; p = strtok(NULL, ","))
             {
                 int id = atoi(p);
                 if (id > 0)
-                    c.ids.push_back(id);
+                    c->ids.push_back(id);
             }
             g_lista.push_back(c);
         }
@@ -77,9 +83,9 @@ namespace colecoes
         fprintf(f, "# CollectionUI: uma colecao por linha, nome|ids separados por virgula\n");
         for (size_t i = 0; i < g_lista.size(); i++)
         {
-            fprintf(f, "%s|", g_lista[i].nome.c_str());
-            for (size_t k = 0; k < g_lista[i].ids.size(); k++)
-                fprintf(f, "%s%d", k ? "," : "", g_lista[i].ids[k]);
+            fprintf(f, "%s|", g_lista[i]->nome.c_str());
+            for (size_t k = 0; k < g_lista[i]->ids.size(); k++)
+                fprintf(f, "%s%d", k ? "," : "", g_lista[i]->ids[k]);
             fputc('\n', f);
         }
         fclose(f);
@@ -87,9 +93,7 @@ namespace colecoes
 
     std::vector<Colecao *> Ordenadas()
     {
-        std::vector<Colecao *> saida;
-        for (size_t i = 0; i < g_lista.size(); i++)
-            saida.push_back(&g_lista[i]);
+        std::vector<Colecao *> saida = g_lista;
 
         // Insercao: sao poucas, e evita trazer <algorithm> so para isto.
         for (size_t i = 1; i < saida.size(); i++)
@@ -107,22 +111,45 @@ namespace colecoes
         return saida;
     }
 
+    std::string Sanear(const std::string &nome)
+    {
+        std::string s = nome;
+
+        for (size_t i = 0; i < s.size(); i++)
+            if (s[i] == '|' || s[i] == '\n' || s[i] == '\r')
+                s[i] = ' ';
+
+        // 28 BYTES, recuando até não partir uma sequência UTF-8: um nome cortado no
+        // meio de um caractere faz o MultiByteToWideChar falhar, e a caixa da coleção
+        // apareceria sem nome nenhum.
+        if (s.size() > 28)
+        {
+            size_t corte = 28;
+            while (corte > 0 && ((unsigned char)s[corte] & 0xC0) == 0x80)
+                corte--;
+            s = s.substr(0, corte);
+        }
+        return s;
+    }
+
+    // O ponteiro devolvido é estável: g_lista guarda ponteiros, então nem push_back
+    // nem erase mexem no endereço das outras coleções.
     Colecao *Criar(const std::string &nome)
     {
-        Colecao c;
-        c.nome = nome.substr(0, 28);
+        Colecao *c = new Colecao();
+        c->nome = Sanear(nome);
         g_lista.push_back(c);
         Gravar();
-        // O vector pode ter realocado: devolve pelo nome, nao por ponteiro antigo.
-        return &g_lista[g_lista.size() - 1];
+        return c;
     }
 
     void Apagar(Colecao *c)
     {
         for (size_t i = 0; i < g_lista.size(); i++)
         {
-            if (&g_lista[i] == c)
+            if (g_lista[i] == c)
             {
+                delete g_lista[i];
                 g_lista.erase(g_lista.begin() + i);
                 Gravar();
                 return;

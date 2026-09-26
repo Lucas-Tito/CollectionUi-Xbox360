@@ -94,6 +94,13 @@ namespace fsda
                     img.tamanho = real;
             }
 
+            // Teto de sanidade: o tamanho vem do arquivo, e um .assets corrompido com
+            // 0xFFFFFFFF faria um resize de 4 GB num console de 512 MB -- bad_alloc
+            // dentro da thread de leitura, sem ninguém para capturar. A maior capa
+            // real tem uns 540 KB.
+            if (img.tamanho > 8u * 1024u * 1024u)
+                continue;
+
             saida.push_back(img);
         }
 
