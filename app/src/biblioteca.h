@@ -22,14 +22,19 @@ namespace biblioteca
         int          discos;
     };
 
-    // Procura a instalacao do FreeStyle nos dispositivos montados. Nao adivinha o nome da
-    // pasta: enumera a raiz de cada dispositivo e testa <pasta>\Data\Databases\content.db.
-    //
-    // Pode haver MAIS DE UMA instalacao, e achar a primeira nao serve: este console tinha
-    // uma de 2020 com 272 jogos no HD e a ativa, com 120, em outro lugar. Escolhemos pela
-    // data do jogo mais recente em RecentlyPlayedTitles, que foi o criterio que resolveu
-    // a mesma duvida quando o pendrive foi examinado no PC.
-    bool AcharBanco(std::string &caminhoSaida);
+    struct Candidato
+    {
+        std::string caminho;    // ...\Data\Databases\content.db
+        std::string rotulo;     // "Hdd:\FreeStyle", o que aparece na tela
+    };
+
+    // Enumera as instalacoes do FreeStyle nos dispositivos montados. Nao adivinha o
+    // nome da pasta e NAO abre banco nenhum: tudo o que devolve sai da varredura de
+    // diretorio, que ja estava paga. Quem escolhe e o usuario, uma vez so -- ver
+    // config::LerBanco.
+    void ListarCandidatos(std::vector<Candidato> &saida);
+
+    bool Existe(const std::string &caminho);
 
     // Le todos os jogos, em ordem alfabetica (ignorando artigo inicial, como no desenho).
     bool Ler(const char *caminhoBanco, std::vector<Jogo> &saida);

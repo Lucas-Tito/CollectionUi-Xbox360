@@ -8,6 +8,7 @@
 #include "diario.h"
 #include "biblioteca.h"
 #include "dispositivos.h"
+#include "config.h"
 #include "fsda.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
@@ -209,6 +210,73 @@ namespace
         d->Present(NULL, NULL, NULL, NULL);
     }
 
+    // Modal de arranque: escolher qual instalacao do FreeStyle usar. NAO e uma tela da
+    // navegacao -- e um laco proprio, que roda uma vez e devolve. Quando a tela de
+    // colecoes existir, com ida e volta de verdade, ai um conceito de tela se paga.
+    std::string Escolher(const std::vector<biblioteca::Candidato> &candidatos)
+    {
+        int escolhido = 0;
+        XINPUT_STATE anterior;
+        ZeroMemory(&anterior, sizeof(anterior));
+
+        for (;;)
+        {
+            XINPUT_STATE agora;
+            ZeroMemory(&agora, sizeof(agora));
+            XInputGetState(0, &agora);
+            WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
+            anterior = agora;
+
+            if (novos & XINPUT_GAMEPAD_DPAD_DOWN)
+                escolhido = (escolhido + 1) % (int)candidatos.size();
+            if (novos & XINPUT_GAMEPAD_DPAD_UP)
+                escolhido = (escolhido + (int)candidatos.size() - 1) % (int)candidatos.size();
+            if (novos & XINPUT_GAMEPAD_A)
+                return candidatos[escolhido].caminho;
+
+            ATG::D3DDevice *d = ATG::g_pd3dDevice;
+            d->Clear(0, NULL, D3DCLEAR_TARGET, COR_FUNDO, 1.0f, 0);
+
+            WCHAR texto[512];
+
+            g_fonte.Begin();
+            g_fonte.SetScaleFactors(1.5f, 1.5f);
+            g_fonte.DrawText((FLOAT)MARGEM_X, 120.0f, COR_TEXTO, L"Qual biblioteca?", 0);
+            g_fonte.SetScaleFactors(1.0f, 1.0f);
+            g_fonte.DrawText((FLOAT)MARGEM_X, 180.0f, COR_APAGADO,
+                             L"Achei mais de uma instalacao do FreeStyle neste console.", 0);
+            g_fonte.End();
+
+            for (int i = 0; i < (int)candidatos.size(); i++)
+            {
+                D3DRECT r;
+                r.x1 = MARGEM_X;
+                r.y1 = 240 + i * 62;
+                r.x2 = 1180;
+                r.y2 = r.y1 + 50;
+
+                if (i == escolhido)
+                    ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
+
+                Larga(candidatos[i].rotulo, texto, 512);
+                g_fonte.Begin();
+                g_fonte.DrawText((FLOAT)r.x1 + 18.0f, (FLOAT)r.y1 + 14.0f,
+                                 (i == escolhido) ? COR_TEXTO : COR_APAGADO, texto, 0);
+                g_fonte.End();
+            }
+
+            g_fonte.Begin();
+            g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO,
+                             GLYPH_A_BUTTON L" Escolher", 0);
+            g_fonte.DrawText(1180.0f, 660.0f, COR_FRACO,
+                             L"fica gravado; apague collectionui.ini para trocar",
+                             ATGFONT_RIGHT);
+            g_fonte.End();
+
+            d->Present(NULL, NULL, NULL, NULL);
+        }
+    }
+
     void Mover(int delta)
     {
         int total = (int)g_jogos.size();
@@ -285,7 +353,35 @@ void __cdecl main()
     diario::Escrever("montando dispositivos");
     dispositivos::MontarTodos();
 
-    if (biblioteca::AcharBanco(g_caminhoBanco) &&
+    std::vector<biblioteca::Candidato> candidatos;
+    biblioteca::ListarCandidatos(candidatos);
+
+    // A escolha de antes, se ainda valer. Um caminho gravado que sumiu (instalacao
+    // apagada, pendrive trocado) faz perguntar de novo, em vez de falhar calado.
+    g_caminhoBanco = config::LerBanco();
+    if (!g_caminhoBanco.empty() && !biblioteca::Existe(g_caminhoBanco))
+    {
+        diario::Escrever("o banco gravado nao existe mais: %s", g_caminhoBanco.c_str());
+        g_caminhoBanco.clear();
+    }
+
+    if (g_caminhoBanco.empty() && candidatos.size() == 1)
+    {
+        // Uma so: nao ha escolha a fazer, nao se pergunta.
+        g_caminhoBanco = candidatos[0].caminho;
+        config::GravarBanco(g_caminhoBanco);
+    }
+    else if (g_caminhoBanco.empty() && candidatos.size() > 1)
+    {
+        diario::Escrever("mais de uma instalacao: perguntando");
+        g_caminhoBanco = Escolher(candidatos);
+        config::GravarBanco(g_caminhoBanco);
+    }
+
+    diario::Escrever("biblioteca escolhida: %s",
+                     g_caminhoBanco.empty() ? "(nenhuma)" : g_caminhoBanco.c_str());
+
+    if (!g_caminhoBanco.empty() &&
         biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos))
     {
         diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());

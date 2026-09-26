@@ -43,40 +43,18 @@ namespace
     }
 }
 
-namespace
-{
-    // Zero se nao der para abrir ou se nunca ninguem jogou por ali.
-    sqlite3_int64 UltimoUso(const char *caminhoBanco)
-    {
-        sqlite3 *bd = NULL;
-        if (sqlite3_open_v2(caminhoBanco, &bd, SQLITE_OPEN_READONLY, "xbox") != SQLITE_OK)
-        {
-            if (bd != NULL) sqlite3_close(bd);
-            return 0;
-        }
-
-        sqlite3_int64 quando = 0;
-        sqlite3_stmt *stmt = NULL;
-        const char *SQL = "select max(RecentlyPlayedTitleDateTime) from RecentlyPlayedTitles";
-
-        if (sqlite3_prepare_v2(bd, SQL, -1, &stmt, NULL) == SQLITE_OK)
-        {
-            if (sqlite3_step(stmt) == SQLITE_ROW)
-                quando = sqlite3_column_int64(stmt, 0);
-            sqlite3_finalize(stmt);
-        }
-        sqlite3_close(bd);
-        return quando;
-    }
-}
-
 namespace biblioteca
 {
-    bool AcharBanco(std::string &caminhoSaida)
+    bool Existe(const std::string &caminho)
     {
-        diario::Escrever("procurando content.db:");
-        std::string melhor;
-        sqlite3_int64 melhorData = -1;
+        return ::GetFileAttributes(caminho.c_str()) != 0xFFFFFFFF;
+    }
+
+    void ListarCandidatos(std::vector<Candidato> &saida)
+    {
+        saida.clear();
+        diario::Escrever("procurando instalacoes do FreeStyle:");
+
         for (int d = 0; d < QUANTOS_DISPOSITIVOS; d++)
         {
             std::string busca = std::string(DISPOSITIVOS[d]) + "*";
@@ -89,7 +67,6 @@ namespace biblioteca
                 continue;
             }
 
-            int pastas = 0;
             do
             {
                 if ((achado.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
@@ -97,36 +74,24 @@ namespace biblioteca
                 if (achado.cFileName[0] == '.')
                     continue;
 
-                pastas++;
-                std::string candidato = std::string(DISPOSITIVOS[d]) + achado.cFileName +
-                                        "\\Data\\Databases\\content.db";
-                if (Existe(candidato.c_str()))
+                std::string raiz = std::string(DISPOSITIVOS[d]) + achado.cFileName;
+                std::string banco = raiz + "\\Data\\Databases\\content.db";
+
+                if (Existe(banco))
                 {
-                    sqlite3_int64 quando = UltimoUso(candidato.c_str());
-                    diario::Escrever("  candidato: %s  (ultimo uso: %I64d)",
-                                     candidato.c_str(), quando);
-                    if (quando > melhorData)
-                    {
-                        melhorData = quando;
-                        melhor = candidato;
-                    }
+                    Candidato c;
+                    c.caminho = banco;
+                    c.rotulo  = raiz;
+                    saida.push_back(c);
+                    diario::Escrever("  achei: %s", raiz.c_str());
                 }
             }
             while (FindNextFile(h, &achado));
 
             FindClose(h);
-            (void)pastas;
         }
 
-        if (melhor.empty())
-        {
-            diario::Escrever("  nenhum content.db em nenhum dispositivo");
-            return false;
-        }
-
-        diario::Escrever("escolhido (uso mais recente): %s", melhor.c_str());
-        caminhoSaida = melhor;
-        return true;
+        diario::Escrever("instalacoes encontradas: %d", (int)saida.size());
     }
 
     bool Ler(const char *caminhoBanco, std::vector<Jogo> &saida)
