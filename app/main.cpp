@@ -1,4 +1,4 @@
-// CollectionUI — coleções de jogos do Xbox 360.
+﻿// CollectionUI — coleções de jogos do Xbox 360.
 //
 // Três telas, como em docs/interface.md: coleções, os jogos de uma coleção, e a de
 // adicionar jogos. A regra dos botões é a mesma em todas: X acrescenta, ☰ abre opções
@@ -96,10 +96,18 @@ namespace
     std::vector<int>   g_selecao;      // rascunho ao adicionar; ver AbrirAdicionar
     int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0;
 
-    bool g_menuAberto = false;
-    int  g_menuFoco = 0, g_menuQtd = 0;
+    // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
+    // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
+    // anterior do mesmo quadro tivesse mudado de tela, executava o item do outro menu.
+    enum MenuDe { MENU_COLECAO, MENU_JOGO };
+
+    bool   g_menuAberto = false;
+    MenuDe g_menuDe = MENU_COLECAO;
+    int    g_menuFoco = 0, g_menuQtd = 0;
     const char *g_menuItens[4];
-    const char *g_menuTitulo = "";
+    char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
+
+    bool g_bloqueou = false;         // uma tela do sistema parou o laço neste quadro
 
     // ---- texto -----------------------------------------------------------------
     // O SQLite devolve UTF-8. Converter com CP_ACP quebra o que não for ASCII: o
@@ -208,10 +216,13 @@ namespace
 
         if (g_cache[alvo].textura != NULL)
         {
-            // O XDK é explícito: recurso que pode estar setado no device tem de ser
-            // desassociado antes de liberado.
+            // Desassociar do device não basta: o Present do quadro anterior só
+            // ENFILEIRA o desenho, e a GPU ainda pode estar lendo esta textura.
+            // Descarte só acontece com o cache cheio, então dá para pagar a barreira.
             ATG::g_pd3dDevice->SetTexture(0, NULL);
+            ATG::g_pd3dDevice->BlockUntilIdle();
             g_cache[alvo].textura->Release();
+            g_cache[alvo].textura = NULL;
         }
 
         g_cache[alvo].jogoId  = jogoId;
@@ -252,7 +263,8 @@ namespace
                     continue;
 
                 char arquivo[512];
-                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), id);
+                _snprintf(arquivo, sizeof(arquivo), "%s\\%08X.assets", pasta.c_str(), id);
+                arquivo[sizeof(arquivo) - 1] = '\0';
                 carregador::Pedir(id, arquivo);
                 g_emVoo.push_back(id);
             }
@@ -350,7 +362,6 @@ namespace
             return;
         }
 
-        if (g_iCol >= (int)L.size()) g_iCol = (int)L.size() - 1;
         int paginaInicio = (g_iCol / COL_POR_PAGINA) * COL_POR_PAGINA;
 
         for (int k = 0; k < COL_POR_PAGINA; k++)
@@ -440,15 +451,19 @@ namespace
         {
             g_fonte.Begin();
             g_fonte.SetScaleFactors(1.3f, 1.3f);
-            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhum jogo nesta coleção",
+            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
+                             adicionando ? L"A biblioteca está vazia"
+                                         : L"Nenhum jogo nesta coleção",
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos", L"");
+            Rodape(adicionando
+                   ? GLYPH_B_BUTTON L" Cancelar"
+                   : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos",
+                   L"");
             g_fonte.End();
             return;
         }
 
-        if (g_iJogo >= total) g_iJogo = total - 1;
         int base = g_primeiraLinha * COLUNAS;
 
         // As capas primeiro: o texto vai todo num lote depois, porque o Begin/End da
@@ -542,7 +557,7 @@ namespace
 
     void DesenharMenu()
     {
-        const int L = 460, A = 60 + g_menuQtd * 52;
+        const int L = 460, A = 94 + g_menuQtd * 52;   // 34 a mais: a linha de botões
         const int x = (1280 - L) / 2, y = (720 - A) / 2;
 
         D3DRECT fundo;
@@ -572,7 +587,10 @@ namespace
             g_fonte.DrawText((FLOAT)x + 30.0f, (FLOAT)y + 56.0f + i * 52.0f,
                              (i == g_menuFoco) ? COR_TEXTO : COR_APAGADO, texto, 0);
         }
-        Rodape(GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar", L"");
+        // Dentro da caixa. No rodapé da tela ficaria por cima do rodapé que a tela
+        // de baixo continua desenhando.
+        g_fonte.DrawText((FLOAT)x + 20.0f, (FLOAT)y + (FLOAT)A - 34.0f, COR_APAGADO,
+                         GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar", 0);
         g_fonte.End();
     }
 
@@ -602,9 +620,32 @@ namespace
     {
         int total = (int)ListaAtual().size();
         if (total == 0) return;
+
         int novo = g_iJogo + delta;
+
+        // Descer numa última linha incompleta gruda no último jogo. Sem isto, com 12
+        // jogos e o foco no 8º, Baixo não faz nada e os dois últimos só se alcançam
+        // andando para o lado.
+        if (delta == COLUNAS && novo >= total && g_iJogo < total - 1)
+            novo = total - 1;
+
         if (novo < 0 || novo >= total) return;
         g_iJogo = novo;
+        SeguirFoco();
+    }
+
+    // O foco é corrigido AQUI, uma vez por quadro, e não no desenho: a tela de
+    // coleções não é desenhada enquanto estamos nos jogos, então um clamp que só
+    // rodava ao desenhar deixava g_iCol fora de faixa para quem lesse antes.
+    void ClampFoco()
+    {
+        int nCol = (int)colecoes::Ordenadas().size();
+        if (g_iCol >= nCol) g_iCol = nCol - 1;
+        if (g_iCol < 0)     g_iCol = 0;
+
+        int nJogos = (int)ListaAtual().size();
+        if (g_iJogo >= nJogos) g_iJogo = nJogos - 1;
+        if (g_iJogo < 0)       g_iJogo = 0;
         SeguirFoco();
     }
 
@@ -629,7 +670,11 @@ namespace
     {
         int total = (int)colecoes::Ordenadas().size();
         if (total == 0) return;
+
         int novo = g_iCol + delta;
+        if (delta == COL_POR_LINHA && novo >= total && g_iCol < total - 1)
+            novo = total - 1;
+
         if (novo >= 0 && novo < total) g_iCol = novo;
     }
 
@@ -672,15 +717,17 @@ namespace
     void NovaColecao()
     {
         std::string nome;
-        if (!teclado::Pedir("Nova coleção", "Como se chama?", "", nome))
-            return;
+        bool ok = teclado::Pedir("Nova coleção", "Como se chama?", "", nome);
+        g_bloqueou = true;              // o teclado segurou o laço; ver o fim do main
+        if (!ok) return;
 
-        colecoes::Criar(nome);
+        // Comparar por PONTEIRO, não por nome: dois nomes iguais focariam a errada.
+        colecoes::Colecao *nova = colecoes::Criar(nome);
         std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
         for (size_t i = 0; i < L.size(); i++)
-            if (L[i]->nome == nome.substr(0, 28))
-                g_iCol = (int)i;
-        diario::Escrever("colecao criada: %s", nome.c_str());
+            if (L[i] == nova) { g_iCol = (int)i; break; }
+
+        diario::Escrever("colecao criada: %s", nova->nome.c_str());
     }
 
     void Renomear()
@@ -688,18 +735,36 @@ namespace
         std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
         if (L.empty()) return;
 
-        std::string nome;
-        if (!teclado::Pedir("Renomear", "Novo nome", L[g_iCol]->nome.c_str(), nome))
-            return;
+        colecoes::Colecao *alvo = L[g_iCol];
 
-        L[g_iCol]->nome = nome.substr(0, 28);
+        std::string nome;
+        bool ok = teclado::Pedir("Renomear", "Novo nome", alvo->nome.c_str(), nome);
+        g_bloqueou = true;
+        if (!ok) return;
+
+        alvo->nome = colecoes::Sanear(nome);
         colecoes::Gravar();
+
+        // A lista sai ordenada por nome: renomear muda o lugar. Sem reachar, o foco
+        // fica sobre outra coleção.
+        std::vector<colecoes::Colecao *> depois = colecoes::Ordenadas();
+        for (size_t i = 0; i < depois.size(); i++)
+            if (depois[i] == alvo) { g_iCol = (int)i; break; }
+    }
+
+    void CopiarTitulo(const std::string &origem)
+    {
+        strncpy(g_menuTitulo, origem.c_str(), sizeof(g_menuTitulo) - 1);
+        g_menuTitulo[sizeof(g_menuTitulo) - 1] = '\0';
     }
 
     void AbrirMenuColecao()
     {
-        if (colecoes::Ordenadas().empty()) return;
-        g_menuTitulo = colecoes::Ordenadas()[g_iCol]->nome.c_str();
+        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        if (L.empty()) return;
+
+        CopiarTitulo(L[g_iCol]->nome);
+        g_menuDe = MENU_COLECAO;
         g_menuItens[0] = "Renomear";
         g_menuItens[1] = "Apagar coleção";
         g_menuQtd = 2; g_menuFoco = 0; g_menuAberto = true;
@@ -709,7 +774,8 @@ namespace
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         if (L.empty()) return;
-        g_menuTitulo = L[g_iJogo]->nome.c_str();
+        CopiarTitulo(L[g_iJogo]->nome);
+        g_menuDe = MENU_JOGO;
         g_menuItens[0] = "Remover da coleção";
         g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
     }
@@ -718,7 +784,7 @@ namespace
     {
         g_menuAberto = false;
 
-        if (g_tela == TELA_COLECOES)
+        if (g_menuDe == MENU_COLECAO)
         {
             if (g_menuFoco == 0) Renomear();
             else
@@ -779,6 +845,7 @@ namespace
             g_atual = NULL;
             carregador::DescartarPendentes();
             g_emVoo.clear();
+            g_falhou.clear();   // falha pode ter sido de memória; na volta tenta de novo
         }
     }
 }
@@ -900,16 +967,19 @@ void __cdecl main()
         {
             if (dy != 0 && g_menuQtd > 0)
                 g_menuFoco = (g_menuFoco + dy + g_menuQtd) % g_menuQtd;
-            if (novos & XINPUT_GAMEPAD_A) EscolherNoMenu();
-            if (novos & XINPUT_GAMEPAD_B) g_menuAberto = false;
+            // UMA ação por quadro: "novos" é máscara e nada impede A e ☰ juntos.
+            // Encadeados com if solto, o segundo rodava sobre o estado que o primeiro
+            // acabara de trocar -- inclusive sobre um ponteiro recém-invalidado.
+            if      (novos & XINPUT_GAMEPAD_A) EscolherNoMenu();
+            else if (novos & XINPUT_GAMEPAD_B) g_menuAberto = false;
         }
         else if (g_tela == TELA_COLECOES)
         {
             if (dx) MoverColecao(dx);
             if (dy) MoverColecao(dy * COL_POR_LINHA);
-            if (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
-            if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
-            if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
+            if      (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
+            else if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
+            else if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
         }
         else
         {
@@ -920,22 +990,33 @@ void __cdecl main()
                 if (segurando && g_tela != TELA_ADICIONAR) SaltoLetra(dy);
                 else MoverJogo(dy * COLUNAS);
             }
-            if (novos & XINPUT_GAMEPAD_LEFT_SHOULDER)  SaltoLetra(-1);
-            if (novos & XINPUT_GAMEPAD_RIGHT_SHOULDER) SaltoLetra(1);
-            if (novos & XINPUT_GAMEPAD_A) Confirmar();
-            if (novos & XINPUT_GAMEPAD_B) Voltar();
-            if (novos & XINPUT_GAMEPAD_X)
-            {
-                if (g_tela == TELA_JOGOS) AbrirAdicionar();
-            }
-            if (novos & XINPUT_GAMEPAD_START)
+            if      (novos & XINPUT_GAMEPAD_LEFT_SHOULDER)  SaltoLetra(-1);
+            else if (novos & XINPUT_GAMEPAD_RIGHT_SHOULDER) SaltoLetra(1);
+            else if (novos & XINPUT_GAMEPAD_A) Confirmar();
+            else if (novos & XINPUT_GAMEPAD_B) Voltar();
+            else if (novos & XINPUT_GAMEPAD_X) { if (g_tela == TELA_JOGOS) AbrirAdicionar(); }
+            else if (novos & XINPUT_GAMEPAD_START)
             {
                 if (g_tela == TELA_ADICIONAR) FecharAdicionar(true);
-                else AbrirMenuJogo();
+                else                          AbrirMenuJogo();
             }
         }
 
+        // Voltando do teclado do sistema, "anterior" é um retrato de segundos atrás:
+        // o A que confirmou lá reapareceria como botão novo e abriria uma coleção
+        // sozinho. Relê o estado e zera a repetição do direcional.
+        if (g_bloqueou)
+        {
+            g_bloqueou = false;
+            ZeroMemory(&anterior, sizeof(anterior));
+            XInputGetState(0, &anterior);
+            direcaoX = direcaoY = 0;
+            proximoPasso = 0;
+            tAgora = GetTickCount();
+        }
+
         quadro++;
+        ClampFoco();
         PedirOQueFalta();
         RecolherCarregadas();
         Desenhar();

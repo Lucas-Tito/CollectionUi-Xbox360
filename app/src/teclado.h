@@ -1,8 +1,8 @@
 // Teclado do sistema, para digitar o nome de uma coleção.
 //
-// O XShowKeyboardUI NAO esta declarado em header nenhum do XDK -- so as flags VKBD_*
-// e os ids de mensagem estao. E export do xam.xex, e quem quer usar declara. Mesmo
-// caso do ObCreateSymbolicLink em dispositivos.cpp.
+// O XShowKeyboardUI vem de include/xbox/xbox.h, que o xtl.h puxa. Bloqueia o laço
+// principal enquanto a tela do sistema está aberta: ver a ressincronização de
+// entrada em main.cpp, sem a qual o A que confirma o teclado vaza para o app.
 #ifndef TECLADO_H
 #define TECLADO_H
 

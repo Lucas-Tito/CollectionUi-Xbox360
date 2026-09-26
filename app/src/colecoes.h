@@ -21,6 +21,10 @@ namespace colecoes
         std::vector<int> ids;
     };
 
+    // Corta em 28 bytes SEM partir uma sequência UTF-8 ao meio, e troca o '|' e as
+    // quebras de linha por espaço -- o arquivo separa nome e ids por '|'.
+    std::string Sanear(const std::string &nome);
+
     void Carregar();
     void Gravar();
 

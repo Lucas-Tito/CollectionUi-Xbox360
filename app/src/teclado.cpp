@@ -3,12 +3,9 @@
 #include <xtl.h>
 #include <string.h>
 
-extern "C"
-{
-    DWORD XShowKeyboardUI(DWORD indiceUsuario, DWORD flags, LPCWSTR textoInicial,
-                          LPCWSTR titulo, LPCWSTR descricao,
-                          LPWSTR resultado, DWORD maxCaracteres, XOVERLAPPED *overlapped);
-}
+// XShowKeyboardUI vem declarado em include/xbox/xbox.h, puxado pelo xtl.h. Não é
+// preciso declarar à mão -- diferente do ObCreateSymbolicLink de dispositivos.cpp,
+// esse sim ausente de todo header.
 
 namespace
 {
@@ -47,15 +44,17 @@ namespace teclado
             return false;
         }
 
-        // Bloqueia ate o usuario terminar. O teclado do sistema desenha por cima.
+        // Bloqueia até o usuário terminar. O teclado do sistema desenha por cima.
         WaitForSingleObject(ov.hEvent, INFINITE);
 
-        DWORD codigo = 0;
-        BOOL ok = XGetOverlappedResult(&ov, &codigo, TRUE);
+        // ATENÇÃO: XGetOverlappedResult devolve DWORD, um código de erro -- não BOOL.
+        // ERROR_SUCCESS é ZERO. Guardar em BOOL inverte o teste e faz todo teclado
+        // parecer cancelado, o que impedia criar qualquer coleção.
+        DWORD estado = XGetOverlappedResult(&ov, NULL, TRUE);
         CloseHandle(ov.hEvent);
 
-        if (!ok || codigo != ERROR_SUCCESS)
-            return false;               // cancelou
+        if (estado != ERROR_SUCCESS)        // ERROR_CANCELLED: o usuário desistiu
+            return false;
 
         char estreito[MAX * 4];
         if (WideCharToMultiByte(CP_UTF8, 0, wSaida, -1, estreito, sizeof(estreito),
