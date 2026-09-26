@@ -368,11 +368,37 @@ namespace
             g_fonte.DrawText(1180.0f, 656.0f, COR_FRACO, direita, ATGFONT_RIGHT);
     }
 
+    // Retângulo CHEIO, com alfa de verdade.
+    //
+    // Não use DrawScreenSpaceTexturedRectColored com textura NULL para isto: ela faz
+    // SetSampler(..., NULL) e desenha com o shader TEXTURIZADO, amostrando um sampler
+    // sem nada ligado -- é o glitch que aparecia na letra acesa do índice. E a ATG
+    // nunca liga D3DRS_ALPHABLENDENABLE nesse caminho (só o AtgFont mexe nisso), então
+    // o alfa da cor era ignorado e o véu do jogo não marcado saía PRETO OPACO,
+    // escondendo a capa inteira.
+    //
+    // DrawScreenSpaceRect com largura 0 desenha cheio e usa o shader de cor constante,
+    // sem sampler nenhum. A mistura fica por nossa conta.
+    void Preencher(const D3DRECT &r, D3DCOLOR cor)
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        d->SetRenderState(D3DRS_ALPHABLENDENABLE, TRUE);
+        d->SetRenderState(D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA);
+        d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+        d->SetRenderState(D3DRS_BLENDOP,   D3DBLENDOP_ADD);
+
+        ATG::DebugDraw::DrawScreenSpaceRect(r, 0.0f, cor);
+
+        // O AtgFont salva e restaura este estado no Begin/End dele, mas só o que ELE
+        // mexe. Devolver ao desligado é o que o resto do desenho espera.
+        d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    }
+
     void Caixa(int x, int y, int l, int a, bool focada)
     {
         D3DRECT r;
         r.x1 = x; r.y1 = y; r.x2 = x + l; r.y2 = y + a;
-        ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(r, NULL, COR_PAINEL);
+        Preencher(r, COR_PAINEL);
         ATG::DebugDraw::DrawScreenSpaceRect(r, focada ? 3.0f : 1.0f,
                                             focada ? COR_ANEL : COR_LINHA);
     }
@@ -469,7 +495,7 @@ namespace
                 D3DRECT r;
                 r.x1 = 1204; r.y1 = (LONG)y - 1;
                 r.x2 = 1232; r.y2 = (LONG)(y + passo);
-                ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(r, NULL, COR_ANEL);
+                Preencher(r, COR_ANEL);
                 g_fonte.End();          // o retângulo trocou estado; refaz o lote
                 g_fonte.Begin();
             }
@@ -541,8 +567,7 @@ namespace
                 // encarte INTEIRO -- contracapa e lombada espremidas no 5:7 -- justo
                 // no jogo não marcado, que é o estado inicial de todos eles.
                 if (!marcado)
-                    ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(
-                        r, NULL, D3DCOLOR_ARGB(140, 6, 9, 8));
+                    Preencher(r, D3DCOLOR_ARGB(140, 6, 9, 8));
             }
             else
             {
@@ -609,8 +634,7 @@ namespace
 
         D3DRECT fundo;
         fundo.x1 = 0; fundo.y1 = 0; fundo.x2 = 1280; fundo.y2 = 720;
-        ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(fundo, NULL,
-                                                           D3DCOLOR_ARGB(200, 6, 9, 8));
+        Preencher(fundo, D3DCOLOR_ARGB(200, 6, 9, 8));
         Caixa(x, y, L, A, false);
 
         for (int i = 0; i < g_menuQtd; i++)
