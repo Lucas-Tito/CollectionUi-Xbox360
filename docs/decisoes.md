@@ -300,3 +300,12 @@ nome e a tela de escolher jogo a jogo ao montar uma coleção.
 O relógio do console está zerado: o log saiu datado de **2005-11-22**, a mesma data falsa que
 aparecia nas pastas do FreeStyle e que serviu para descobrir qual instalação estava ativa. Se um
 dia o app for gravar data de "jogado pela última vez", não dá para confiar no relógio da máquina.
+
+32. **`X` acrescenta, `☰` abre opções, `A` confirma, `B` volta ou cancela.** A regra vale nas três
+    telas: `X` cria coleção na primeira e adiciona jogos na segunda, porque as duas coisas são
+    "acrescentar aqui". O `☰` deixou de ser um rótulo diferente em cada tela e passou a significar
+    sempre "opções do que está em foco" — inclusive **remover um jogo da coleção**, que antes não
+    existia.
+33. **Ao adicionar jogos, `☰` conclui e `B` cancela** — e cancelar desfaz de verdade: as marcações
+    vão para uma cópia e só o Concluir grava. Marcar no original faria de "cancelar" palavra sem
+    efeito. O nome da tela também mudou: era "Escolher jogos", virou **"Adicionar jogos"**.

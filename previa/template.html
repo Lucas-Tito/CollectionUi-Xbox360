@@ -118,12 +118,14 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <tr class="grp"><td colspan="3">Dentro de uma coleção</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Jogar</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Voltar às coleções</td></tr>
-      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Escolher jogos</td></tr>
+      <tr><td><i class="pad x">X</i></td><td class="kb">X</td><td>Adicionar jogos</td></tr>
+      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Opções: remover da coleção</td></tr>
       <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Pular por letra</td></tr>
       <tr><td><i class="pad menu">↓ segurando</i></td><td class="kb">↓ segurando</td><td>Pular por letra</td></tr>
-      <tr class="grp"><td colspan="3">Escolhendo jogos</td></tr>
+      <tr class="grp"><td colspan="3">Adicionando jogos</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
-      <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Concluir</td></tr>
+      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Concluir: grava o que foi marcado</td></tr>
+      <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar: descarta as marcações</td></tr>
       <tr class="grp"><td colspan="3">Só na prévia</td></tr>
       <tr><td><i class="pad menu">—</i></td><td class="kb">mouse</td><td>Clicar move o foco; clicar de novo confirma</td></tr>
     </table>
@@ -146,9 +148,12 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
 <div class="dlg" id="dlg-menu" hidden>
   <div class="cx">
     <h3 id="dm-tit">Opções</h3>
-    <div class="opts">
+    <div class="opts" id="dm-colecao">
       <button class="opt" id="dm-renomear">Renomear</button>
       <button class="opt perigo" id="dm-apagar">Apagar coleção</button>
+    </div>
+    <div class="opts" id="dm-jogo" hidden>
+      <button class="opt perigo" id="dm-remover">Remover da coleção</button>
     </div>
     <div class="acoes"><button class="bt" id="dm-fechar">Fechar</button></div>
   </div>
@@ -201,6 +206,10 @@ const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(cols)); 
 let tela = 'colecoes';      // colecoes | jogos | escolher
 let iCol = 0, iJogo = 0, primeiraLinha = 0, atual = null, editando = null;
 
+// Ao adicionar jogos trabalhamos numa CÓPIA. É o que dá sentido ao B: sem rascunho,
+// "cancelar" não teria o que desfazer, porque cada marcação já estaria gravada.
+let selecao = null;
+
 // ---- utilidades que espelham o C++ ----------------------------------------
 const semArtigo = s => (s||'').replace(/^(the|a|an|o|os|as|um|uma)\s+/i,'').trim();
 const cmp = (a,b) => semArtigo(a).localeCompare(semArtigo(b),'pt',{sensitivity:'base'});
@@ -209,7 +218,7 @@ const ordenadas = () => cols.slice().sort((a,b)=>cmp(a.nome,b.nome));
 const colFoco = () => ordenadas()[iCol];
 const porNome = L => L.slice().sort((a,b)=>cmp(a.nome,b.nome));
 const jogosDe = c => { const s = new Set(c.ids); return porNome(JOGOS.filter(g=>s.has(g.id))); };
-const lista = () => tela === 'escolher' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
+const lista = () => tela === 'adicionar' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
 
 // ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres
 function cortar(txt, larguraMax){
@@ -329,24 +338,24 @@ function telaJogos(){
   const L = lista(), total = L.length;
   ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720);
 
-  const escolhendo = tela === 'escolher';
+  const escolhendo = tela === 'adicionar';
   // O nome da coleção fica: diz ONDE você está. A contagem sai, que o rodapé já
-  // traz "1 de 23". No escolhedor a contagem de marcados fica, porque essa não
+  // traz "1 de 23". Ao adicionar, a contagem de marcados fica, porque essa não
   // está em lugar nenhum.
-  cabecalho(escolhendo ? 'Escolher jogos' : atual.nome,
-            escolhendo ? `${atual.ids.length} de ${JOGOS.length} marcados` : '');
+  cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
+            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados` : '');
 
   if (!total){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
     ctx.fillStyle = COR_APAGADO; ctx.textAlign='center';
     ctx.fillText('Nenhum jogo nesta coleção', 640, 330);
     ctx.textAlign='left';
-    rodape([['B','Voltar'],['menu','Escolher jogos']], '');
+    rodape([['B','Voltar'],['X','Adicionar jogos']], '');
     return;
   }
 
   const base = primeiraLinha * COLUNAS;
-  const tem = new Set(atual ? atual.ids : []);
+  const tem = new Set(escolhendo ? selecao : (atual ? atual.ids : []));
   const nomes = [];
 
   for (let i = 0; i < POR_PAGINA; i++){
@@ -397,9 +406,10 @@ function telaJogos(){
   indiceAlfabetico(L);
 
   if (escolhendo)
-    rodape([['A','Marcar ou desmarcar'],['B','Concluir']], 'os marcados entram na coleção');
+    rodape([['A','Marcar'],['B','Cancelar'],['menu','Concluir']], `${selecao.length} marcados`);
   else
-    rodape([['A','Jogar'],['B','Voltar'],['menu','Escolher jogos']], `${iJogo+1} de ${total}`);
+    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar jogos'],['menu','Opções']],
+           `${iJogo+1} de ${total}`);
 }
 
 // ---- índice alfabético na borda direita ------------------------------------
@@ -454,10 +464,30 @@ function saltoLetra(dir){
 }
 function abrir(c){ tela='jogos'; atual=c; iJogo=0; primeiraLinha=0; desenhar(); }
 function alterna(){
+  const g = lista()[iJogo]; if (!g || !selecao) return;
+  const i = selecao.indexOf(g.id);
+  i >= 0 ? selecao.splice(i,1) : selecao.push(g.id);
+  desenhar();                         // só no rascunho; nada é gravado ainda
+}
+function abrirAdicionar(){
+  tela = 'adicionar'; selecao = atual.ids.slice();
+  iJogo = 0; primeiraLinha = 0; desenhar();
+}
+function concluirAdicionar(){
+  atual.ids = selecao.slice(); salvar();
+  selecao = null; tela = 'jogos'; iJogo = 0; primeiraLinha = 0; desenhar();
+}
+function cancelarAdicionar(){
+  selecao = null; tela = 'jogos'; iJogo = 0; primeiraLinha = 0; desenhar();
+}
+function removerDaColecao(){
   const g = lista()[iJogo]; if (!g || !atual) return;
   const i = atual.ids.indexOf(g.id);
-  i >= 0 ? atual.ids.splice(i,1) : atual.ids.push(g.id);
-  salvar(); desenhar();
+  if (i >= 0){ atual.ids.splice(i,1); salvar(); }
+  iJogo = Math.max(0, iJogo - 1);
+  const linha = (iJogo / COLUNAS)|0;
+  if (linha < primeiraLinha) primeiraLinha = linha;
+  desenhar();
 }
 
 document.addEventListener('keydown', e => {
@@ -488,13 +518,17 @@ document.addEventListener('keydown', e => {
     else if (k === 'ArrowUp') e.repeat ? saltoLetra(-1) : moverJogo(-COLUNAS);
     else if (k === 'q' || k === 'Q' || k === 'PageUp') saltoLetra(-1);
     else if (k === 'e' || k === 'E' || k === 'PageDown') saltoLetra(1);
-    else if (k === 'Enter'){ if (tela === 'escolher') alterna(); }
+    else if (k === 'Enter'){ if (tela === 'adicionar') alterna(); }
     else if (k === 'Escape' || k === 'b' || k === 'B'){
-      if (tela === 'escolher'){ tela='jogos'; iJogo=0; primeiraLinha=0; desenhar(); }
+      if (tela === 'adicionar') cancelarAdicionar();   // descarta o rascunho
       else { tela='colecoes'; desenhar(); }
     }
-    else if ((k === 'm' || k === 'M') && tela === 'jogos'){
-      tela='escolher'; iJogo=0; primeiraLinha=0; desenhar();
+    else if (k === 'x' || k === 'X'){
+      if (tela === 'jogos') abrirAdicionar();
+    }
+    else if (k === 'm' || k === 'M'){
+      if (tela === 'adicionar') concluirAdicionar();
+      else if (lista().length) abrirOpcoesJogo();
     }
     else return;
     e.preventDefault();
@@ -519,12 +553,23 @@ function confirmaNome(){
   iCol = Math.max(0, ordenadas().findIndex(c => c.nome === alvo));
   desenhar();
 }
-function abrirMenu(){ $('#dm-tit').textContent = colFoco().nome; $('#dlg-menu').hidden = false; }
+function abrirMenu(){
+  $('#dm-tit').textContent = colFoco().nome;
+  $('#dm-colecao').hidden = false; $('#dm-jogo').hidden = true;
+  $('#dlg-menu').hidden = false;
+}
+function abrirOpcoesJogo(){
+  const g = lista()[iJogo]; if (!g) return;
+  $('#dm-tit').textContent = g.nome;
+  $('#dm-colecao').hidden = true; $('#dm-jogo').hidden = false;
+  $('#dlg-menu').hidden = false;
+}
 
 $('#dn-cancelar').onclick = () => { $('#dlg-nome').hidden = true; editando = null; };
 $('#dn-ok').onclick = confirmaNome;
 $('#dm-fechar').onclick = () => $('#dlg-menu').hidden = true;
 $('#dm-renomear').onclick = () => { $('#dlg-menu').hidden = true; abrirNome(colFoco()); };
+$('#dm-remover').onclick = () => { $('#dlg-menu').hidden = true; removerDaColecao(); };
 $('#dm-apagar').onclick = () => {
   const c = colFoco(); cols.splice(cols.indexOf(c),1); salvar();
   $('#dlg-menu').hidden = true; iCol = Math.max(0, iCol-1); desenhar();
@@ -548,7 +593,7 @@ cv.addEventListener('click', e => {
       else { iCol = z.dado; desenhar(); }
     }
     else if (z.tipo === 'jogo'){
-      if (tela === 'escolher' && z.dado === iJogo) alterna();
+      if (tela === 'adicionar' && z.dado === iJogo) alterna();
       else { moverJogo(z.dado - iJogo); }
     }
     else if (z.tipo === 'letra'){
