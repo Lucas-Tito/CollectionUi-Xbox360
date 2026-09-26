@@ -7,9 +7,12 @@
 
 namespace
 {
-    // "game:" entra na lista porque o app pode estar no mesmo pendrive que uma
-    // instalacao do FreeStyle. Os demais so existem depois de dispositivos::MontarTodos().
-    const char *DISPOSITIVOS[] = { "Hdd:\\", "Usb0:\\", "Usb1:\\", "Usb2:\\", "game:\\" };
+    // So existem depois de dispositivos::MontarTodos().
+    //
+    // "game:" NAO entra: no Xbox 360 ele e a pasta de onde o executavel foi lancado,
+    // nao a raiz do dispositivo. Varrer ali procuraria uma instalacao do FreeStyle
+    // dentro da nossa propria pasta. O drive em que o app esta ja e coberto por Usb0:.
+    const char *DISPOSITIVOS[] = { "Hdd:\\", "Usb0:\\", "Usb1:\\", "Usb2:\\" };
     const int   QUANTOS_DISPOSITIVOS = sizeof(DISPOSITIVOS) / sizeof(DISPOSITIVOS[0]);
 
     bool Existe(const char *caminho)
