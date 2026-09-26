@@ -415,3 +415,25 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     do XDK proíbe lançar com I/O de disco pendente. Desistir em 1 s fechava o `HANDLE` com a
     thread viva; e se o lançamento falhasse, `Iniciar()` punha `g_parar` em falso e a thread
     velha voltava a consumir a fila ao lado da nova.
+
+51. **O teclado do sistema é ASSÍNCRONO, e bloquear nele TRAVA O CONSOLE.** Sintoma
+    observado: o app abre normal, a Guide responde, mas no primeiro `X` o console congela
+    inteiro e não volta. Causa: a Guide desenha **por cima do quadro do título**, então um
+    título parado num `WaitForSingleObject(INFINITE)` deixa o sistema sem nada para compor —
+    e nem o botão Guide responde mais. O idioma certo está na amostra oficial do XDK
+    (`Source/Samples/Online/StringVerify/StringVerify.cpp:161`): dispara, **volta para o
+    laço**, e a cada quadro consulta `XHasOverlappedIoCompleted` continuando a desenhar.
+
+52. **Os buffers do `XShowKeyboardUI` não podem ficar na pilha.** A doc é literal: *"the
+    buffers ... must be guaranteed to remain valid until the operation is finished. For this
+    reason, the buffer should not be declared on the stack."* Título, descrição, texto inicial
+    e resultado agora vivem no módulo `teclado.cpp`.
+
+53. **`XUSER_INDEX_ANY` (0xFF), não 0.** Este console não tem tela de login e pode estar sem
+    perfil conectado. A amostra do XDK usa o índice de um usuário assinado porque ela tem
+    tela de sign-in; nós não temos.
+
+54. **O `g_bloqueou` foi embora.** Ele existia só para ressincronizar o controle depois de o
+    teclado ter segurado o laço. Sem bloqueio não há dessincronia: o laço continua lendo o
+    controle a cada quadro e apenas **ignora** os botões enquanto `teclado::Aberto()`, de
+    modo que o `A` que confirmou dentro da Guide nunca reaparece como botão novo.

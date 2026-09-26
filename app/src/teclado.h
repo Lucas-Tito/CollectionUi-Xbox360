@@ -1,8 +1,18 @@
-// Teclado do sistema, para digitar o nome de uma coleção.
+// Teclado virtual do sistema (a Guide do Xbox), ASSÍNCRONO.
 //
-// O XShowKeyboardUI vem de include/xbox/xbox.h, que o xtl.h puxa. Bloqueia o laço
-// principal enquanto a tela do sistema está aberta: ver a ressincronização de
-// entrada em main.cpp, sem a qual o A que confirma o teclado vaza para o app.
+// Assíncrono não é preferência: é a única forma que não trava o console. A Guide
+// desenha POR CIMA do quadro do título, então um título que para de apresentar deixa
+// o sistema sem nada para compor -- e o console congela inteiro, sem nem responder ao
+// botão Guide. Foi exatamente o que aconteceu com a versão que bloqueava o laço num
+// WaitForSingleObject(INFINITE).
+//
+// A amostra oficial do XDK (Source/Samples/Online/StringVerify/StringVerify.cpp:161)
+// faz assim: dispara, volta para o laço, e a cada quadro consulta
+// XHasOverlappedIoCompleted enquanto continua desenhando normalmente.
+//
+// Os buffers vivem no módulo, nunca na pilha. A doc do XShowKeyboardUI é explícita:
+// "the buffers ... must be guaranteed to remain valid until the operation is
+// finished. For this reason, the buffer should not be declared on the stack."
 #ifndef TECLADO_H
 #define TECLADO_H
 
@@ -10,12 +20,14 @@
 
 namespace teclado
 {
-    // Abre o teclado do sistema e BLOQUEIA ate o usuario confirmar ou cancelar.
-    // Bloquear e aceitavel aqui: enquanto o teclado esta na tela, o nosso desenho
-    // nao aparece de qualquer forma.
-    // Devolve false se cancelou.
-    bool Pedir(const char *titulo, const char *descricao,
-               const char *textoInicial, std::string &saida);
+    // Dispara o teclado. Devolve false se o sistema recusou abrir.
+    bool Abrir(const char *titulo, const char *descricao, const char *textoInicial);
+
+    bool Aberto();
+
+    // Devolve true no quadro em que o teclado terminou. 'confirmou' diz se o usuário
+    // apertou Concluir (false = cancelou, ou fechou pela Guide).
+    bool Terminou(bool *confirmou, std::string &saida);
 }
 
 #endif

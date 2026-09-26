@@ -109,7 +109,11 @@ namespace
     char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
     char   g_menuItemBuf[64] = "";   // item de menu com texto montado na hora
 
-    bool g_bloqueou = false;         // uma tela do sistema parou o laço neste quadro
+    // O teclado do sistema é assíncrono (ver teclado.h -- bloquear TRAVA o console),
+    // então o que fazer com o texto tem de sobreviver a vários quadros.
+    enum Pedido { PEDIDO_NENHUM, PEDIDO_NOVA, PEDIDO_RENOMEAR };
+    Pedido g_pedido = PEDIDO_NENHUM;
+    colecoes::Colecao *g_renomeando = NULL;
 
     char  g_aviso[192] = "";         // erro mostrado por alguns segundos
     DWORD g_avisoAte = 0;
@@ -782,20 +786,12 @@ namespace
         g_emVoo.clear();
     }
 
+    // Estas duas só DISPARAM o teclado. Quem aplica o resultado é AtenderTeclado,
+    // alguns quadros depois -- o laço não pode parar enquanto a Guide está na tela.
     void NovaColecao()
     {
-        std::string nome;
-        bool ok = teclado::Pedir("Nova coleção", "Como se chama?", "", nome);
-        g_bloqueou = true;              // o teclado segurou o laço; ver o fim do main
-        if (!ok) return;
-
-        // Comparar por PONTEIRO, não por nome: dois nomes iguais focariam a errada.
-        colecoes::Colecao *nova = colecoes::Criar(nome);
-        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-        for (size_t i = 0; i < L.size(); i++)
-            if (L[i] == nova) { g_iCol = (int)i; break; }
-
-        diario::Escrever("colecao criada: %s", nova->nome.c_str());
+        if (teclado::Abrir("Nova coleção", "Como se chama?", ""))
+            g_pedido = PEDIDO_NOVA;
     }
 
     void Renomear()
@@ -803,21 +799,59 @@ namespace
         std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
         if (L.empty()) return;
 
-        colecoes::Colecao *alvo = L[g_iCol];
+        // Guarda o PONTEIRO, não o índice: até o teclado voltar, g_iCol pode não
+        // apontar mais para esta coleção.
+        g_renomeando = L[g_iCol];
+        if (teclado::Abrir("Renomear", "Novo nome", g_renomeando->nome.c_str()))
+            g_pedido = PEDIDO_RENOMEAR;
+        else
+            g_renomeando = NULL;
+    }
 
+    void AtenderTeclado()
+    {
+        bool confirmou = false;
         std::string nome;
-        bool ok = teclado::Pedir("Renomear", "Novo nome", alvo->nome.c_str(), nome);
-        g_bloqueou = true;
-        if (!ok) return;
+        if (!teclado::Terminou(&confirmou, nome))
+            return;
 
-        alvo->nome = colecoes::Sanear(nome);
-        colecoes::Gravar();
+        Pedido pedido = g_pedido;
+        colecoes::Colecao *alvo = g_renomeando;
+        g_pedido = PEDIDO_NENHUM;
+        g_renomeando = NULL;
 
-        // A lista sai ordenada por nome: renomear muda o lugar. Sem reachar, o foco
-        // fica sobre outra coleção.
-        std::vector<colecoes::Colecao *> depois = colecoes::Ordenadas();
-        for (size_t i = 0; i < depois.size(); i++)
-            if (depois[i] == alvo) { g_iCol = (int)i; break; }
+        if (!confirmou)
+            return;
+
+        if (pedido == PEDIDO_NOVA)
+        {
+            // Compara por PONTEIRO: dois nomes iguais focariam a coleção errada.
+            colecoes::Colecao *nova = colecoes::Criar(nome);
+            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+            for (size_t i = 0; i < L.size(); i++)
+                if (L[i] == nova) { g_iCol = (int)i; break; }
+
+            diario::Escrever("colecao criada: %s", nova->nome.c_str());
+        }
+        else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
+        {
+            // A coleção pode ter sido apagada enquanto o teclado estava aberto? Não
+            // hoje (o laço ignora o controle nesse intervalo), mas confirmar é barato.
+            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+            bool vive = false;
+            for (size_t i = 0; i < L.size(); i++)
+                if (L[i] == alvo) vive = true;
+            if (!vive) return;
+
+            alvo->nome = colecoes::Sanear(nome);
+            colecoes::Gravar();
+
+            // A lista sai ordenada por nome: renomear muda o lugar. Sem reachar, o
+            // foco fica sobre outra coleção.
+            std::vector<colecoes::Colecao *> depois = colecoes::Ordenadas();
+            for (size_t i = 0; i < depois.size(); i++)
+                if (depois[i] == alvo) { g_iCol = (int)i; break; }
+        }
     }
 
     void CopiarTitulo(const std::string &origem)
@@ -1090,7 +1124,15 @@ void __cdecl main()
             proximoPasso = tAgora + ESPERA_REPETE;
         }
 
-        if (g_menuAberto)
+        // Enquanto a Guide está na tela o controle é DELA. Continuamos desenhando --
+        // é isso que o sistema compõe por baixo do teclado --, mas não reagimos a
+        // botão nenhum. "anterior" segue sendo atualizado a cada quadro, então o A que
+        // confirmou lá dentro não reaparece aqui como botão novo.
+        if (teclado::Aberto())
+        {
+            // nada
+        }
+        else if (g_menuAberto)
         {
             if (dy != 0 && g_menuQtd > 0)
                 g_menuFoco = (g_menuFoco + dy + g_menuQtd) % g_menuQtd;
@@ -1129,20 +1171,8 @@ void __cdecl main()
             }
         }
 
-        // Voltando do teclado do sistema, "anterior" é um retrato de segundos atrás:
-        // o A que confirmou lá reapareceria como botão novo e abriria uma coleção
-        // sozinho. Relê o estado e zera a repetição do direcional.
-        if (g_bloqueou)
-        {
-            g_bloqueou = false;
-            ZeroMemory(&anterior, sizeof(anterior));
-            XInputGetState(0, &anterior);
-            direcaoX = direcaoY = 0;
-            proximoPasso = 0;
-            tAgora = GetTickCount();
-        }
-
         quadro++;
+        AtenderTeclado();
         ClampFoco();
         PedirOQueFalta();
         RecolherCarregadas();
