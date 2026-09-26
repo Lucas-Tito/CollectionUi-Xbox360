@@ -341,7 +341,12 @@ namespace
         int base = g_primeiraLinha * COLUNAS;
         int total = (int)g_jogos.size();
 
-        // Cabeçalho
+        FLOAT nomeX[POR_PAGINA], nomeY[POR_PAGINA];
+        int   nomeDe[POR_PAGINA];
+        int   desenhados = 0;
+
+        // Uma passagem de Begin/End por quadro: a ATG pede para agrupar as chamadas de
+        // DrawText, e assim some a alternância de estado de render dez vezes por quadro.
         g_fonte.Begin();
         g_fonte.SetScaleFactors(1.5f, 1.5f);
         g_fonte.DrawText((FLOAT)MARGEM_X, 34.0f, COR_TEXTO, L"Todos os jogos", 0);
@@ -349,6 +354,9 @@ namespace
         swprintf_s(texto, 256, L"%d jogos", total);
         g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, texto, 0);
         g_fonte.End();
+
+        // As capas primeiro, o texto todo depois: as texturas precisam sair fora do
+        // Begin/End da fonte, que troca estado de render.
 
         // Grade
         for (int i = 0; i < POR_PAGINA; i++)
@@ -392,16 +400,22 @@ namespace
 
             // O nome, cortado pela LARGURA da capa. É a ATG que resolve o problema dos
             // "Call of Duty: Modern Wa..." indistinguíveis que o protótipo tinha.
-            Larga(g_jogos[indice].nome, texto, 256);
-            g_fonte.Begin();
-            g_fonte.DrawText((FLOAT)r.x1, (FLOAT)r.y2 + 8.0f,
-                             (indice == g_foco) ? COR_TEXTO : COR_APAGADO,
-                             texto, ATGFONT_TRUNCATED, (FLOAT)CAPA_L);
-            g_fonte.End();
+            nomeX[desenhados] = (FLOAT)r.x1;
+            nomeY[desenhados] = (FLOAT)r.y2 + 8.0f;
+            nomeDe[desenhados] = indice;
+            desenhados++;
         }
 
-        // Rodapé: símbolo do botão e ação, com os glifos embutidos na fonte
+        // Agora todo o texto de uma vez.
         g_fonte.Begin();
+        for (int k = 0; k < desenhados; k++)
+        {
+            Larga(g_jogos[nomeDe[k]].nome, texto, 256);
+            g_fonte.DrawText(nomeX[k], nomeY[k],
+                             (nomeDe[k] == g_foco) ? COR_TEXTO : COR_APAGADO,
+                             texto, ATGFONT_TRUNCATED, (FLOAT)CAPA_L);
+        }
+
         g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO,
                          GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar", 0);
 
@@ -606,6 +620,7 @@ void __cdecl main()
     int   direcaoX = 0, direcaoY = 0;
     DWORD proximoPasso = 0;
     DWORD ultimoRelato = 0;
+    DWORD quadro = 0;
 
     for (;;)
     {
@@ -614,6 +629,13 @@ void __cdecl main()
         XInputGetState(0, &agora);
 
         WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
+
+        // Registra qualquer botao, inclusive os que ainda nao fazem nada. Um crash foi
+        // relatado ao apertar A ou B, que este laco ignora -- sem registro nao da para
+        // saber se o app chegou a ver a tecla.
+        if (novos != 0)
+            diario::Escrever("botoes 0x%04X (quadro %u, foco %d)", novos, quadro, g_foco);
+
         if (novos & XINPUT_GAMEPAD_DPAD_RIGHT) Mover(1);
         if (novos & XINPUT_GAMEPAD_DPAD_LEFT)  Mover(-1);
         if (novos & XINPUT_GAMEPAD_DPAD_DOWN)  Mover(COLUNAS);
@@ -646,6 +668,7 @@ void __cdecl main()
             proximoPasso = tAgora + ESPERA_REPETE;
         }
 
+        quadro++;
         PedirOQueFalta();
         RecolherCarregadas();
         Desenhar();
@@ -667,8 +690,8 @@ void __cdecl main()
             for (int i = 0; i < CACHE_MAX; i++)
                 if (g_cache[i].textura != NULL) cheias++;
 
-            diario::Escrever("linha=%d cache=%d emVoo=%d falhou=%d livre=%u KB",
-                             g_primeiraLinha, cheias, (int)g_emVoo.size(),
+            diario::Escrever("quadro=%u linha=%d cache=%d emVoo=%d falhou=%d livre=%u KB",
+                             quadro, g_primeiraLinha, cheias, (int)g_emVoo.size(),
                              (int)g_falhou.size(), (unsigned)(mem.dwAvailPhys / 1024));
         }
     }
