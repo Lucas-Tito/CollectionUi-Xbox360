@@ -107,6 +107,7 @@ namespace
     int    g_menuFoco = 0, g_menuQtd = 0;
     const char *g_menuItens[4];
     char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
+    char   g_menuItemBuf[64] = "";   // item de menu com texto montado na hora
 
     bool g_bloqueou = false;         // uma tela do sistema parou o laço neste quadro
 
@@ -170,6 +171,27 @@ namespace
                     saida.push_back(&g_jogos[i]);
         }
         return saida;      // g_jogos já vem ordenada de biblioteca::Ler
+    }
+
+    // Quantos ITENS da biblioteca casam com os TitleIds marcados. Não é o tamanho do
+    // rascunho: um TitleId de multi-disco casa com dois itens, e a grade mostra os
+    // dois. Mesmo motivo da contagem na tela de coleções.
+    int ItensMarcados()
+    {
+        int quantos = 0;
+        for (size_t j = 0; j < g_jogos.size(); j++)
+            for (size_t i = 0; i < g_selecao.size(); i++)
+                if (g_selecao[i] == g_jogos[j].titleId) { quantos++; break; }
+        return quantos;
+    }
+
+    // Quantos itens sairiam da coleção ao remover este TitleId.
+    int ItensComTitleId(unsigned int titleId)
+    {
+        int quantos = 0;
+        for (size_t j = 0; j < g_jogos.size(); j++)
+            if (g_jogos[j].titleId == titleId) quantos++;
+        return quantos;
     }
 
     bool SelecionadoNoRascunho(unsigned int titleId)
@@ -506,13 +528,17 @@ namespace
             if (capa != NULL)
             {
                 // Só a frente do encarte: amostra de U 0,532 até 1,0.
-                if (marcado)
-                    ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
-                        r, XMFLOAT2(FRENTE_U0, 0.0f), XMFLOAT2(1.0f, 0.0f),
-                        XMFLOAT2(FRENTE_U0, 1.0f), capa);
-                else
+                ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
+                    r, XMFLOAT2(FRENTE_U0, 0.0f), XMFLOAT2(1.0f, 0.0f),
+                    XMFLOAT2(FRENTE_U0, 1.0f), capa);
+
+                // Apagar é um véu por cima, não um desenho diferente: a variante
+                // Colored fixa UV 0..1 lá dentro (AtgDebugDraw.cpp:662) e mostrava o
+                // encarte INTEIRO -- contracapa e lombada espremidas no 5:7 -- justo
+                // no jogo não marcado, que é o estado inicial de todos eles.
+                if (!marcado)
                     ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(
-                        r, capa, D3DCOLOR_ARGB(150, 255, 255, 255));
+                        r, NULL, D3DCOLOR_ARGB(140, 6, 9, 8));
             }
             else
             {
@@ -538,7 +564,7 @@ namespace
         g_fonte.Begin();
         if (adicionando)
         {
-            swprintf_s(sub, 64, L"%d de %d marcados", (int)g_selecao.size(), (int)g_jogos.size());
+            swprintf_s(sub, 64, L"%d de %d marcados", ItensMarcados(), (int)g_jogos.size());
             Cabecalho(L"Adicionar jogos", sub);
         }
         else
@@ -557,7 +583,7 @@ namespace
 
         if (adicionando)
         {
-            swprintf_s(texto, 256, L"%d marcados", (int)g_selecao.size());
+            swprintf_s(texto, 256, L"%d marcados", ItensMarcados());
             Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
                    GLYPH_START_BUTTON L" Concluir", texto);
         }
@@ -818,7 +844,19 @@ namespace
         if (L.empty()) return;
         CopiarTitulo(L[g_iJogo]->nome);
         g_menuDe = MENU_JOGO;
-        g_menuItens[0] = "Remover da coleção";
+
+        // A coleção guarda TitleId, então remover tira TODOS os itens que o
+        // compartilham -- os dois discos de um multi-disco, as duas cópias de uma
+        // instalação duplicada. Dizer isso é mais barato que surpreender.
+        int quantos = ItensComTitleId(L[g_iJogo]->titleId);
+        if (quantos > 1)
+            _snprintf(g_menuItemBuf, sizeof(g_menuItemBuf),
+                      "Remover da coleção (%d itens)", quantos);
+        else
+            _snprintf(g_menuItemBuf, sizeof(g_menuItemBuf), "Remover da coleção");
+        g_menuItemBuf[sizeof(g_menuItemBuf) - 1] = '\0';
+
+        g_menuItens[0] = g_menuItemBuf;
         g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
     }
 
@@ -901,6 +939,17 @@ namespace
             if (L.empty()) return;
 
             unsigned int titleId = L[g_iJogo]->titleId;
+
+            // Barra na ESCRITA, não só na leitura. Um jogo cujo cabeçalho o FreeStyle
+            // não leu tem TitleId zero: o anel acenderia, o arquivo gravaria 00000000
+            // e a releitura descartaria -- o jogo sumiria da coleção no próximo boot,
+            // sem aviso. Não há caso assim nestes 120, mas a perda seria silenciosa.
+            if (titleId == 0)
+            {
+                Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");
+                return;
+            }
+
             for (size_t i = 0; i < g_selecao.size(); i++)
             {
                 if (g_selecao[i] == titleId)

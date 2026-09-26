@@ -117,7 +117,13 @@ namespace carregador
             SetEvent(g_temPedido);
         if (g_thread != NULL)
         {
-            WaitForSingleObject(g_thread, 1000);
+            // INFINITE, nao 1000: o unico chamador de Parar() e o lancamento de jogo,
+            // e a doc do XDK proibe lancar com I/O de disco pendente. Desistir da
+            // espera fechava o HANDLE com a thread viva -- e, se o lancamento
+            // falhasse, Iniciar() punha g_parar em falso e a thread velha voltava a
+            // consumir a fila ao lado da nova. O worker so demora o tempo de um
+            // fsda::LerBytes, que e limitado.
+            WaitForSingleObject(g_thread, INFINITE);
             CloseHandle(g_thread);
             g_thread = NULL;
         }
