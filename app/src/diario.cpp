@@ -5,13 +5,22 @@
 namespace
 {
     FILE *g_arquivo = NULL;
+    char  g_caminho[256] = "";
 }
 
 namespace diario
 {
     void Abrir(const char *caminho)
     {
-        g_arquivo = fopen(caminho, "w");
+        _snprintf(g_caminho, sizeof(g_caminho), "%s", caminho);
+        g_caminho[sizeof(g_caminho) - 1] = '\0';
+        g_arquivo = fopen(g_caminho, "w");
+    }
+
+    void Reabrir()
+    {
+        if (g_arquivo == NULL && g_caminho[0] != '\0')
+            g_arquivo = fopen(g_caminho, "a");
     }
 
     void Escrever(const char *formato, ...)

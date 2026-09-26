@@ -17,6 +17,7 @@
 #include "carregador.h"
 #include "teclado.h"
 #include "fsda.h"
+#include "lancador.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
 #include "AtgDebugDraw.h"
@@ -108,6 +109,9 @@ namespace
     char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
 
     bool g_bloqueou = false;         // uma tela do sistema parou o laço neste quadro
+
+    char  g_aviso[192] = "";         // erro mostrado por alguns segundos
+    DWORD g_avisoAte = 0;
 
     // ---- texto -----------------------------------------------------------------
     // O SQLite devolve UTF-8. Converter com CP_ACP quebra o que não for ASCII: o
@@ -594,6 +598,28 @@ namespace
         g_fonte.End();
     }
 
+    void Avisar(const char *texto)
+    {
+        _snprintf(g_aviso, sizeof(g_aviso), "%s", texto);
+        g_aviso[sizeof(g_aviso) - 1] = '\0';
+        g_avisoAte = GetTickCount() + 6000;
+    }
+
+    void DesenharAviso()
+    {
+        const int L = 760, A = 74;
+        const int x = (1280 - L) / 2, y = 560;
+
+        Caixa(x, y, L, A, true);
+
+        WCHAR texto[256];
+        Larga(g_aviso, texto, 256);
+        g_fonte.Begin();
+        g_fonte.DrawText(640.0f, (FLOAT)y + 24.0f, COR_TEXTO, texto,
+                         ATGFONT_CENTER_X | ATGFONT_TRUNCATED, (FLOAT)L - 40.0f);
+        g_fonte.End();
+    }
+
     void Desenhar()
     {
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
@@ -604,6 +630,9 @@ namespace
 
         if (g_menuAberto)
             DesenharMenu();
+
+        if (g_aviso[0] != '\0' && GetTickCount() < g_avisoAte)
+            DesenharAviso();
 
         d->Present(NULL, NULL, NULL, NULL);
     }
@@ -809,6 +838,47 @@ namespace
         }
     }
 
+    // Solta TUDO antes de lançar. Não é economia de memória -- é que a doc do XDK
+    // proíbe lançar com I/O de disco pendente, e a thread do carregador está
+    // justamente lendo .assets.
+    void SoltarTudo()
+    {
+        carregador::Parar();
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+        g_falhou.clear();
+
+        ATG::g_pd3dDevice->SetTexture(0, NULL);
+        ATG::g_pd3dDevice->BlockUntilIdle();
+        for (int i = 0; i < CACHE_MAX; i++)
+            if (g_cache[i].textura != NULL)
+            {
+                g_cache[i].textura->Release();
+                g_cache[i].textura = NULL;
+                g_cache[i].jogoId = -1;
+            }
+    }
+
+    // Fim de linha: dando certo, o console reinicia no jogo e este app morre. Voltar
+    // para cá não faz parte da experiência -- então só há caminho de volta no ERRO.
+    void Jogar()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        if (L.empty()) return;
+
+        const biblioteca::Jogo *j = L[g_iJogo];
+        SoltarTudo();
+
+        std::string erro;
+        if (lancador::Lancar(*j, erro))
+            return;                     // nunca acontece: sucesso não devolve
+
+        // Voltamos vivos, então falhou. O app continua usável: remonta o carregador e
+        // diz na tela o que houve, em vez de ficar mudo com a grade vazia.
+        Avisar(erro.c_str());
+        carregador::Iniciar();
+    }
+
     void Confirmar()
     {
         if (g_tela == TELA_COLECOES) AbrirColecao();
@@ -824,16 +894,7 @@ namespace
             }
             g_selecao.push_back(id);
         }
-        else
-        {
-            // Lançar o jogo é a próxima fase: XLaunchNewImage para XEX solto e
-            // Xbox360Container para STFS/GOD, como faz o ContentItemNew::LaunchGame.
-            std::vector<const biblioteca::Jogo *> L = ListaAtual();
-            if (!L.empty())
-                diario::Escrever("jogar (ainda nao implementado): %s [tipo %d] %s",
-                                 L[g_iJogo]->nome.c_str(), L[g_iJogo]->tipoArquivo,
-                                 L[g_iJogo]->caminho.c_str());
-        }
+        else Jogar();
     }
 
     void Voltar()
