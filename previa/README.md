@@ -53,6 +53,17 @@ geometria toda, o corte de nome por largura e o rodapé.
 | `Q` / `E` | `LB`/`RB` | pular por letra |
 | segurar `↓` | segurar `↓` | pular por letra |
 
-Os dois botões no topo da página são do desenvolvimento, não do app: um cria coleções de exemplo
-para não ter de montar tudo à mão a cada teste, e o outro zera. As coleções ficam no `localStorage`
-do navegador.
+## O que é da prévia e não do app
+
+A barra acima do canvas tem três coisas que **não existem no console**: o `?`, que abre a tabela
+de botões; "Criar coleções de exemplo", para não montar tudo à mão a cada teste; e "Zerar".
+
+A regra que separa as duas coisas é simples e vale manter: **o canvas é a tela do console.** O que
+for desenhado ali é algo que o console desenharia; o que é ferramenta de desenvolvimento fica na
+página, fora do quadro. Por isso o `?` do protótipo antigo, que ficava dentro do app, aqui vive na
+barra do navegador — lá a página inteira era o app, aqui não.
+
+No console, o único lugar que fala de botão é o rodapé da própria tela. A janela do `?` diz isso
+nela mesma, para não confundir quem abrir a prévia sem contexto.
+
+As coleções ficam no `localStorage` do navegador.
