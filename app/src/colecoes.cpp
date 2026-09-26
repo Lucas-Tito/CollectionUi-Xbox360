@@ -29,6 +29,27 @@ namespace
 
 namespace colecoes
 {
+    // Lê uma linha de QUALQUER tamanho.
+    //
+    // Com char[4096] uma coleção grande se destruía sozinha: 600 TitleIds em hexa dão
+    // 5.415 bytes, o fgets cortava no meio do 455º token, o id partido virava um número
+    // de lixo e os 145 restantes voltavam como uma linha sem '|', descartada em
+    // silêncio. E como todo Gravar reescreve o arquivo inteiro a partir do que foi
+    // carregado, a perda de leitura virava perda definitiva no disco.
+    bool LerLinha(FILE *f, std::string &saida)
+    {
+        char pedaco[512];
+        saida.clear();
+
+        while (fgets(pedaco, sizeof(pedaco), f) != NULL)
+        {
+            saida += pedaco;
+            if (saida[saida.size() - 1] == '\n')
+                return true;
+        }
+        return !saida.empty();      // última linha sem quebra no fim
+    }
+
     void Carregar()
     {
         for (size_t i = 0; i < g_lista.size(); i++)
@@ -42,24 +63,29 @@ namespace colecoes
             return;
         }
 
-        char linha[4096];
-        while (fgets(linha, sizeof(linha), f) != NULL)
+        std::string linha;
+        while (LerLinha(f, linha))
         {
-            char *fim = linha + strlen(linha);
-            while (fim > linha && (fim[-1] == '\n' || fim[-1] == '\r'))
-                *--fim = '\0';
-            if (linha[0] == '\0' || linha[0] == '#')
-                continue;
+            while (!linha.empty() &&
+                   (linha[linha.size() - 1] == '\n' || linha[linha.size() - 1] == '\r'))
+                linha.erase(linha.size() - 1);
 
-            char *barra = strchr(linha, '|');
-            if (barra == NULL)
+            // O que separa coleção de comentário é a BARRA, não o '#'. Tratar '#' como
+            // comentário fazia uma coleção chamada "#1 favoritos" sumir inteira na
+            // releitura -- e o teclado do sistema deixa digitar '#'. Por isso o
+            // cabeçalho que Gravar escreve não contém barra nenhuma.
+            size_t barra = linha.find('|');
+            if (barra == std::string::npos)
                 continue;
-            *barra = '\0';
 
             Colecao *c = new Colecao();
-            c->nome = linha;
+            c->nome = linha.substr(0, barra);
 
-            for (char *p = strtok(barra + 1, ","); p != NULL; p = strtok(NULL, ","))
+            std::string ids = linha.substr(barra + 1);
+            std::vector<char> mut(ids.begin(), ids.end());
+            mut.push_back('\0');
+
+            for (char *p = strtok(&mut[0], ","); p != NULL; p = strtok(NULL, ","))
             {
                 // strtoul e base 16, não atoi. TitleId usa os 32 bits: o do Snes360 é
                 // 0xFFED0707, que estoura int e voltaria negativo -- e a validação
@@ -83,7 +109,9 @@ namespace colecoes
             return;
         }
 
-        fprintf(f, "# CollectionUI: uma colecao por linha, nome|TitleIds em hexa, por virgula\n");
+        // Sem barra nesta linha, de proposito: e o que a distingue de uma colecao.
+        fprintf(f, "# CollectionUI: uma colecao por linha, no formato\n");
+        fprintf(f, "#   nome, barra vertical, TitleIds em hexa separados por virgula\n");
         for (size_t i = 0; i < g_lista.size(); i++)
         {
             fprintf(f, "%s|", g_lista[i]->nome.c_str());

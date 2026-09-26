@@ -382,3 +382,36 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     então o cache e o carregador não mudaram. TitleId é só o que vai para o disco. A contagem
     na tela de coleções conta os itens que a coleção realmente mostra, não quantos TitleIds
     ela guarda — senão um multi-disco diria "1 jogo" sobre uma grade com duas capas.
+
+45. **O `colecoes.txt` se lê com linha de tamanho livre.** Com `char linha[4096]` uma coleção
+    grande se destruía sozinha: 600 TitleIds em hexa dão ~5.4 KB, o `fgets` cortava no meio do
+    455º token, o id partido virava número de lixo e os 145 restantes voltavam como linha sem
+    `|`, descartada em silêncio. E como todo `Gravar` reescreve o arquivo a partir do que foi
+    carregado, a perda de leitura virava perda definitiva. Os 600 são o acervo que a decisão 42
+    projeta — o teto ficava **abaixo do alvo declarado**. Verificado no host: 600 ids voltam
+    íntegros e o arquivo é estável na segunda gravação.
+
+46. **O que separa coleção de comentário é a BARRA, não o `#`.** Tratar `#` inicial como
+    comentário fazia uma coleção chamada "#1 favoritos" **sumir inteira** na releitura, e o
+    teclado do sistema (`VKBD_LATIN_FULL`) deixa digitar `#`. Por isso o cabeçalho que `Gravar`
+    escreve não contém barra nenhuma.
+
+47. **TitleId zero é barrado na ESCRITA, não só na leitura.** Um item cujo cabeçalho o FreeStyle
+    não leu teria TitleId 0: o anel acenderia, o arquivo gravaria `00000000` e a releitura
+    descartaria — o jogo sumiria da coleção no boot seguinte, sem aviso. É a mesma perda
+    silenciosa da decisão 43, deslocada do `atoi` para o `!= 0`. Não há caso assim nestes 120.
+
+48. **Contagem e rótulos contam ITENS, não TitleIds.** Vale nas três telas: na de coleções
+    (decisão 44), no cabeçalho e no rodapé da tela de adicionar, e no item do menu, que passa a
+    dizer "Remover da coleção (2 itens)" quando o TitleId é compartilhado. Marcar um disco do
+    Forza acende dois anéis; dizer "1 marcado" corroía confiança à toa.
+
+49. **Capa não marcada é a mesma capa com um véu por cima.** `DrawScreenSpaceTexturedRectColored`
+    fixa UV 0..1 dentro da própria função (`AtgDebugDraw.cpp:662`), então o ramo do jogo não
+    marcado desenhava o **encarte inteiro** — contracapa e lombada espremidas no 5:7 — justo no
+    estado inicial de todos eles. Agora desenha o mesmo recorte e escurece por cima.
+
+50. **`carregador::Parar()` espera `INFINITE`.** O único chamador é o lançamento de jogo, e a doc
+    do XDK proíbe lançar com I/O de disco pendente. Desistir em 1 s fechava o `HANDLE` com a
+    thread viva; e se o lançamento falhasse, `Iniciar()` punha `g_parar` em falso e a thread
+    velha voltava a consumir a fila ao lado da nova.
