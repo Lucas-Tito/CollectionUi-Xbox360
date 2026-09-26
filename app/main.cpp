@@ -9,6 +9,7 @@
 #include "biblioteca.h"
 #include "dispositivos.h"
 #include "config.h"
+#include "carregador.h"
 #include "fsda.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
@@ -51,6 +52,12 @@ namespace
     // real. Em vez de recortar a imagem, amostramos só essa parte ao desenhar.
     const float FRENTE_U0 = 1.0f - 0.468f;
 
+    // Analogico: fora desta zona o eixo conta como direcao. O repique imita tecla
+    // segurada, para segurar a alavanca percorrer a lista sem virar corrida.
+    const short ZONA_MORTA     = 14000;
+    const DWORD ESPERA_INICIAL = 380;   // ms antes de comecar a repetir
+    const DWORD ESPERA_REPETE  = 110;   // ms entre repeticoes
+
     const D3DCOLOR COR_FUNDO   = D3DCOLOR_XRGB(13, 17, 15);
     const D3DCOLOR COR_TEXTO   = D3DCOLOR_XRGB(231, 237, 233);
     const D3DCOLOR COR_APAGADO = D3DCOLOR_XRGB(142, 156, 148);
@@ -72,10 +79,28 @@ namespace
     int  g_foco = 0;
     int  g_primeiraLinha = 0;
 
+    // O SQLite devolve UTF-8. Converter com CP_ACP quebra tudo que nao for ASCII: o
+    // "BLAZBLUE\u3000CONTINUUM SHIFT" tem um espaco ideografico japones (U+3000, tres
+    // bytes), que virava tres caracteres de lixo na tela.
+    //
+    // Depois da conversao ainda ha saneamento: a fonte tem ASCII e Latin-1, e os codigos
+    // a partir de 0x100 sao os GLIFOS DE BOTAO do controle. Deixar um caractere japones
+    // passar desenharia um botao no meio do nome do jogo.
     void Larga(const std::string &origem, WCHAR *destino, int capacidade)
     {
-        if (MultiByteToWideChar(CP_ACP, 0, origem.c_str(), -1, destino, capacidade) <= 0)
+        if (MultiByteToWideChar(CP_UTF8, 0, origem.c_str(), -1, destino, capacidade) <= 0)
+        {
             destino[0] = L'\0';
+            return;
+        }
+
+        for (int i = 0; destino[i] != L'\0'; i++)
+        {
+            if (destino[i] == 0x3000)        // espaco ideografico
+                destino[i] = L' ';
+            else if (destino[i] >= 0x100)    // fora da fonte, e na faixa dos botoes
+                destino[i] = L'?';
+        }
     }
 
     D3DTexture *CarregarCapa(int indice)
@@ -156,25 +181,53 @@ namespace
             g_pendente[i] = pend[i];
         }
         g_janelaBase = novaBase;
+
+        // O que saiu da janela nao interessa mais; insistir nele atrasa o que esta na
+        // tela. Depois pede o que falta, as visiveis na primeira volta.
+        carregador::DescartarPendentes();
+
+        for (int volta = 0; volta < 2; volta++)
+        {
+            for (int i = 0; i < NA_JANELA; i++)
+            {
+                if (!g_pendente[i] || g_capaDe[i] >= (int)g_jogos.size())
+                    continue;
+
+                bool visivel = (g_capaDe[i] >= g_primeiraLinha * COLUNAS) &&
+                               (g_capaDe[i] <  (g_primeiraLinha + LINHAS) * COLUNAS);
+                if ((volta == 0) != visivel)
+                    continue;
+
+                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, g_jogos[g_capaDe[i]].id);
+                if (pasta.empty())
+                    continue;
+
+                char arquivo[512];
+                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), g_jogos[g_capaDe[i]].id);
+                carregador::Pedir(g_capaDe[i], arquivo);
+            }
+        }
     }
 
-    // Uma capa por quadro. Cada .assets tem alguns MB e decodificar bloqueia; dividido
-    // assim a interface nunca para, e as capas aparecem em poucos quadros.
-    void CarregarUmaPendente()
+    // Recolhe o que a thread de leitura terminou e cria a textura -- isto sim na thread
+    // de desenho, para o D3D nao ser tocado por duas threads. De bytes ja em memoria e
+    // rapido: o DDS vem em DXT5 e nao ha decodificacao a fazer.
+    void RecolherCarregadas()
     {
-        int visivel = g_primeiraLinha * COLUNAS - g_janelaBase;   // prioriza a tela
-        if (visivel < 0)
-            visivel = 0;
+        int indice;
+        std::vector<unsigned char> bytes;
 
-        for (int passo = 0; passo < NA_JANELA; passo++)
+        while (carregador::Retirar(&indice, bytes))
         {
-            int i = (visivel + passo) % NA_JANELA;
-            if (!g_pendente[i])
-                continue;
-
-            g_capas[i] = CarregarCapa(g_capaDe[i]);
-            g_pendente[i] = false;
-            return;
+            int i = indice - g_janelaBase;
+            if (i >= 0 && i < NA_JANELA && g_capaDe[i] == indice)
+            {
+                if (!bytes.empty())
+                    D3DXCreateTextureFromFileInMemory(ATG::g_pd3dDevice, &bytes[0],
+                                                      (UINT)bytes.size(), &g_capas[i]);
+                g_pendente[i] = false;
+            }
+            bytes.clear();
         }
     }
 
@@ -440,6 +493,7 @@ void __cdecl main()
         biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos))
     {
         diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
+        carregador::Iniciar();
         MoverJanela(0);
     }
     else
@@ -452,6 +506,8 @@ void __cdecl main()
     // --- laço ---
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
+    int   direcaoX = 0, direcaoY = 0;
+    DWORD proximoPasso = 0;
 
     for (;;)
     {
@@ -466,7 +522,33 @@ void __cdecl main()
         if (novos & XINPUT_GAMEPAD_DPAD_UP)    Mover(-COLUNAS);
         anterior = agora;
 
-        CarregarUmaPendente();
+        // O analogico nao tem "apertou agora": e posicao continua. Damos a ele o
+        // comportamento de tecla segurada -- um passo imediato, pausa, depois repeticao.
+        int dx = 0, dy = 0;
+        if (agora.Gamepad.sThumbLX >  ZONA_MORTA) dx =  1;
+        if (agora.Gamepad.sThumbLX < -ZONA_MORTA) dx = -1;
+        if (agora.Gamepad.sThumbLY >  ZONA_MORTA) dy = -1;   // para cima
+        if (agora.Gamepad.sThumbLY < -ZONA_MORTA) dy =  1;
+
+        DWORD tAgora = GetTickCount();
+        if (dx == 0 && dy == 0)
+        {
+            direcaoX = direcaoY = 0;
+            proximoPasso = 0;
+        }
+        else if (dx != direcaoX || dy != direcaoY)
+        {
+            direcaoX = dx; direcaoY = dy;
+            Mover(dx + dy * COLUNAS);
+            proximoPasso = tAgora + ESPERA_INICIAL;
+        }
+        else if (tAgora >= proximoPasso)
+        {
+            Mover(dx + dy * COLUNAS);
+            proximoPasso = tAgora + ESPERA_REPETE;
+        }
+
+        RecolherCarregadas();
         Desenhar();
     }
 }
