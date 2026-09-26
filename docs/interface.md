@@ -56,6 +56,10 @@ O **rodapé é o único lugar** que documenta controle, e mostra símbolo e aç�
 só aparece quando faz alguma coisa: com a lista de coleções vazia, o rodapé mostra apenas
 `Ⓧ Nova coleção`, porque não há o que abrir nem o que apagar.
 
+A regra que organiza tudo: **`X` acrescenta, `☰` abre opções do que está em foco, `A` confirma,
+`B` volta ou cancela.** Vale nas três telas, então não há o que decorar — `X` cria coleção na
+primeira tela e adiciona jogos na segunda, porque as duas coisas são "acrescentar aqui".
+
 `A` confirma e `B` volta em todas as telas, que é a convenção do Xbox e ninguém espera diferente.
 
 | tela | controle | teclado | ação |
@@ -66,11 +70,13 @@ só aparece quando faz alguma coisa: com a lista de coleções vazia, o rodapé 
 | Coleções | `☰` (Menu/Start) | `M` | Renomear ou apagar |
 | Jogos | `A` | `Enter` | Jogar |
 | Jogos | `B` | `Esc` (ou `Backspace`) | Voltar às coleções |
-| Jogos | `☰` | `M` | Escolher jogos |
+| Jogos | `X` | `X` | Adicionar jogos |
+| Jogos | `☰` | `M` | Opções: remover da coleção |
 | Jogos | `LB` / `RB` | `Q` / `E` | Pular por letra |
 | Jogos | segurar `↓` | segurar `↓` | Pular por letra |
-| Escolher | `A` | `Enter` | Marcar ou desmarcar |
-| Escolher | `B` | `Esc` | Concluir |
+| Adicionar | `A` | `Enter` | Marcar ou desmarcar |
+| Adicionar | `☰` | `M` | Concluir: grava o que foi marcado |
+| Adicionar | `B` | `Esc` | Cancelar: descarta as marcações |
 
 **`X` não faz nada dentro de uma coleção**, por decisão: só `A` para jogar e `B` para voltar.
 
@@ -87,13 +93,17 @@ faz parte do desenho do app.
   91 têm duração. O lugar natural, se voltar, é uma ficha fora do caminho de quem só quer jogar.
 - Nada mais. A tela de escolher jogos, que era pendência, passou a existir (abaixo).
 
-## Tela de escolher jogos
+## Tela de adicionar jogos
 
-Consequência direta de a coleção nascer vazia: precisa haver onde pôr jogos nela. Abre pelo `☰`
-de dentro da coleção — o mesmo botão que na tela de coleções significa "gerenciar isto aqui".
+Consequência direta de a coleção nascer vazia: precisa haver onde pôr jogos nela. Abre pelo `X`
+de dentro da coleção, o mesmo botão que na tela anterior cria coleção — os dois são "acrescentar".
+
+**Cancelar precisa ter o que desfazer.** Como o `B` cancela, as marcações acontecem numa **cópia**:
+nada é gravado enquanto se marca, e só o `☰` (Concluir) confirma. Marcar direto no original faria
+de "cancelar" uma palavra sem efeito.
 
 Mostra a **biblioteca inteira** na mesma grade de 5 por linha, com o mesmo índice alfabético e o
-mesmo salto por letra. `A` marca e desmarca, `B` conclui. O marcado ganha um **✓ verde no canto
+mesmo salto por letra. `A` marca e desmarca, `☰` conclui, `B` cancela. O marcado ganha um **✓ verde no canto
 da capa** e um contorno interno; o não marcado fica um pouco mais apagado, mas **legível** — a
 primeira tentativa dessaturava tudo que não estava marcado e a tela inteira parecia desativada.
 
@@ -105,5 +115,4 @@ O contador no topo mostra `N de 120 marcados`.
   "Call of Duty: Modern Wa…" e ficam indistinguíveis lado a lado. As saídas são aumentar o corte
   ou deixar o nome em duas linhas.
 - **A ficha do jogo**, se o enriquecimento do vault vai voltar e por qual botão.
-- **Remover um jogo da coleção de dentro dela**, sem passar pela tela de escolher. Hoje só dá
-  para desmarcar no `☰`.
+- Nada pendente aqui: remover um jogo de dentro da coleção passou a existir, no `☰`.
