@@ -43,11 +43,40 @@ namespace
     }
 }
 
+namespace
+{
+    // Zero se nao der para abrir ou se nunca ninguem jogou por ali.
+    sqlite3_int64 UltimoUso(const char *caminhoBanco)
+    {
+        sqlite3 *bd = NULL;
+        if (sqlite3_open_v2(caminhoBanco, &bd, SQLITE_OPEN_READONLY, "xbox") != SQLITE_OK)
+        {
+            if (bd != NULL) sqlite3_close(bd);
+            return 0;
+        }
+
+        sqlite3_int64 quando = 0;
+        sqlite3_stmt *stmt = NULL;
+        const char *SQL = "select max(RecentlyPlayedTitleDateTime) from RecentlyPlayedTitles";
+
+        if (sqlite3_prepare_v2(bd, SQL, -1, &stmt, NULL) == SQLITE_OK)
+        {
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+                quando = sqlite3_column_int64(stmt, 0);
+            sqlite3_finalize(stmt);
+        }
+        sqlite3_close(bd);
+        return quando;
+    }
+}
+
 namespace biblioteca
 {
     bool AcharBanco(std::string &caminhoSaida)
     {
         diario::Escrever("procurando content.db:");
+        std::string melhor;
+        sqlite3_int64 melhorData = -1;
         for (int d = 0; d < QUANTOS_DISPOSITIVOS; d++)
         {
             std::string busca = std::string(DISPOSITIVOS[d]) + "*";
@@ -73,19 +102,31 @@ namespace biblioteca
                                         "\\Data\\Databases\\content.db";
                 if (Existe(candidato.c_str()))
                 {
-                    diario::Escrever("banco encontrado: %s", candidato.c_str());
-                    caminhoSaida = candidato;
-                    FindClose(h);
-                    return true;
+                    sqlite3_int64 quando = UltimoUso(candidato.c_str());
+                    diario::Escrever("  candidato: %s  (ultimo uso: %I64d)",
+                                     candidato.c_str(), quando);
+                    if (quando > melhorData)
+                    {
+                        melhorData = quando;
+                        melhor = candidato;
+                    }
                 }
             }
             while (FindNextFile(h, &achado));
 
-            diario::Escrever("  %-8s %d pastas, nenhuma com Data\\Databases\\content.db",
-                             DISPOSITIVOS[d], pastas);
             FindClose(h);
+            (void)pastas;
         }
-        return false;
+
+        if (melhor.empty())
+        {
+            diario::Escrever("  nenhum content.db em nenhum dispositivo");
+            return false;
+        }
+
+        diario::Escrever("escolhido (uso mais recente): %s", melhor.c_str());
+        caminhoSaida = melhor;
+        return true;
     }
 
     bool Ler(const char *caminhoBanco, std::vector<Jogo> &saida)

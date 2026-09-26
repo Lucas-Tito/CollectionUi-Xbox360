@@ -24,7 +24,11 @@ namespace biblioteca
 
     // Procura a instalacao do FreeStyle nos dispositivos montados. Nao adivinha o nome da
     // pasta: enumera a raiz de cada dispositivo e testa <pasta>\Data\Databases\content.db.
-    // A instalacao real encontrada no console chamava "Freestyle.780".
+    //
+    // Pode haver MAIS DE UMA instalacao, e achar a primeira nao serve: este console tinha
+    // uma de 2020 com 272 jogos no HD e a ativa, com 120, em outro lugar. Escolhemos pela
+    // data do jogo mais recente em RecentlyPlayedTitles, que foi o criterio que resolveu
+    // a mesma duvida quando o pendrive foi examinado no PC.
     bool AcharBanco(std::string &caminhoSaida);
 
     // Le todos os jogos, em ordem alfabetica (ignorando artigo inicial, como no desenho).
