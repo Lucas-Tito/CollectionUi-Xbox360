@@ -1,0 +1,301 @@
+<title>Prévia CollectionUI</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme: dark;
+  --void:#0D110F; --painel:#151B18; --linha:#2B352F;
+  --ink:#E7EDE9; --dim:#8E9C94; --fraco:#5C6862; --anel:#9BCB3C;
+  --body:"IBM Plex Sans",-apple-system,Segoe UI,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:#0A0D0B;color:var(--ink);font-family:var(--body);
+  display:flex;flex-direction:column;overflow:hidden}
+button,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--anel);outline-offset:2px}
+
+.barra{flex:none;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:9px 18px;padding-top:calc(9px + env(safe-area-inset-top,0px));
+  background:var(--painel);border-bottom:1px solid var(--linha);font-size:12px}
+.barra b{font-size:13px;font-weight:600}
+.barra .nota{font-family:var(--mono);font-size:10.5px;color:var(--fraco)}
+.espaco{flex:1 1 auto}
+.aba{background:transparent;border:1px solid var(--linha);border-radius:5px;
+  padding:5px 11px;font-size:11.5px;color:var(--dim);cursor:pointer}
+.aba.on{background:var(--anel);border-color:var(--anel);color:#0B1004;font-weight:600}
+.aba .tag{font-family:var(--mono);font-size:9px;opacity:.8;margin-left:5px}
+
+.palco{flex:1 1 auto;min-height:0;display:grid;place-items:center;padding:16px;
+  background:repeating-conic-gradient(#0A0D0B 0% 25%, #0C100E 0% 50%) 50%/22px 22px}
+canvas{display:block;width:100%;max-width:1280px;height:auto;aspect-ratio:16/9;
+  border:1px solid var(--linha);box-shadow:0 10px 40px rgba(0,0,0,.6);
+  image-rendering:auto;background:var(--void)}
+
+.rodape{flex:none;display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  padding:8px 18px;padding-bottom:calc(8px + env(safe-area-inset-bottom,0px));
+  background:var(--painel);border-top:1px solid var(--linha);font-size:11.5px;color:var(--dim)}
+.tec{font-family:var(--mono);font-size:10px;padding:1px 5px;border:1px solid var(--linha);
+  border-radius:3px;color:var(--fraco)}
+.pino{display:inline-flex;align-items:center;gap:6px}
+.aviso{font-family:var(--mono);font-size:10px;color:#F0C036}
+
+@media (max-width:640px){
+  .barra,.rodape{padding-left:12px;padding-right:12px;gap:10px}
+  .barra .nota{display:none}
+  .rodape .pino:nth-child(n+4){display:none}
+}
+</style>
+
+<header class="barra">
+  <b>Prévia</b>
+  <span class="nota">espelha app/main.cpp · 1280×720</span>
+  <span class="espaco"></span>
+  <button class="aba on" data-tela="jogos">Todos os jogos <span class="tag">no console</span></button>
+  <button class="aba" data-tela="colecoes">Coleções <span class="tag">por fazer</span></button>
+  <button class="aba" data-tela="indice">Índice A-Z <span class="tag">por fazer</span></button>
+</header>
+
+<div class="palco"><canvas id="tela" width="1280" height="720"></canvas></div>
+
+<footer class="rodape">
+  <span class="pino"><i class="tec">← ↑ ↓ →</i> Navegar</span>
+  <span class="pino"><i class="tec">Enter</i> Ⓐ</span>
+  <span class="pino"><i class="tec">Esc</i> Ⓑ</span>
+  <span class="pino"><i class="tec">Q</i><i class="tec">E</i> LB/RB</span>
+  <span class="espaco"></span>
+  <span id="estado" class="nota"></span>
+</footer>
+
+<script>
+const JOGOS = __DADOS__;
+
+// ---------------------------------------------------------------------------
+// Constantes COPIADAS de app/main.cpp. Se mudarem lá, mudam aqui -- é esse o
+// contrato desta prévia: ela não inventa layout, ela reproduz o que o console
+// desenha. O que ainda não existe em C++ está marcado "por fazer" nas abas.
+// ---------------------------------------------------------------------------
+const COLUNAS = 5, LINHAS = 2;
+const CAPA_L = 170, CAPA_A = 238;
+const ESPACO_X = 56, ESPACO_Y = 40;
+const MARGEM_X = 100, TOPO = 92;
+const POR_PAGINA = COLUNAS * LINHAS;
+const FRENTE_U0 = 1.0 - 0.468;          // a frente é a fatia direita do encarte
+
+const COR_FUNDO   = 'rgb(13,17,15)';
+const COR_TEXTO   = 'rgb(231,237,233)';
+const COR_APAGADO = 'rgb(142,156,148)';
+const COR_FRACO   = 'rgb(92,104,98)';
+const COR_ANEL    = 'rgb(155,203,60)';
+
+// A fonte do console é o Arial_16 da ATG, um atlas de bitmap de 27px de altura.
+// SetScaleFactors(1.5) no cabeçalho vira ~24px. Aqui aproximamos com uma sans.
+const FONTE_BASE = 17, FONTE_TITULO = 25;
+
+const cv = document.getElementById('tela');
+const ctx = cv.getContext('2d');
+const imgs = {};
+let tela = 'jogos', foco = 0, primeiraLinha = 0;
+
+// ---- espelha ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem
+function cortar(txt, larguraMax){
+  if (ctx.measureText(txt).width <= larguraMax) return txt;
+  let s = txt;
+  while (s.length > 1 && ctx.measureText(s + '...').width > larguraMax) s = s.slice(0, -1);
+  return s + '...';
+}
+
+function capa(indice){
+  const g = JOGOS[indice];
+  if (!g || !g.cap) return null;
+  if (imgs[indice]) return imgs[indice].completo ? imgs[indice].img : null;
+  const img = new Image();
+  const reg = {img, completo:false};
+  img.onload = () => { reg.completo = true; desenhar(); };
+  img.src = g.cap;
+  imgs[indice] = reg;
+  return null;
+}
+
+// ---- espelha Desenhar(), chamada por chamada ----------------------------
+function telaJogos(){
+  const total = JOGOS.length;
+  const base = primeiraLinha * COLUNAS;
+
+  ctx.fillStyle = COR_FUNDO;
+  ctx.fillRect(0, 0, 1280, 720);
+
+  // cabeçalho
+  ctx.textBaseline = 'top';
+  ctx.font = `600 ${FONTE_TITULO}px var(--body), sans-serif`;
+  ctx.fillStyle = COR_TEXTO;
+  ctx.fillText('Todos os jogos', MARGEM_X, 34);
+
+  ctx.font = `${FONTE_BASE}px sans-serif`;
+  ctx.fillStyle = COR_FRACO;
+  ctx.fillText(`${total} jogos`, MARGEM_X + 260, 46);
+
+  // grade
+  const nomes = [];
+  for (let i = 0; i < POR_PAGINA; i++){
+    const indice = base + i;
+    if (indice >= total) break;
+
+    const coluna = i % COLUNAS, linha = (i / COLUNAS) | 0;
+    const x1 = MARGEM_X + coluna * (CAPA_L + ESPACO_X);
+    const y1 = TOPO + linha * (CAPA_A + ESPACO_Y);
+
+    const img = capa(indice);
+    if (img){
+      // o mesmo recorte do DrawScreenSpaceTexturedRectPatch: só a fatia da frente.
+      // As capas extraídas já vêm recortadas, então aqui desenhamos inteiras.
+      ctx.drawImage(img, 0, 0, img.width, img.height, x1, y1, CAPA_L, CAPA_A);
+    } else {
+      ctx.strokeStyle = COR_FRACO; ctx.lineWidth = 1;
+      ctx.strokeRect(x1 + 0.5, y1 + 0.5, CAPA_L - 1, CAPA_A - 1);
+    }
+
+    if (indice === foco){
+      ctx.strokeStyle = COR_ANEL; ctx.lineWidth = 3;
+      ctx.strokeRect(x1 - 4 + 1.5, y1 - 4 + 1.5, CAPA_L + 8 - 3, CAPA_A + 8 - 3);
+    }
+    nomes.push({x:x1, y:y1 + CAPA_A + 8, indice});
+  }
+
+  ctx.font = `${FONTE_BASE}px sans-serif`;
+  for (const n of nomes){
+    ctx.fillStyle = (n.indice === foco) ? COR_TEXTO : COR_APAGADO;
+    ctx.fillText(cortar(JOGOS[n.indice].nome, CAPA_L), n.x, n.y);
+  }
+
+  rodapeConsole('Ⓐ Jogar     Ⓑ Voltar', `${foco + 1} de ${total}`);
+}
+
+function rodapeConsole(esquerda, direita){
+  ctx.font = `${FONTE_BASE}px sans-serif`;
+  ctx.fillStyle = COR_APAGADO;
+  ctx.textAlign = 'left';
+  ctx.fillText(esquerda, MARGEM_X, 660);
+  if (direita){
+    ctx.fillStyle = COR_FRACO;
+    ctx.textAlign = 'right';
+    ctx.fillText(direita, 1180, 660);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ---- telas desenhadas, ainda sem código em C++ ---------------------------
+function telaColecoes(){
+  ctx.fillStyle = COR_FUNDO; ctx.fillRect(0, 0, 1280, 720);
+  ctx.textBaseline = 'top';
+  ctx.font = `600 ${FONTE_TITULO}px sans-serif`;
+  ctx.fillStyle = COR_TEXTO;
+  ctx.fillText('Coleções', MARGEM_X, 34);
+
+  const LADO = 196, GAP = 34;
+  const exemplos = [
+    ['Para jogar em dois', 14], ['Terminar algum dia', 23],
+    ['Arcade', 44], ['Xbox original', 8]
+  ];
+  for (let i = 0; i < exemplos.length; i++){
+    const x = MARGEM_X + i * (LADO + GAP), y = TOPO + 40;
+    ctx.fillStyle = 'rgb(21,27,24)';
+    ctx.fillRect(x, y, LADO, LADO);
+    ctx.strokeStyle = (i === foco % exemplos.length) ? COR_ANEL : 'rgb(43,53,47)';
+    ctx.lineWidth = (i === foco % exemplos.length) ? 3 : 1;
+    ctx.strokeRect(x + 1.5, y + 1.5, LADO - 3, LADO - 3);
+
+    ctx.font = `600 ${FONTE_BASE + 2}px sans-serif`;
+    ctx.fillStyle = (i === foco % exemplos.length) ? COR_TEXTO : COR_APAGADO;
+    ctx.fillText(cortar(exemplos[i][0], LADO - 28), x + 14, y + LADO - 58);
+    ctx.font = `${FONTE_BASE - 3}px var(--mono), monospace`;
+    ctx.fillStyle = COR_FRACO;
+    ctx.fillText(`${exemplos[i][1]} jogos`, x + 14, y + LADO - 32);
+  }
+  rodapeConsole('Ⓐ Abrir     Ⓧ Nova coleção     ☰ Renomear ou apagar', '');
+  marcaPorFazer();
+}
+
+function telaIndice(){
+  telaJogos();
+  const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
+  const presentes = new Set(JOGOS.map(g => inicial(g.nome)));
+  const atual = inicial(JOGOS[foco].nome);
+  const alturaTotal = 720 - 140, passo = alturaTotal / letras.length;
+
+  for (let i = 0; i < letras.length; i++){
+    const y = 96 + i * passo;
+    const ativa = letras[i] === atual;
+    if (ativa){
+      ctx.fillStyle = COR_ANEL;
+      ctx.fillRect(1206, y - 2, 26, passo - 1);
+    }
+    ctx.font = `${FONTE_BASE - 3}px var(--mono), monospace`;
+    ctx.fillStyle = ativa ? '#0B1004' : (presentes.has(letras[i]) ? COR_APAGADO : 'rgb(38,46,41)');
+    ctx.textAlign = 'center';
+    ctx.fillText(letras[i], 1219, y);
+    ctx.textAlign = 'left';
+  }
+  marcaPorFazer();
+}
+
+function marcaPorFazer(){
+  ctx.font = `${FONTE_BASE - 4}px var(--mono), monospace`;
+  ctx.fillStyle = '#F0C036';
+  ctx.textAlign = 'right';
+  ctx.fillText('desenhado, ainda sem código em C++', 1180, 22);
+  ctx.textAlign = 'left';
+}
+
+const semArtigo = s => (s || '').replace(/^(the|a|an|o|os|as|um|uma)\s+/i, '').trim();
+const inicial = s => { const c = semArtigo(s).toUpperCase()[0] || '#'; return /[A-Z]/.test(c) ? c : '#'; };
+
+function desenhar(){
+  if (tela === 'jogos') telaJogos();
+  else if (tela === 'colecoes') telaColecoes();
+  else telaIndice();
+
+  document.getElementById('estado').textContent =
+    `foco ${foco + 1}/${JOGOS.length} · linha ${primeiraLinha} · ${JOGOS[foco].nome}`;
+}
+
+function mover(delta){
+  const novo = foco + delta;
+  if (novo < 0 || novo >= JOGOS.length) return;
+  foco = novo;
+  const linhaFoco = (foco / COLUNAS) | 0;
+  if (linhaFoco < primeiraLinha) primeiraLinha = linhaFoco;
+  else if (linhaFoco >= primeiraLinha + LINHAS) primeiraLinha = linhaFoco - LINHAS + 1;
+  desenhar();
+}
+
+function saltoLetra(dir){
+  const atual = inicial(JOGOS[foco].nome);
+  let i = foco;
+  while (i + dir >= 0 && i + dir < JOGOS.length && inicial(JOGOS[i + dir].nome) === atual) i += dir;
+  mover(Math.max(0, Math.min(JOGOS.length - 1, i + dir)) - foco);
+}
+
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowRight') mover(1);
+  else if (k === 'ArrowLeft') mover(-1);
+  else if (k === 'ArrowDown') mover(COLUNAS);
+  else if (k === 'ArrowUp') mover(-COLUNAS);
+  else if (k === 'e' || k === 'E' || k === 'PageDown') saltoLetra(1);
+  else if (k === 'q' || k === 'Q' || k === 'PageUp') saltoLetra(-1);
+  else return;
+  e.preventDefault();
+});
+
+document.querySelectorAll('.aba').forEach(b => b.addEventListener('click', () => {
+  document.querySelectorAll('.aba').forEach(x => x.classList.toggle('on', x === b));
+  tela = b.dataset.tela;
+  desenhar();
+}));
+
+// pré-carrega a primeira página para a prévia abrir cheia
+for (let i = 0; i < POR_PAGINA + COLUNAS; i++) capa(i);
+desenhar();
+</script>
