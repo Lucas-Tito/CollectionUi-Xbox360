@@ -49,6 +49,25 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
 .acoes{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
 .bt.ok{background:var(--anel);border-color:var(--anel);color:#0B1004;font-weight:600}
 .bt.perigo{border-color:#6E3236;color:#F2949A}
+.ajuda{flex:none;width:24px;height:24px;border-radius:50%;border:1px solid var(--linha);
+  background:var(--painel);color:var(--dim);font-size:13px;font-weight:600;cursor:pointer;
+  display:grid;place-items:center;line-height:1;padding:0}
+.ajuda:hover{border-color:var(--anel);color:var(--anel)}
+.mapa{width:100%;border-collapse:collapse;font-size:12.5px}
+.mapa th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.08em;
+  color:var(--fraco);font-weight:500;padding:0 10px 7px 0;border-bottom:1px solid var(--linha)}
+.mapa td{padding:7px 10px 7px 0;border-bottom:1px solid var(--linha);vertical-align:middle}
+.mapa tr:last-child td{border-bottom:0}
+.mapa .kb{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap}
+.mapa .grp td{padding-top:14px;color:var(--fraco);font-size:10px;text-transform:uppercase;
+  letter-spacing:.08em}
+.pad{width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;
+  font-size:10px;font-weight:600;color:#0B1004;font-family:var(--mono)}
+.pad.a{background:#6DC849}.pad.b{background:#F2565B}.pad.x{background:#4B9BE8}
+.pad.menu{background:#1D2521;color:var(--dim);border:1px solid var(--linha);
+  border-radius:4px;width:auto;padding:0 6px;height:18px}
+.so-proto{background:#2A2410;border:1px solid #5C4D18;border-radius:5px;padding:9px 12px;
+  font-size:11.5px;color:#F0C036;margin-bottom:16px;line-height:1.45}
 .opts{display:flex;flex-direction:column;gap:6px}
 .opt{width:100%;text-align:left;background:#1D2521;border:1px solid var(--linha);
   border-radius:4px;padding:9px 12px;font-size:13px;cursor:pointer}
@@ -64,6 +83,7 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
   <b>Prévia</b>
   <span class="nota">1280×720 · a tela como o console desenha</span>
   <span class="espaco"></span>
+  <button class="ajuda" id="bt-ajuda" title="Botões do controle" aria-label="Botões do controle">?</button>
   <button class="bt" id="bt-exemplos">Criar coleções de exemplo</button>
   <button class="bt" id="bt-zerar">Zerar</button>
 </header>
@@ -80,6 +100,36 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
   <span class="espaco"></span>
   <span id="estado" class="nota"></span>
 </footer>
+
+<div class="dlg" id="dlg-ajuda" hidden>
+  <div class="cx" style="width:min(540px,100%)">
+    <h3>Botões</h3>
+    <div class="so-proto">
+      Esta janela, o <b>?</b> que a abre e os dois botões ao lado <b>não existem no app</b> —
+      são da prévia. No console o único lugar que fala de botão é o rodapé da própria tela.
+    </div>
+    <table class="mapa">
+      <tr><th>Controle</th><th>Teclado</th><th>Ação</th></tr>
+      <tr><td><i class="pad menu">d-pad</i></td><td class="kb">← ↑ ↓ →</td><td>Navegar</td></tr>
+      <tr class="grp"><td colspan="3">Na tela de coleções</td></tr>
+      <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Abrir a coleção</td></tr>
+      <tr><td><i class="pad x">X</i></td><td class="kb">X</td><td>Nova coleção</td></tr>
+      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Opções: renomear ou apagar</td></tr>
+      <tr class="grp"><td colspan="3">Dentro de uma coleção</td></tr>
+      <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Jogar</td></tr>
+      <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Voltar às coleções</td></tr>
+      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Escolher jogos</td></tr>
+      <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Pular por letra</td></tr>
+      <tr><td><i class="pad menu">↓ segurando</i></td><td class="kb">↓ segurando</td><td>Pular por letra</td></tr>
+      <tr class="grp"><td colspan="3">Escolhendo jogos</td></tr>
+      <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
+      <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Concluir</td></tr>
+      <tr class="grp"><td colspan="3">Só na prévia</td></tr>
+      <tr><td><i class="pad menu">—</i></td><td class="kb">mouse</td><td>Clicar move o foco; clicar de novo confirma</td></tr>
+    </table>
+    <div class="acoes"><button class="bt" id="da-fechar">Fechar</button></div>
+  </div>
+</div>
 
 <div class="dlg" id="dlg-nome" hidden>
   <div class="cx">
@@ -417,6 +467,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (!$('#dlg-menu').hidden){ if (e.key === 'Escape') $('#dlg-menu').hidden = true; return; }
+  if (!$('#dlg-ajuda').hidden){ if (e.key === 'Escape' || e.key === 'Enter') $('#dlg-ajuda').hidden = true; return; }
 
   const k = e.key;
   if (tela === 'colecoes'){
@@ -508,6 +559,9 @@ cv.addEventListener('click', e => {
     return;
   }
 });
+
+$('#bt-ajuda').onclick = () => { $('#dlg-ajuda').hidden = false; $('#da-fechar').focus(); };
+$('#da-fechar').onclick = () => $('#dlg-ajuda').hidden = true;
 
 $('#bt-exemplos').onclick = () => {
   const porGenero = g => JOGOS.filter(j => j.genero === g).map(j => j.id);
