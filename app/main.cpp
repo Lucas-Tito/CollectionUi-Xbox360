@@ -94,7 +94,7 @@ namespace
 
     Tela g_tela = TELA_COLECOES;
     colecoes::Colecao *g_atual = NULL;
-    std::vector<int>   g_selecao;      // rascunho ao adicionar; ver AbrirAdicionar
+    std::vector<unsigned int> g_selecao;   // rascunho ao adicionar; TitleIds
     int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0;
 
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
@@ -164,16 +164,18 @@ namespace
         else if (g_atual != NULL)
         {
             for (size_t i = 0; i < g_jogos.size(); i++)
-                if (colecoes::Tem(g_atual, g_jogos[i].id))
+                // Casa por TitleId: é o que fica gravado. Itens que compartilham
+                // TitleId (multi-disco, instalação duplicada) entram juntos.
+                if (colecoes::Tem(g_atual, g_jogos[i].titleId))
                     saida.push_back(&g_jogos[i]);
         }
         return saida;      // g_jogos já vem ordenada de biblioteca::Ler
     }
 
-    bool SelecionadoNoRascunho(int id)
+    bool SelecionadoNoRascunho(unsigned int titleId)
     {
         for (size_t i = 0; i < g_selecao.size(); i++)
-            if (g_selecao[i] == id)
+            if (g_selecao[i] == titleId)
                 return true;
         return false;
     }
@@ -392,10 +394,19 @@ namespace
                              (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
                              texto, ATGFONT_TRUNCATED, (FLOAT)COL_LADO - 28.0f);
 
+            // Conta os itens que a coleção REALMENTE mostra, não quantos TitleIds
+            // ela guarda: um TitleId de multi-disco casa com dois itens, e "1 jogo"
+            // sobre uma grade com duas capas é o tipo de detalhe que corrói confiança.
             if (L[i]->ids.empty())
                 swprintf_s(texto, 256, L"vazia");
             else
-                swprintf_s(texto, 256, L"%d jogos", (int)L[i]->ids.size());
+            {
+                int quantos = 0;
+                for (size_t j = 0; j < g_jogos.size(); j++)
+                    if (colecoes::Tem(L[i], g_jogos[j].titleId))
+                        quantos++;
+                swprintf_s(texto, 256, (quantos == 1) ? L"%d jogo" : L"%d jogos", quantos);
+            }
             g_fonte.DrawText((FLOAT)x + 14.0f, (FLOAT)y + COL_LADO - 30.0f,
                              COR_FRACO, texto, 0);
         }
@@ -487,8 +498,10 @@ namespace
             r.x2 = r.x1 + CAPA_L;
             r.y2 = r.y1 + CAPA_A;
 
+            // A capa é pelo ContentItemId (a pasta de arte é GameData\<id em hex>);
+            // a marcação é por TitleId, que é o que a coleção guarda.
             D3DTexture *capa = NoCache(L[i]->id, true);
-            bool marcado = !adicionando || SelecionadoNoRascunho(L[i]->id);
+            bool marcado = !adicionando || SelecionadoNoRascunho(L[i]->titleId);
 
             if (capa != NULL)
             {
@@ -506,7 +519,7 @@ namespace
                 ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
             }
 
-            if (adicionando && SelecionadoNoRascunho(L[i]->id))
+            if (adicionando && SelecionadoNoRascunho(L[i]->titleId))
                 ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
 
             if (i == g_iJogo)
@@ -831,7 +844,7 @@ namespace
             std::vector<const biblioteca::Jogo *> L = ListaAtual();
             if (!L.empty())
             {
-                colecoes::Remover(g_atual, L[g_iJogo]->id);
+                colecoes::Remover(g_atual, L[g_iJogo]->titleId);
                 if (g_iJogo > 0) g_iJogo--;
                 SeguirFoco();
             }
@@ -887,12 +900,16 @@ namespace
             std::vector<const biblioteca::Jogo *> L = ListaAtual();
             if (L.empty()) return;
 
-            int id = L[g_iJogo]->id;
+            unsigned int titleId = L[g_iJogo]->titleId;
             for (size_t i = 0; i < g_selecao.size(); i++)
             {
-                if (g_selecao[i] == id) { g_selecao.erase(g_selecao.begin() + i); return; }
+                if (g_selecao[i] == titleId)
+                {
+                    g_selecao.erase(g_selecao.begin() + i);
+                    return;
+                }
             }
-            g_selecao.push_back(id);
+            g_selecao.push_back(titleId);
         }
         else Jogar();
     }

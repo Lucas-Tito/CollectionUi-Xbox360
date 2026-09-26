@@ -61,9 +61,12 @@ namespace colecoes
 
             for (char *p = strtok(barra + 1, ","); p != NULL; p = strtok(NULL, ","))
             {
-                int id = atoi(p);
-                if (id > 0)
-                    c->ids.push_back(id);
+                // strtoul e base 16, não atoi. TitleId usa os 32 bits: o do Snes360 é
+                // 0xFFED0707, que estoura int e voltaria negativo -- e a validação
+                // antiga ("> 0") o descartaria em silêncio a cada releitura.
+                unsigned int titleId = (unsigned int)strtoul(p, NULL, 16);
+                if (titleId != 0)
+                    c->ids.push_back(titleId);
             }
             g_lista.push_back(c);
         }
@@ -80,12 +83,12 @@ namespace colecoes
             return;
         }
 
-        fprintf(f, "# CollectionUI: uma colecao por linha, nome|ids separados por virgula\n");
+        fprintf(f, "# CollectionUI: uma colecao por linha, nome|TitleIds em hexa, por virgula\n");
         for (size_t i = 0; i < g_lista.size(); i++)
         {
             fprintf(f, "%s|", g_lista[i]->nome.c_str());
             for (size_t k = 0; k < g_lista[i]->ids.size(); k++)
-                fprintf(f, "%s%d", k ? "," : "", g_lista[i]->ids[k]);
+                fprintf(f, "%s%08X", k ? "," : "", g_lista[i]->ids[k]);
             fputc('\n', f);
         }
         fclose(f);
@@ -157,32 +160,32 @@ namespace colecoes
         }
     }
 
-    bool Tem(const Colecao *c, int id)
+    bool Tem(const Colecao *c, unsigned int titleId)
     {
         for (size_t i = 0; i < c->ids.size(); i++)
-            if (c->ids[i] == id)
+            if (c->ids[i] == titleId)
                 return true;
         return false;
     }
 
-    void Alternar(Colecao *c, int id)
+    void Alternar(Colecao *c, unsigned int titleId)
     {
         for (size_t i = 0; i < c->ids.size(); i++)
         {
-            if (c->ids[i] == id)
+            if (c->ids[i] == titleId)
             {
                 c->ids.erase(c->ids.begin() + i);
                 return;
             }
         }
-        c->ids.push_back(id);
+        c->ids.push_back(titleId);
     }
 
-    void Remover(Colecao *c, int id)
+    void Remover(Colecao *c, unsigned int titleId)
     {
         for (size_t i = 0; i < c->ids.size(); i++)
         {
-            if (c->ids[i] == id)
+            if (c->ids[i] == titleId)
             {
                 c->ids.erase(c->ids.begin() + i);
                 Gravar();
