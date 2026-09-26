@@ -76,6 +76,7 @@ namespace
     int  g_capaDe[NA_JANELA];      // índice global em cada posição, -1 se vazia
     bool g_pendente[NA_JANELA];    // ainda por carregar
     int  g_janelaBase = 0;         // primeiro índice global da janela
+    int  g_medidas = 0;    // quantas texturas ja foram cronometradas no log
     int  g_foco = 0;
     int  g_primeiraLinha = 0;
 
@@ -217,17 +218,53 @@ namespace
         int indice;
         std::vector<unsigned char> bytes;
 
-        while (carregador::Retirar(&indice, bytes))
+        // UMA por quadro. Mesmo barata, criar cinco de uma vez daria um solavanco.
+        if (!carregador::Retirar(&indice, bytes))
+            return;
+
+        int i = indice - g_janelaBase;
+        if (i < 0 || i >= NA_JANELA || g_capaDe[i] != indice)
+            return;                       // saiu da janela enquanto lia; descarta
+
+        g_pendente[i] = false;
+        if (bytes.empty())
+            return;
+
+        // O formato vem do proprio DDS (fourCC no offset 84). Passar explicito evita
+        // que o D3DX decida converter.
+        D3DFORMAT formato = D3DFMT_UNKNOWN;
+        if (bytes.size() > 88)
         {
-            int i = indice - g_janelaBase;
-            if (i >= 0 && i < NA_JANELA && g_capaDe[i] == indice)
-            {
-                if (!bytes.empty())
-                    D3DXCreateTextureFromFileInMemory(ATG::g_pd3dDevice, &bytes[0],
-                                                      (UINT)bytes.size(), &g_capas[i]);
-                g_pendente[i] = false;
-            }
-            bytes.clear();
+            if (memcmp(&bytes[84], "DXT5", 4) == 0)      formato = D3DFMT_DXT5;
+            else if (memcmp(&bytes[84], "DXT1", 4) == 0) formato = D3DFMT_DXT1;
+        }
+
+        DWORD t0 = GetTickCount();
+
+        // A versao Ex com estes parametros e o que o FreeStyle faz, e a diferenca e
+        // enorme. A versao sem Ex usa D3DX_DEFAULT em tudo: redimensiona 900x600 para
+        // 1024x1024 com filtragem e depois gera a cadeia inteira de mipmaps, uns onze
+        // niveis, cada um filtrado. Por capa. Era isso que travava a cada linha nova --
+        // nao a leitura do disco.
+        HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
+            ATG::g_pd3dDevice,
+            &bytes[0], (UINT)bytes.size(),
+            D3DX_DEFAULT_NONPOW2,          // sem redimensionar para potencia de 2
+            D3DX_DEFAULT_NONPOW2,
+            1,                             // um mipmap so
+            D3DUSAGE_CPU_CACHED_MEMORY,
+            formato,
+            D3DPOOL_DEFAULT,
+            D3DX_FILTER_NONE,              // sem filtragem
+            D3DX_FILTER_NONE,
+            0, NULL, NULL,
+            &g_capas[i]);
+
+        if (g_medidas < 8)
+        {
+            diario::Escrever("  textura %d: %u bytes, %u ms, hr=0x%08X",
+                             indice, (unsigned)bytes.size(), GetTickCount() - t0, hr);
+            g_medidas++;
         }
     }
 
