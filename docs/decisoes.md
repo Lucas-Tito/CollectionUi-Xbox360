@@ -356,3 +356,29 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     as texturas do cache com `BlockUntilIdle`, fechar o log, e disparar de uma thread nova. O
     log reabre em **append** (`diario::Reabrir`) no caminho de erro — `Abrir` trunca e apagaria
     justamente o registro que explica a falha.
+
+42. **A coleção guarda TitleId, não ContentItemId**, em hexadecimal no `colecoes.txt`.
+    Decisão do usuário depois de pesar as duas perdas. O `ContentItemId` é a chave primária
+    do banco do FreeStyle e quem a mantém é o CAMINHO (`UNIQUE (ContentItemPath)`): sobrevive
+    a rescan e a reboot, mas morre ao reinstalar o jogo, ao **mover ou renomear a pasta**, ou
+    se o banco for refeito. O `TitleId` vem do cabeçalho do XEX e não depende de nada disso.
+
+    **O que se perde, aceito conscientemente:** itens que compartilham TitleId se fundem.
+    Medido neste acervo: 116 TitleIds distintos em 120 itens, nenhum zero, 4 pares repetidos
+    — Forza 4 e Splinter Cell Blacklist (discos 1 e 2), CoD World at War e Kill Team
+    (instalados em duplicata). Marcar um disco traz o outro, e remover tira os dois. Em
+    acervo grande (a expectativa são 600), dois jogos DIFERENTES com o mesmo TitleId se
+    fundiriam de forma errada — não há caso assim nestes 120, mas a amostra é de 120.
+
+    Um híbrido (`contentItemId:titleId` com fallback) foi proposto e **recusado**: não volte
+    a sugerir.
+
+43. **`strtoul` base 16, e validação `!= 0`.** O TitleId usa os 32 bits: o do Snes360 é
+    `0xFFED0707`. Com `vector<int>` e `atoi`, ele voltaria negativo e a validação antiga
+    (`id > 0`) o descartaria **em silêncio** a cada releitura do arquivo. Daí `unsigned int`
+    em `Colecao::ids` e em toda a cadeia (`Tem`, `Alternar`, `Remover`, `g_selecao`).
+
+44. **A capa continua vindo do `ContentItemId`.** A pasta de arte é `GameData\<id em hex>`,
+    então o cache e o carregador não mudaram. TitleId é só o que vai para o disco. A contagem
+    na tela de coleções conta os itens que a coleção realmente mostra, não quantos TitleIds
+    ela guarda — senão um multi-disco diria "1 jogo" sobre uma grade com duas capas.
