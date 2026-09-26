@@ -87,6 +87,13 @@ namespace
     Entrada g_cache[CACHE_MAX];
     DWORD   g_relogio = 0;
     std::vector<int> g_emVoo;    // indices ja pedidos, para nao pedir duas vezes
+    std::vector<int> g_falhou;   // indices que nao deram capa; nao insistir a 60 Hz
+
+    // Teto de pedidos em voo. Cada resultado carrega o DDS ate a thread de desenho
+    // recolher, e ela recolhe UM por quadro. Sem teto, rolar enfileira a biblioteca
+    // inteira e a memoria enche de buffers que ninguem vai consumir tao cedo. Na versao
+    // da janela quem segurava isso era o DescartarPendentes, que sumiu junto com ela.
+    const int EM_VOO_MAX = 6;
 
     int  g_medidas = 0;
     int  g_foco = 0;
@@ -167,11 +174,21 @@ namespace
         return false;
     }
 
+    bool Falhou(int indice)
+    {
+        for (size_t i = 0; i < g_falhou.size(); i++)
+            if (g_falhou[i] == indice)
+                return true;
+        return false;
+    }
+
     // Guarda no cache, descartando a entrada usada ha mais tempo quando cheio.
     void Guardar(int indice, D3DTexture *textura)
     {
         int alvo = -1;
         DWORD maisAntigo = 0xFFFFFFFF;
+        int primeiroVisivel = g_primeiraLinha * COLUNAS;
+        int aposVisivel     = (g_primeiraLinha + LINHAS) * COLUNAS;
 
         for (int i = 0; i < CACHE_MAX; i++)
         {
@@ -180,6 +197,9 @@ namespace
                 alvo = i;
                 break;
             }
+            // Nunca descartar uma capa que esta na tela neste quadro.
+            if (g_cache[i].indice >= primeiroVisivel && g_cache[i].indice < aposVisivel)
+                continue;
             if (g_cache[i].uso < maisAntigo)
             {
                 maisAntigo = g_cache[i].uso;
@@ -187,8 +207,21 @@ namespace
             }
         }
 
+        if (alvo < 0)               // cheio e tudo visivel: descarta a recem-criada
+        {
+            textura->Release();
+            return;
+        }
+
         if (g_cache[alvo].textura != NULL)
+        {
+            // O XDK e explicito: recurso que pode estar setado no device tem de ser
+            // desassociado antes de liberado. Hoje escapamos por acaso, porque o
+            // Font::End() zera a textura e o rodape e a ultima coisa desenhada.
+            ATG::g_pd3dDevice->SetTexture(0, NULL);
             g_cache[alvo].textura->Release();
+            g_cache[alvo].textura = NULL;
+        }
 
         g_cache[alvo].indice  = indice;
         g_cache[alvo].textura = textura;
@@ -210,11 +243,14 @@ namespace
         {
             for (int indice = base; indice < fim; indice++)
             {
+                if ((int)g_emVoo.size() >= EM_VOO_MAX)
+                    return;
+
                 bool visivel = (indice >= g_primeiraLinha * COLUNAS) &&
                                (indice <  (g_primeiraLinha + LINHAS) * COLUNAS);
                 if ((volta == 0) != visivel)
                     continue;
-                if (NoCache(indice, false) != NULL || EmVoo(indice))
+                if (NoCache(indice, false) != NULL || EmVoo(indice) || Falhou(indice))
                     continue;
 
                 std::string pasta = biblioteca::PastaArte(g_caminhoBanco, g_jogos[indice].id);
@@ -250,8 +286,16 @@ namespace
             }
         }
 
-        if (bytes.empty() || NoCache(indice, false) != NULL)
-            return;      // falhou, ou chegou duplicado; nao sobrescreve nada
+        if (NoCache(indice, false) != NULL)
+            return;                          // duplicado; nao sobrescreve nada
+
+        if (bytes.empty())
+        {
+            // Sem registrar a falha, PedirOQueFalta pediria de novo no quadro seguinte,
+            // e de novo, a 60 Hz -- um laco de leitura de disco em rajada.
+            g_falhou.push_back(indice);
+            return;
+        }
 
         // O formato vem do fourCC do proprio DDS, para o D3DX nao decidir converter.
         D3DFORMAT formato = D3DFMT_UNKNOWN;
@@ -277,6 +321,8 @@ namespace
 
         if (SUCCEEDED(hr) && textura != NULL)
             Guardar(indice, textura);
+        else
+            g_falhou.push_back(indice);
 
         if (g_medidas < 8)
         {
@@ -559,6 +605,7 @@ void __cdecl main()
     ZeroMemory(&anterior, sizeof(anterior));
     int   direcaoX = 0, direcaoY = 0;
     DWORD proximoPasso = 0;
+    DWORD ultimoRelato = 0;
 
     for (;;)
     {
@@ -602,5 +649,27 @@ void __cdecl main()
         PedirOQueFalta();
         RecolherCarregadas();
         Desenhar();
+
+        // Relato de memoria uma vez por segundo. Nem eu nem a analise conseguimos
+        // explicar o ultimo crash so lendo o codigo; com isto, a proxima execucao diz
+        // se a memoria despenca (e entao e a fila) ou fica estavel (e entao e outra
+        // coisa), e o numero da linha mostra se houve rolagem.
+        DWORD agoraRelato = GetTickCount();
+        if (agoraRelato - ultimoRelato > 1000)
+        {
+            ultimoRelato = agoraRelato;
+
+            MEMORYSTATUS mem;
+            mem.dwLength = sizeof(mem);
+            GlobalMemoryStatus(&mem);
+
+            int cheias = 0;
+            for (int i = 0; i < CACHE_MAX; i++)
+                if (g_cache[i].textura != NULL) cheias++;
+
+            diario::Escrever("linha=%d cache=%d emVoo=%d falhou=%d livre=%u KB",
+                             g_primeiraLinha, cheias, (int)g_emVoo.size(),
+                             (int)g_falhou.size(), (unsigned)(mem.dwAvailPhys / 1024));
+        }
     }
 }

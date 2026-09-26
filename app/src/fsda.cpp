@@ -81,6 +81,19 @@ namespace fsda
             memcpy(img.formato, dds + 84, 4);
             img.formato[4] = '\0';
 
+            // O "tamanho" da tabela FSDA e largura*altura*4 + 128: o tamanho que a
+            // imagem teria DESCOMPRIMIDA, nao o do DXT que esta gravado. Medido nos 120
+            // .assets: a capa de 900x600 aparece como 2.160.128 e o DDS real tem
+            // 540.128. Ler o campo como veio custa 4x de disco e 4x de RAM por capa.
+            if (memcmp(img.formato, "DXT", 3) == 0 && img.largura > 0 && img.altura > 0)
+            {
+                unsigned int blocos   = ((img.largura + 3) / 4) * ((img.altura + 3) / 4);
+                unsigned int porBloco = (memcmp(img.formato, "DXT1", 4) == 0) ? 8 : 16;
+                unsigned int real     = 128 + blocos * porBloco;
+                if (real < img.tamanho)
+                    img.tamanho = real;
+            }
+
             saida.push_back(img);
         }
 
