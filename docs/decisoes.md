@@ -437,3 +437,20 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     teclado ter segurado o laço. Sem bloqueio não há dessincronia: o laço continua lendo o
     controle a cada quadro e apenas **ignora** os botões enquanto `teclado::Aberto()`, de
     modo que o `A` que confirmou dentro da Guide nunca reaparece como botão novo.
+
+55. **Nunca use `DrawScreenSpaceTexturedRectColored` com textura `NULL`.** Ela faz
+    `SetSampler(..., NULL)` e desenha com o shader **texturizado**, amostrando um sampler sem
+    nada ligado — é o glitch que aparecia na letra acesa do índice alfabético. Para retângulo
+    cheio de cor sólida, `DrawScreenSpaceRect(r, 0.0f, cor)`: largura zero desenha cheio e usa
+    o shader de cor constante, sem sampler.
+
+56. **A ATG não liga `D3DRS_ALPHABLENDENABLE` no `DebugDraw`** — só o `AtgFont` mexe nesse
+    estado, e só em volta do `Begin/End` dele. Sem ligar à mão, o alfa da cor é **ignorado** e
+    o retângulo sai opaco. Foi por isso que o véu do jogo não marcado, `ARGB(140, 6, 9, 8)`,
+    saiu preto sólido e escondeu a capa inteira na tela de adicionar. O `Preencher()` do
+    `main.cpp` liga a mistura, desenha e devolve o estado ao desligado.
+
+57. **O lançamento funciona no console.** Adventure Time: Explore the Dungeon abriu —
+    `tipoArquivo == 1` (XEX solto), pelo `XLaunchNewImage`. O ramo do container
+    (`XContentLaunchImageFromFile`, 55 jogos deste acervo) **continua sem prova**: é o único
+    risco de descoberta que resta, e falha devolvendo código de erro, não travando.
