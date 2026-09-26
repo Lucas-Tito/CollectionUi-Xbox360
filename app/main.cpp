@@ -41,6 +41,16 @@ namespace
     const int TOPO       = 92;
     const int POR_PAGINA = COLUNAS * LINHAS;
 
+    // A janela de capas carregadas é MAIOR que a tela: uma linha de folga para cada
+    // lado. Assim rolar uma linha não dispara carga nenhuma — a capa já estava pronta.
+    const int LINHAS_JANELA = LINHAS + 2;
+    const int NA_JANELA     = COLUNAS * LINHAS_JANELA;
+
+    // O asset tipo 128 é o ENCARTE inteiro (contracapa + lombada + frente), não a capa.
+    // A frente são os 46,8% da direita — fração calibrada à mão contra a biblioteca
+    // real. Em vez de recortar a imagem, amostramos só essa parte ao desenhar.
+    const float FRENTE_U0 = 1.0f - 0.468f;
+
     const D3DCOLOR COR_FUNDO   = D3DCOLOR_XRGB(13, 17, 15);
     const D3DCOLOR COR_TEXTO   = D3DCOLOR_XRGB(231, 237, 233);
     const D3DCOLOR COR_APAGADO = D3DCOLOR_XRGB(142, 156, 148);
@@ -55,10 +65,12 @@ namespace
     // Só as capas da página visível ficam na memória. Carregar as 120 de uma vez fazia
     // a tela ficar preta por um tempo longo antes do primeiro quadro — cada .assets tem
     // vários MB e é aberto do disco.
-    D3DTexture *g_capas[POR_PAGINA];
-    int g_capaDe[POR_PAGINA];          // qual índice global está em cada posição
-    int g_foco = 0;
-    int g_primeiraLinha = 0;
+    D3DTexture *g_capas[NA_JANELA];
+    int  g_capaDe[NA_JANELA];      // índice global em cada posição, -1 se vazia
+    bool g_pendente[NA_JANELA];    // ainda por carregar
+    int  g_janelaBase = 0;         // primeiro índice global da janela
+    int  g_foco = 0;
+    int  g_primeiraLinha = 0;
 
     void Larga(const std::string &origem, WCHAR *destino, int capacidade)
     {
@@ -102,41 +114,67 @@ namespace
         return textura;
     }
 
-    // Recarrega só o que mudou de posição. Rolar uma linha reaproveita a outra.
-    void AtualizarPagina()
+    // Reposiciona a janela sem carregar nada: o que já estava carregado é transferido
+    // de posição e o resto fica pendente. Carregar aqui travaria o laço — era o engasgo
+    // a cada linha nova.
+    void MoverJanela(int novaBase)
     {
-        int base = g_primeiraLinha * COLUNAS;
+        if (novaBase < 0)
+            novaBase = 0;
 
-        D3DTexture *novas[POR_PAGINA];
-        int de[POR_PAGINA];
+        D3DTexture *novas[NA_JANELA];
+        int  de[NA_JANELA];
+        bool pend[NA_JANELA];
 
-        for (int i = 0; i < POR_PAGINA; i++)
+        for (int i = 0; i < NA_JANELA; i++)
         {
-            int alvo = base + i;
+            int alvo = novaBase + i;
             novas[i] = NULL;
             de[i] = alvo;
+            pend[i] = true;
 
-            for (int j = 0; j < POR_PAGINA; j++)
+            for (int j = 0; j < NA_JANELA; j++)
             {
-                if (g_capas[j] != NULL && g_capaDe[j] == alvo)
+                if (g_capaDe[j] == alvo && !g_pendente[j] && g_capas[j] != NULL)
                 {
                     novas[i] = g_capas[j];
-                    g_capas[j] = NULL;      // transferida, não liberar abaixo
+                    g_capas[j] = NULL;
+                    pend[i] = false;
                     break;
                 }
             }
-            if (novas[i] == NULL)
-                novas[i] = CarregarCapa(alvo);
         }
 
-        for (int j = 0; j < POR_PAGINA; j++)
+        for (int j = 0; j < NA_JANELA; j++)
             if (g_capas[j] != NULL)
                 g_capas[j]->Release();
 
-        for (int i = 0; i < POR_PAGINA; i++)
+        for (int i = 0; i < NA_JANELA; i++)
         {
             g_capas[i] = novas[i];
             g_capaDe[i] = de[i];
+            g_pendente[i] = pend[i];
+        }
+        g_janelaBase = novaBase;
+    }
+
+    // Uma capa por quadro. Cada .assets tem alguns MB e decodificar bloqueia; dividido
+    // assim a interface nunca para, e as capas aparecem em poucos quadros.
+    void CarregarUmaPendente()
+    {
+        int visivel = g_primeiraLinha * COLUNAS - g_janelaBase;   // prioriza a tela
+        if (visivel < 0)
+            visivel = 0;
+
+        for (int passo = 0; passo < NA_JANELA; passo++)
+        {
+            int i = (visivel + passo) % NA_JANELA;
+            if (!g_pendente[i])
+                continue;
+
+            g_capas[i] = CarregarCapa(g_capaDe[i]);
+            g_pendente[i] = false;
+            return;
         }
     }
 
@@ -165,6 +203,7 @@ namespace
             if (indice >= total)
                 break;
 
+            int naJanela = indice - g_janelaBase;
             int coluna = i % COLUNAS;
             int linha  = i / COLUNAS;
 
@@ -174,10 +213,24 @@ namespace
             r.x2 = r.x1 + CAPA_L;
             r.y2 = r.y1 + CAPA_A;
 
-            if (g_capas[i] != NULL)
-                ATG::DebugDraw::DrawScreenSpaceTexturedRect(r, g_capas[i]);
+            D3DTexture *capa = NULL;
+            if (naJanela >= 0 && naJanela < NA_JANELA)
+                capa = g_capas[naJanela];
+
+            if (capa != NULL)
+            {
+                // Só a frente do encarte: amostra de U 0,532 até 1,0.
+                ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
+                    r,
+                    XMFLOAT2(FRENTE_U0, 0.0f),
+                    XMFLOAT2(1.0f,      0.0f),
+                    XMFLOAT2(FRENTE_U0, 1.0f),
+                    capa);
+            }
             else
+            {
                 ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
+            }
 
             if (indice == g_foco)
             {
@@ -294,10 +347,12 @@ namespace
             g_primeiraLinha = linhaDoFoco;
         else if (linhaDoFoco >= g_primeiraLinha + LINHAS)
             g_primeiraLinha = linhaDoFoco - LINHAS + 1;
-        else
-            return;                       // a página não mudou, nada a recarregar
 
-        AtualizarPagina();
+        // Janela com uma linha de folga acima da primeira visível.
+        int baseJanela = (g_primeiraLinha - 1) * COLUNAS;
+        if (baseJanela < 0)
+            baseJanela = 0;
+        MoverJanela(baseJanela);
     }
 }
 
@@ -306,7 +361,7 @@ void __cdecl main()
     diario::Abrir("game:\\collectionui.log");
     diario::Escrever("CollectionUI — grade de capas");
 
-    for (int i = 0; i < POR_PAGINA; i++) { g_capas[i] = NULL; g_capaDe[i] = -1; }
+    for (int i = 0; i < NA_JANELA; i++) { g_capas[i] = NULL; g_capaDe[i] = -1; g_pendente[i] = false; }
 
     // --- D3D ---
     // No Xbox 360 não há indireção de COM: Direct3D::CreateDevice é um método ESTÁTICO
@@ -385,12 +440,7 @@ void __cdecl main()
         biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos))
     {
         diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
-        AtualizarPagina();
-
-        int comCapa = 0;
-        for (int i = 0; i < POR_PAGINA; i++)
-            if (g_capas[i] != NULL) comCapa++;
-        diario::Escrever("primeira pagina: %d de %d capas", comCapa, POR_PAGINA);
+        MoverJanela(0);
     }
     else
     {
@@ -416,6 +466,7 @@ void __cdecl main()
         if (novos & XINPUT_GAMEPAD_DPAD_UP)    Mover(-COLUNAS);
         anterior = agora;
 
+        CarregarUmaPendente();
         Desenhar();
     }
 }
