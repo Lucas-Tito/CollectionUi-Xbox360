@@ -74,7 +74,8 @@ namespace
     // vários MB e é aberto do disco.
     D3DTexture *g_capas[NA_JANELA];
     int  g_capaDe[NA_JANELA];      // índice global em cada posição, -1 se vazia
-    bool g_pendente[NA_JANELA];    // ainda por carregar
+    bool g_pendente[NA_JANELA];    // ainda sem textura
+    bool g_pedido[NA_JANELA];      // ja foi para a fila; evita pedir duas vezes
     int  g_janelaBase = 0;         // primeiro índice global da janela
     int  g_medidas = 0;    // quantas texturas ja foram cronometradas no log
     int  g_foco = 0;
@@ -151,6 +152,7 @@ namespace
         D3DTexture *novas[NA_JANELA];
         int  de[NA_JANELA];
         bool pend[NA_JANELA];
+        bool ped[NA_JANELA];
 
         for (int i = 0; i < NA_JANELA; i++)
         {
@@ -158,6 +160,7 @@ namespace
             novas[i] = NULL;
             de[i] = alvo;
             pend[i] = true;
+            ped[i] = false;
 
             for (int j = 0; j < NA_JANELA; j++)
             {
@@ -166,6 +169,7 @@ namespace
                     novas[i] = g_capas[j];
                     g_capas[j] = NULL;
                     pend[i] = false;
+                    ped[i] = false;
                     break;
                 }
             }
@@ -180,18 +184,23 @@ namespace
             g_capas[i] = novas[i];
             g_capaDe[i] = de[i];
             g_pendente[i] = pend[i];
+            g_pedido[i] = ped[i];
         }
         g_janelaBase = novaBase;
 
         // O que saiu da janela nao interessa mais; insistir nele atrasa o que esta na
-        // tela. Depois pede o que falta, as visiveis na primeira volta.
+        // tela. Some da fila o que ainda nao comecou -- e o que ja estava pedido volta
+        // a poder ser pedido, porque o pedido morreu junto.
         carregador::DescartarPendentes();
+        for (int i = 0; i < NA_JANELA; i++)
+            if (g_pendente[i])
+                g_pedido[i] = false;
 
         for (int volta = 0; volta < 2; volta++)
         {
             for (int i = 0; i < NA_JANELA; i++)
             {
-                if (!g_pendente[i] || g_capaDe[i] >= (int)g_jogos.size())
+                if (!g_pendente[i] || g_pedido[i] || g_capaDe[i] >= (int)g_jogos.size())
                     continue;
 
                 bool visivel = (g_capaDe[i] >= g_primeiraLinha * COLUNAS) &&
@@ -206,6 +215,7 @@ namespace
                 char arquivo[512];
                 sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), g_jogos[g_capaDe[i]].id);
                 carregador::Pedir(g_capaDe[i], arquivo);
+                g_pedido[i] = true;
             }
         }
     }
@@ -226,7 +236,21 @@ namespace
         if (i < 0 || i >= NA_JANELA || g_capaDe[i] != indice)
             return;                       // saiu da janela enquanto lia; descarta
 
+        // Um pedido que o worker ja tinha pego pode ser pedido de novo ao rolar, e os
+        // dois resultados voltam. Sem esta checagem, o segundo sobrescrevia o ponteiro
+        // do primeiro sem liberar -- meio mega de vazamento por capa, ate a memoria
+        // acabar. Quem chega primeiro preenche; o resto e descartado.
+        if (!g_pendente[i])
+            return;
+
         g_pendente[i] = false;
+        g_pedido[i] = false;
+
+        if (g_capas[i] != NULL)           // defensivo: nunca sobrescrever sem liberar
+        {
+            g_capas[i]->Release();
+            g_capas[i] = NULL;
+        }
         if (bytes.empty())
             return;
 
@@ -451,7 +475,11 @@ void __cdecl main()
     diario::Abrir("game:\\collectionui.log");
     diario::Escrever("CollectionUI — grade de capas");
 
-    for (int i = 0; i < NA_JANELA; i++) { g_capas[i] = NULL; g_capaDe[i] = -1; g_pendente[i] = false; }
+    for (int i = 0; i < NA_JANELA; i++)
+    {
+        g_capas[i] = NULL; g_capaDe[i] = -1;
+        g_pendente[i] = false; g_pedido[i] = false;
+    }
 
     // --- D3D ---
     // No Xbox 360 não há indireção de COM: Direct3D::CreateDevice é um método ESTÁTICO
