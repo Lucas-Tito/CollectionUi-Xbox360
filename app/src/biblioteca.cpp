@@ -114,7 +114,7 @@ namespace biblioteca
             "select ContentItemId, ContentItemTitleId, ContentItemName, ContentItemGenre,"
             " ContentItemDeveloper, ContentItemPublisher, ContentItemRating,"
             " ContentItemReleaseDate, ContentItemPath, ContentItemFileType,"
-            " ContentItemDiscsInSet from ContentItems";
+            " ContentItemDiscsInSet, ContentItemContentType from ContentItems";
 
         sqlite3_stmt *stmt = NULL;
         r = sqlite3_prepare_v2(bd, SQL, -1, &stmt, NULL);
@@ -139,6 +139,7 @@ namespace biblioteca
             j.caminho        = Texto(stmt, 8);
             j.tipoArquivo    = sqlite3_column_int(stmt, 9);
             j.discos         = sqlite3_column_int(stmt, 10);
+            j.contentType    = sqlite3_column_int(stmt, 11);
             saida.push_back(j);
         }
 

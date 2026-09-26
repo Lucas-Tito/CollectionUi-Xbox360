@@ -309,3 +309,50 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
 33. **Ao adicionar jogos, `☰` conclui e `B` cancela** — e cancelar desfaz de verdade: as marcações
     vão para uma cópia e só o Concluir grava. Marcar no original faria de "cancelar" palavra sem
     efeito. O nome da tela também mudou: era "Escolher jogos", virou **"Adicionar jogos"**.
+
+34. **`A` em cima de um jogo lança, e o CollectionUI morre ali.** Voltar para o app depois
+    do jogo não faz parte da experiência — decisão do usuário, repetida. Isso simplifica:
+    não há estado a preservar, e o único caminho de volta é o de erro.
+
+35. **Duas APIs do XDK, nenhuma linha do FreeStyle.** `XLaunchNewImage` (`xbox.h:417`) para
+    XEX e XBE soltos; `XContentLaunchImageFromFile` (`xbox.h:1293`) para container. A segunda
+    monta o pacote e lança de dentro dele numa chamada só, e **devolve `DWORD`** — ao
+    contrário da primeira, que é `DECLSPEC_NORETURN VOID`. Ela é de maio/2011; o fonte aberto
+    do FSD 2 é de julho/2011 e usa o idioma antigo (`XamContentOpenFile` + montar + lançar).
+    Consequência de licença: o lançamento inteiro não deriva do código GPLv3 do FreeStyle.
+
+36. **`XLaunchNewImage` é `NORETURN` de verdade.** O `cl.exe` recusou com `C4702 unreachable
+    code` um `return 0;` escrito depois dela. Em Release o otimizador apaga esse código, então
+    **todo diagnóstico tem de vir antes da chamada** — inclusive o teste de existência do
+    arquivo, porque a função não tem como avisar que o caminho não existe.
+
+37. **O dispositivo do jogo se descobre sondando, não pelo banco.** O `content.db` guarda o
+    caminho sem o volume (`\JOGOS\X\default.xex`): o prefixo é reconstruído a cada boot, e o
+    apelido do FreeStyle (`Hdd1:`) não é o nosso (`Hdd:`). Testamos os apelidos montados com
+    `GetFileAttributes` até achar. Custa no máximo 4 chamadas e é de graça, porque o teste de
+    existência teria de ser feito de qualquer jeito (ver 36). A alternativa — join com
+    `ScanPaths` no `settings.db` — fica para quando existir biblioteca em dois dispositivos.
+    **A heurística "o jogo está no dispositivo do `content.db`" é falsa aqui:** o banco veio
+    do pendrive e os jogos estão no HD.
+
+38. **Existe `tipoArquivo == 2`.** São 8 jogos de Xbox original (`.xbe`) neste acervo, e
+    lançam pela mesma chamada do tipo 1. O comentário do `biblioteca.h` dizia "1 = XEX solto,
+    3 = container" e os omitia. Contagem medida: 1=57, 2=8, 3=55.
+
+39. **Sem lista branca de `contentType`.** O `LaunchGame()` do FSD 2 recusa tudo que não seja
+    ARCADE, XBOXTITLE, XBOX360TITLE, INSTALLED ou GAMEDEMO — e isso rejeitaria os 6 itens
+    `contentType == 0x2` (indies/XBLIG) desta biblioteca, que o FreeStyle 3 desta casa lança
+    normalmente. O `contentType` serve só para escolher `default.xex` ou `default.xbe` dentro
+    de um container.
+
+40. **Multi-disco e consolidação de TU ficam de fora.** `PrepareForMultiDiscLaunch` não chama
+    API nenhuma do XDK: registra estado no plugin do FreeStyle, que não temos. Custa a troca de
+    disco em 1 jogo dos 120 (L.A. Noire); os outros multi-disco já estão no banco como entradas
+    separadas e abrem direto pela grade. `ConsolidateTitleUpdates` copia e **apaga** arquivos de
+    title update, o que contraria a regra de só-leitura bem mais do que gravar em "recentes".
+
+41. **Lançar exige desmontar o app antes.** A doc do XDK proíbe lançar com I/O de disco
+    pendente e proíbe chamar da thread dona do device D3D. Então: `carregador::Parar()`, soltar
+    as texturas do cache com `BlockUntilIdle`, fechar o log, e disparar de uma thread nova. O
+    log reabre em **append** (`diario::Reabrir`) no caminho de erro — `Abrir` trunca e apagaria
+    justamente o registro que explica a falha.

@@ -18,7 +18,15 @@ namespace biblioteca
         std::string  nota;          // do Marketplace, ex. "4.25"
         std::string  lancamento;
         std::string  caminho;       // relativo ao dispositivo
-        int          tipoArquivo;   // 1 = XEX solto, 3 = container STFS/GOD
+        // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
+        // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
+        // pela MESMA chamada do 1.
+        int          tipoArquivo;
+        // XCONTENTTYPE_*: 0x7000 jogo de 360, 0xD0000 arcade/XBLA, 0x5000 Xbox
+        // original, 0x2 marketplace (indie). Só importa para escolher default.xex ou
+        // default.xbe dentro de um container -- NAO serve de filtro: a lista branca do
+        // FSD 2 recusa o 0x2, e o FreeStyle 3 desta casa lanca esses jogos.
+        int          contentType;
         int          discos;
     };
 

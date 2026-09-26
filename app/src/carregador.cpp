@@ -84,8 +84,14 @@ namespace carregador
 {
     void Iniciar()
     {
-        InitializeCriticalSection(&g_trava);
-        g_temPedido = CreateEvent(NULL, FALSE, FALSE, NULL);
+        // Idempotente na trava e no evento: Parar() acontece antes de lancar um jogo,
+        // e se o lancamento falhar Iniciar() e chamado de novo. Reinicializar uma
+        // CRITICAL_SECTION viva e vazar um HANDLE de evento a cada tentativa.
+        if (g_temPedido == NULL)
+        {
+            InitializeCriticalSection(&g_trava);
+            g_temPedido = CreateEvent(NULL, FALSE, FALSE, NULL);
+        }
         g_parar = false;
 
         g_thread = CreateThread(NULL, 0, Trabalhar, NULL, CREATE_SUSPENDED, NULL);
