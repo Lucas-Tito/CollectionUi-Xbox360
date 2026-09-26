@@ -1,37 +1,35 @@
-// CollectionUI — grade de capas navegável pelo controle.
+// CollectionUI — coleções de jogos do Xbox 360.
 //
-// Lê os jogos do content.db do FreeStyle e a arte dos .assets, desenhando com a ATG,
-// o conjunto de amostra do próprio XDK. É o desenho de docs/interface.md.
+// Três telas, como em docs/interface.md: coleções, os jogos de uma coleção, e a de
+// adicionar jogos. A regra dos botões é a mesma em todas: X acrescenta, ☰ abre opções
+// do que está em foco, A confirma, B volta ou cancela.
+//
+// Desenha com a ATG, o conjunto de amostra do próprio XDK: dela vêm o renderizador de
+// fonte (com corte por LARGURA, não por contagem de caractere) e os glifos dos botões.
 
 #include <xtl.h>
 #include <xgraphics.h>
 #include "diario.h"
 #include "biblioteca.h"
+#include "colecoes.h"
 #include "dispositivos.h"
 #include "config.h"
 #include "carregador.h"
+#include "teclado.h"
 #include "fsda.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
 #include "AtgDebugDraw.h"
 #include "AtgSimpleShaders.h"
 
-// A ATG espera este ponteiro global; normalmente quem o define é o AtgApp.cpp, que
-// não usamos porque não queremos herdar da aplicação dela.
-//
-// Atenção ao tipo: dentro do namespace, D3DDevice é o ATG::D3DDevice do AtgDevice.h,
-// que herda do global e acrescenta métodos. Definir com o tipo global compila e falha
-// no link, porque o nome decorado fica diferente.
+// A ATG espera este ponteiro global; normalmente quem o define é o AtgApp.cpp, que não
+// usamos. Atenção ao tipo: dentro do namespace, D3DDevice é o ATG::D3DDevice do
+// AtgDevice.h, que herda do global. Definir com o tipo global compila e falha no link.
 namespace ATG { D3DDevice *g_pd3dDevice = NULL; }
 
 namespace
 {
-    // Medidas da grade, em pixels de 1280x720.
-    //
-    // A conta importa: com capa de 252px a segunda linha terminava em 654 e não cabia,
-    // então só uma linha aparecia na tela. Com 238 cabem duas, que é o que um 720p
-    // comporta com capa legível a três metros. Margem de 100px fica dentro da área
-    // segura da TV, que corta as bordas.
+    // ---- geometria, em pixels de 1280x720 --------------------------------------
     const int COLUNAS    = 5;
     const int LINHAS     = 2;          // visíveis por vez; o resto rola
     const int CAPA_L     = 170;
@@ -42,63 +40,72 @@ namespace
     const int TOPO       = 92;
     const int POR_PAGINA = COLUNAS * LINHAS;
 
-    // O asset tipo 128 é o ENCARTE inteiro (contracapa + lombada + frente), não a capa.
-    // A frente são os 46,8% da direita — fração calibrada à mão contra a biblioteca
-    // real. Em vez de recortar a imagem, amostramos só essa parte ao desenhar.
+    const int COL_LADO = 180, COL_GAP = 30;
+    const int COL_POR_LINHA = 5, COL_LINHAS = 2, COL_TOPO = 64;
+    const int COL_POR_PAGINA = COL_POR_LINHA * COL_LINHAS;
+
+    // O asset tipo 128 é o ENCARTE inteiro (contracapa + lombada + frente). A frente
+    // são os 46,8% da direita — fração calibrada contra a biblioteca real. Em vez de
+    // recortar a imagem, amostramos só essa parte ao desenhar.
     const float FRENTE_U0 = 1.0f - 0.468f;
 
-    // Analogico: fora desta zona o eixo conta como direcao. O repique imita tecla
-    // segurada, para segurar a alavanca percorrer a lista sem virar corrida.
-    const short ZONA_MORTA     = 14000;
-    const DWORD ESPERA_INICIAL = 380;   // ms antes de comecar a repetir
-    const DWORD ESPERA_REPETE  = 110;   // ms entre repeticoes
-
     const D3DCOLOR COR_FUNDO   = D3DCOLOR_XRGB(13, 17, 15);
+    const D3DCOLOR COR_PAINEL  = D3DCOLOR_XRGB(21, 27, 24);
     const D3DCOLOR COR_TEXTO   = D3DCOLOR_XRGB(231, 237, 233);
     const D3DCOLOR COR_APAGADO = D3DCOLOR_XRGB(142, 156, 148);
     const D3DCOLOR COR_FRACO   = D3DCOLOR_XRGB(92, 104, 98);
+    const D3DCOLOR COR_LINHA   = D3DCOLOR_XRGB(43, 53, 47);
     const D3DCOLOR COR_ANEL    = D3DCOLOR_XRGB(155, 203, 60);   // o verde do ring of light
 
-    ATG::Font g_fonte;
+    // Analógico: fora desta zona o eixo conta como direção. O repique imita tecla
+    // segurada, para segurar a alavanca percorrer a lista sem virar corrida.
+    const short ZONA_MORTA     = 14000;
+    const DWORD ESPERA_INICIAL = 380;
+    const DWORD ESPERA_REPETE  = 110;
 
-    std::string                   g_caminhoBanco;
-    std::vector<biblioteca::Jogo> g_jogos;
-
-    // Só as capas da página visível ficam na memória. Carregar as 120 de uma vez fazia
-    // a tela ficar preta por um tempo longo antes do primeiro quadro — cada .assets tem
-    // vários MB e é aberto do disco.
-    // Cache de capas. A versao anterior tinha uma janela que soltava a textura assim
-    // que a linha saia da tela, entao voltar obrigava a reler -- e a capa piscava vazia.
-    // O FreeStyle guarda num TextureCache; fazemos o mesmo.
-    //
-    // Cada capa ocupa cerca de 540 KB (900x600 em DXT5). Com 128 entradas sao uns 69 MB,
-    // o que cabe folgado nos 512 MB do console e faz uma biblioteca de 120 jogos ficar
-    // inteira em memoria depois da primeira passada: rolar de volta nunca mais recarrega.
-    // O teto existe para biblioteca grande, nao para esta.
+    // ---- cache de capas --------------------------------------------------------
+    // A chave é o ContentItemId, NÃO a posição na lista. Com coleções, a posição 3 é
+    // um jogo diferente em cada uma: chavear por posição mostraria a capa errada ao
+    // trocar de coleção. Pelo id, as três telas compartilham o mesmo cache e trocar
+    // de tela não perde nem recarrega nada.
     const int CACHE_MAX = 128;
 
     struct Entrada
     {
-        int         indice;
+        int         jogoId;
         D3DTexture *textura;
-        DWORD       uso;      // relogio logico, para descartar o mais antigo
+        DWORD       uso;      // relógio lógico, para descartar o usado há mais tempo
     };
 
     Entrada g_cache[CACHE_MAX];
     DWORD   g_relogio = 0;
-    std::vector<int> g_emVoo;    // indices ja pedidos, para nao pedir duas vezes
-    std::vector<int> g_falhou;   // indices que nao deram capa; nao insistir a 60 Hz
-
-    // Teto de pedidos em voo. Cada resultado carrega o DDS ate a thread de desenho
-    // recolher, e ela recolhe UM por quadro. Sem teto, rolar enfileira a biblioteca
-    // inteira e a memoria enche de buffers que ninguem vai consumir tao cedo. Na versao
-    // da janela quem segurava isso era o DescartarPendentes, que sumiu junto com ela.
+    std::vector<int> g_emVoo;
+    std::vector<int> g_falhou;
     const int EM_VOO_MAX = 6;
 
-    int  g_medidas = 0;
-    int  g_foco = 0;
-    int  g_primeiraLinha = 0;
+    ATG::Font g_fonte;
 
+    // ---- estado ----------------------------------------------------------------
+    enum Tela { TELA_COLECOES, TELA_JOGOS, TELA_ADICIONAR };
+
+    std::string                   g_caminhoBanco;
+    std::vector<biblioteca::Jogo> g_jogos;
+
+    Tela g_tela = TELA_COLECOES;
+    colecoes::Colecao *g_atual = NULL;
+    std::vector<int>   g_selecao;      // rascunho ao adicionar; ver AbrirAdicionar
+    int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0;
+
+    bool g_menuAberto = false;
+    int  g_menuFoco = 0, g_menuQtd = 0;
+    const char *g_menuItens[4];
+    const char *g_menuTitulo = "";
+
+    // ---- texto -----------------------------------------------------------------
+    // O SQLite devolve UTF-8. Converter com CP_ACP quebra o que não for ASCII: o
+    // "BLAZBLUE　CONTINUUM SHIFT" tem um espaço ideográfico japonês (três bytes)
+    // que virava lixo. E acima de 0x100 ficam os GLIFOS DE BOTÃO da fonte, então um
+    // caractere japonês que passasse desenharia um botão no meio do nome.
     void Larga(const std::string &origem, WCHAR *destino, int capacidade)
     {
         if (MultiByteToWideChar(CP_UTF8, 0, origem.c_str(), -1, destino, capacidade) <= 0)
@@ -106,57 +113,65 @@ namespace
             destino[0] = L'\0';
             return;
         }
-
         for (int i = 0; destino[i] != L'\0'; i++)
         {
-            if (destino[i] == 0x3000)        // espaco ideografico
-                destino[i] = L' ';
-            else if (destino[i] >= 0x100)    // fora da fonte, e na faixa dos botoes
-                destino[i] = L'?';
+            if (destino[i] == 0x3000)        destino[i] = L' ';
+            else if (destino[i] >= 0x100)    destino[i] = L'?';
         }
     }
 
-    D3DTexture *CarregarCapa(int indice)
+    const char *SemArtigo(const char *s)
     {
-        if (indice < 0 || indice >= (int)g_jogos.size())
-            return NULL;
-
-        const biblioteca::Jogo &jogo = g_jogos[indice];
-        std::string pasta = biblioteca::PastaArte(g_caminhoBanco, jogo.id);
-        if (pasta.empty())
-            return NULL;
-
-        char arquivo[512];
-        sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), jogo.id);
-
-        std::vector<fsda::Imagem> imagens;
-        if (!fsda::Ler(arquivo, imagens))
-            return NULL;
-
-        const fsda::Imagem *capa = fsda::Achar(imagens, fsda::TIPO_CAPA);
-        if (capa == NULL)
-            return NULL;
-
-        std::vector<unsigned char> bytes;
-        if (!fsda::LerBytes(arquivo, *capa, bytes))
-            return NULL;
-
-        // O DDS sai do .assets inteiro, com cabeçalho, então o D3DX carrega direto da
-        // memória: não há arquivo de imagem em disco para abrir.
-        D3DTexture *textura = NULL;
-        if (FAILED(D3DXCreateTextureFromFileInMemory(ATG::g_pd3dDevice,
-                                                     &bytes[0], (UINT)bytes.size(),
-                                                     &textura)))
-            return NULL;
-
-        return textura;
+        static const char *ARTIGOS[] = { "the ", "a ", "an ", "o ", "os ", "as ", "um ", "uma " };
+        for (int i = 0; i < 8; i++)
+        {
+            size_t n = strlen(ARTIGOS[i]);
+            if (_strnicmp(s, ARTIGOS[i], (int)n) == 0)
+                return s + n;
+        }
+        return s;
     }
 
-    D3DTexture *NoCache(int indice, bool marcarUso)
+    char Inicial(const std::string &nome)
+    {
+        char c = (char)toupper((unsigned char)SemArtigo(nome.c_str())[0]);
+        return (c >= 'A' && c <= 'Z') ? c : '#';
+    }
+
+    // ---- listas ----------------------------------------------------------------
+    // Ponteiros para g_jogos, que não muda depois de carregada.
+    std::vector<const biblioteca::Jogo *> ListaAtual()
+    {
+        std::vector<const biblioteca::Jogo *> saida;
+
+        if (g_tela == TELA_ADICIONAR)
+        {
+            for (size_t i = 0; i < g_jogos.size(); i++)
+                saida.push_back(&g_jogos[i]);
+        }
+        else if (g_atual != NULL)
+        {
+            for (size_t i = 0; i < g_jogos.size(); i++)
+                if (colecoes::Tem(g_atual, g_jogos[i].id))
+                    saida.push_back(&g_jogos[i]);
+        }
+        return saida;      // g_jogos já vem ordenada de biblioteca::Ler
+    }
+
+    bool SelecionadoNoRascunho(int id)
+    {
+        for (size_t i = 0; i < g_selecao.size(); i++)
+            if (g_selecao[i] == id)
+                return true;
+        return false;
+    }
+
+    // ---- cache -----------------------------------------------------------------
+    D3DTexture *NoCache(int jogoId, bool marcarUso)
     {
         for (int i = 0; i < CACHE_MAX; i++)
         {
-            if (g_cache[i].textura != NULL && g_cache[i].indice == indice)
+            if (g_cache[i].textura != NULL && g_cache[i].jogoId == jogoId)
             {
                 if (marcarUso)
                     g_cache[i].uso = ++g_relogio;
@@ -166,48 +181,26 @@ namespace
         return NULL;
     }
 
-    bool EmVoo(int indice)
+    bool EstaNaLista(const std::vector<int> &v, int x)
     {
-        for (size_t i = 0; i < g_emVoo.size(); i++)
-            if (g_emVoo[i] == indice)
+        for (size_t i = 0; i < v.size(); i++)
+            if (v[i] == x)
                 return true;
         return false;
     }
 
-    bool Falhou(int indice)
-    {
-        for (size_t i = 0; i < g_falhou.size(); i++)
-            if (g_falhou[i] == indice)
-                return true;
-        return false;
-    }
-
-    // Guarda no cache, descartando a entrada usada ha mais tempo quando cheio.
-    void Guardar(int indice, D3DTexture *textura)
+    void Guardar(int jogoId, D3DTexture *textura)
     {
         int alvo = -1;
         DWORD maisAntigo = 0xFFFFFFFF;
-        int primeiroVisivel = g_primeiraLinha * COLUNAS;
-        int aposVisivel     = (g_primeiraLinha + LINHAS) * COLUNAS;
 
         for (int i = 0; i < CACHE_MAX; i++)
         {
-            if (g_cache[i].textura == NULL)
-            {
-                alvo = i;
-                break;
-            }
-            // Nunca descartar uma capa que esta na tela neste quadro.
-            if (g_cache[i].indice >= primeiroVisivel && g_cache[i].indice < aposVisivel)
-                continue;
-            if (g_cache[i].uso < maisAntigo)
-            {
-                maisAntigo = g_cache[i].uso;
-                alvo = i;
-            }
+            if (g_cache[i].textura == NULL) { alvo = i; break; }
+            if (g_cache[i].uso < maisAntigo) { maisAntigo = g_cache[i].uso; alvo = i; }
         }
 
-        if (alvo < 0)               // cheio e tudo visivel: descarta a recem-criada
+        if (alvo < 0)
         {
             textura->Release();
             return;
@@ -215,89 +208,80 @@ namespace
 
         if (g_cache[alvo].textura != NULL)
         {
-            // O XDK e explicito: recurso que pode estar setado no device tem de ser
-            // desassociado antes de liberado. Hoje escapamos por acaso, porque o
-            // Font::End() zera a textura e o rodape e a ultima coisa desenhada.
+            // O XDK é explícito: recurso que pode estar setado no device tem de ser
+            // desassociado antes de liberado.
             ATG::g_pd3dDevice->SetTexture(0, NULL);
             g_cache[alvo].textura->Release();
-            g_cache[alvo].textura = NULL;
         }
 
-        g_cache[alvo].indice  = indice;
+        g_cache[alvo].jogoId  = jogoId;
         g_cache[alvo].textura = textura;
         g_cache[alvo].uso     = ++g_relogio;
     }
 
-    // Pede o que falta para a tela e para uma linha de folga de cada lado. Sem estado
-    // de janela: o cache responde quem ja tem, e o resto vira pedido.
     void PedirOQueFalta()
     {
+        if (g_tela == TELA_COLECOES)
+            return;
+
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
         int base = (g_primeiraLinha - 1) * COLUNAS;
-        if (base < 0)
-            base = 0;
+        if (base < 0) base = 0;
         int fim = (g_primeiraLinha + LINHAS + 1) * COLUNAS;
-        if (fim > (int)g_jogos.size())
-            fim = (int)g_jogos.size();
+        if (fim > (int)L.size()) fim = (int)L.size();
 
         for (int volta = 0; volta < 2; volta++)
         {
-            for (int indice = base; indice < fim; indice++)
+            for (int i = base; i < fim; i++)
             {
                 if ((int)g_emVoo.size() >= EM_VOO_MAX)
                     return;
 
-                bool visivel = (indice >= g_primeiraLinha * COLUNAS) &&
-                               (indice <  (g_primeiraLinha + LINHAS) * COLUNAS);
+                bool visivel = (i >= g_primeiraLinha * COLUNAS) &&
+                               (i <  (g_primeiraLinha + LINHAS) * COLUNAS);
                 if ((volta == 0) != visivel)
                     continue;
-                if (NoCache(indice, false) != NULL || EmVoo(indice) || Falhou(indice))
+
+                int id = L[i]->id;
+                if (NoCache(id, false) != NULL || EstaNaLista(g_emVoo, id) ||
+                    EstaNaLista(g_falhou, id))
                     continue;
 
-                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, g_jogos[indice].id);
+                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, id);
                 if (pasta.empty())
                     continue;
 
                 char arquivo[512];
-                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), g_jogos[indice].id);
-                carregador::Pedir(indice, arquivo);
-                g_emVoo.push_back(indice);
+                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), id);
+                carregador::Pedir(id, arquivo);
+                g_emVoo.push_back(id);
             }
         }
     }
 
-    // Recolhe o que a thread de leitura terminou e cria a textura -- isto na thread de
-    // desenho, para o D3D nao ser tocado por duas. De bytes em memoria e rapido: o DDS
-    // vem em DXT5 e nao ha decodificacao a fazer.
     void RecolherCarregadas()
     {
-        int indice;
+        int jogoId;
         std::vector<unsigned char> bytes;
 
         // UMA por quadro. Mesmo a 3 ms, cinco de uma vez dariam um solavanco.
-        if (!carregador::Retirar(&indice, bytes))
+        if (!carregador::Retirar(&jogoId, bytes))
             return;
 
         for (size_t k = 0; k < g_emVoo.size(); k++)
         {
-            if (g_emVoo[k] == indice)
-            {
-                g_emVoo.erase(g_emVoo.begin() + k);
-                break;
-            }
+            if (g_emVoo[k] == jogoId) { g_emVoo.erase(g_emVoo.begin() + k); break; }
         }
 
-        if (NoCache(indice, false) != NULL)
-            return;                          // duplicado; nao sobrescreve nada
+        if (NoCache(jogoId, false) != NULL)
+            return;                          // duplicado
 
         if (bytes.empty())
         {
-            // Sem registrar a falha, PedirOQueFalta pediria de novo no quadro seguinte,
-            // e de novo, a 60 Hz -- um laco de leitura de disco em rajada.
-            g_falhou.push_back(indice);
+            g_falhou.push_back(jogoId);      // não insistir a 60 Hz
             return;
         }
 
-        // O formato vem do fourCC do proprio DDS, para o D3DX nao decidir converter.
         D3DFORMAT formato = D3DFMT_UNKNOWN;
         if (bytes.size() > 88)
         {
@@ -305,31 +289,291 @@ namespace
             else if (memcmp(&bytes[84], "DXT1", 4) == 0) formato = D3DFMT_DXT1;
         }
 
-        DWORD t0 = GetTickCount();
+        // A versão Ex com estes parâmetros é o que o FreeStyle faz. A versão sem Ex usa
+        // D3DX_DEFAULT em tudo: redimensiona para potência de 2 com filtragem e gera a
+        // cadeia inteira de mipmaps. Era o que travava a cada linha nova.
         D3DTexture *textura = NULL;
-
-        // A versao Ex com estes parametros e o que o FreeStyle faz. A versao sem Ex usa
-        // D3DX_DEFAULT em tudo: redimensiona 900x600 para 1024x1024 com filtragem e gera
-        // a cadeia inteira de mipmaps, uns onze niveis. Era o que travava a cada linha.
         HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
             ATG::g_pd3dDevice, &bytes[0], (UINT)bytes.size(),
             D3DX_DEFAULT_NONPOW2, D3DX_DEFAULT_NONPOW2,
-            1,                             // um mipmap so
+            1,                               // um mipmap só
             D3DUSAGE_CPU_CACHED_MEMORY, formato, D3DPOOL_DEFAULT,
             D3DX_FILTER_NONE, D3DX_FILTER_NONE,
             0, NULL, NULL, &textura);
 
         if (SUCCEEDED(hr) && textura != NULL)
-            Guardar(indice, textura);
+            Guardar(jogoId, textura);
         else
-            g_falhou.push_back(indice);
+            g_falhou.push_back(jogoId);
+    }
 
-        if (g_medidas < 8)
+    // ---- desenho ---------------------------------------------------------------
+    void Cabecalho(const WCHAR *titulo, const WCHAR *sub)
+    {
+        g_fonte.SetScaleFactors(1.5f, 1.5f);
+        g_fonte.DrawText((FLOAT)MARGEM_X, 34.0f, COR_TEXTO, titulo, 0);
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
+        if (sub != NULL && sub[0] != L'\0')
+            g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, sub, 0);
+    }
+
+    void Rodape(const WCHAR *esquerda, const WCHAR *direita)
+    {
+        g_fonte.DrawText((FLOAT)MARGEM_X, 656.0f, COR_APAGADO, esquerda, 0);
+        if (direita != NULL && direita[0] != L'\0')
+            g_fonte.DrawText(1180.0f, 656.0f, COR_FRACO, direita, ATGFONT_RIGHT);
+    }
+
+    void Caixa(int x, int y, int l, int a, bool focada)
+    {
+        D3DRECT r;
+        r.x1 = x; r.y1 = y; r.x2 = x + l; r.y2 = y + a;
+        ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(r, NULL, COR_PAINEL);
+        ATG::DebugDraw::DrawScreenSpaceRect(r, focada ? 3.0f : 1.0f,
+                                            focada ? COR_ANEL : COR_LINHA);
+    }
+
+    void TelaColecoes()
+    {
+        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        WCHAR texto[256];
+
+        if (L.empty())
         {
-            diario::Escrever("  textura %d: %u bytes, %u ms, hr=0x%08X",
-                             indice, (unsigned)bytes.size(), GetTickCount() - t0, hr);
-            g_medidas++;
+            g_fonte.Begin();
+            g_fonte.SetScaleFactors(1.3f, 1.3f);
+            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhuma coleção ainda",
+                             ATGFONT_CENTER_X);
+            g_fonte.SetScaleFactors(1.0f, 1.0f);
+            Rodape(GLYPH_X_BUTTON L" Nova coleção", L"");
+            g_fonte.End();
+            return;
         }
+
+        if (g_iCol >= (int)L.size()) g_iCol = (int)L.size() - 1;
+        int paginaInicio = (g_iCol / COL_POR_PAGINA) * COL_POR_PAGINA;
+
+        for (int k = 0; k < COL_POR_PAGINA; k++)
+        {
+            int i = paginaInicio + k;
+            if (i >= (int)L.size()) break;
+
+            int x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            Caixa(x, y, COL_LADO, COL_LADO, i == g_iCol);
+        }
+
+        g_fonte.Begin();
+        for (int k = 0; k < COL_POR_PAGINA; k++)
+        {
+            int i = paginaInicio + k;
+            if (i >= (int)L.size()) break;
+
+            int x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
+
+            Larga(L[i]->nome, texto, 256);
+            g_fonte.DrawText((FLOAT)x + 14.0f, (FLOAT)y + COL_LADO - 56.0f,
+                             (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
+                             texto, ATGFONT_TRUNCATED, (FLOAT)COL_LADO - 28.0f);
+
+            if (L[i]->ids.empty())
+                swprintf_s(texto, 256, L"vazia");
+            else
+                swprintf_s(texto, 256, L"%d jogos", (int)L[i]->ids.size());
+            g_fonte.DrawText((FLOAT)x + 14.0f, (FLOAT)y + COL_LADO - 30.0f,
+                             COR_FRACO, texto, 0);
+        }
+
+        swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
+        Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
+               GLYPH_START_BUTTON L" Opções", texto);
+        g_fonte.End();
+    }
+
+    void IndiceAlfabetico(const std::vector<const biblioteca::Jogo *> &L)
+    {
+        if (L.empty()) return;
+
+        bool tem[27];
+        for (int i = 0; i < 27; i++) tem[i] = false;
+        for (size_t i = 0; i < L.size(); i++)
+        {
+            char c = Inicial(L[i]->nome);
+            tem[(c == '#') ? 26 : (c - 'A')] = true;
+        }
+
+        char atual = Inicial(L[g_iJogo]->nome);
+        float passo = (640.0f - 92.0f) / 27.0f;
+
+        g_fonte.Begin();
+        for (int i = 0; i < 27; i++)
+        {
+            float y = 92.0f + i * passo;
+            bool acesa = ((i == 26) ? '#' : (char)('A' + i)) == atual;
+
+            if (acesa)
+            {
+                D3DRECT r;
+                r.x1 = 1204; r.y1 = (LONG)y - 1;
+                r.x2 = 1232; r.y2 = (LONG)(y + passo);
+                ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(r, NULL, COR_ANEL);
+                g_fonte.End();          // o retângulo trocou estado; refaz o lote
+                g_fonte.Begin();
+            }
+
+            WCHAR letra[2] = { (WCHAR)((i == 26) ? L'#' : (L'A' + i)), L'\0' };
+            g_fonte.DrawText(1218.0f, y, acesa ? COR_FUNDO
+                             : (tem[i] ? COR_APAGADO : COR_LINHA), letra, ATGFONT_CENTER_X);
+        }
+        g_fonte.End();
+    }
+
+    void TelaJogos()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        const bool adicionando = (g_tela == TELA_ADICIONAR);
+        const int total = (int)L.size();
+        WCHAR texto[256], sub[64];
+
+        if (total == 0)
+        {
+            g_fonte.Begin();
+            g_fonte.SetScaleFactors(1.3f, 1.3f);
+            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhum jogo nesta coleção",
+                             ATGFONT_CENTER_X);
+            g_fonte.SetScaleFactors(1.0f, 1.0f);
+            Rodape(GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos", L"");
+            g_fonte.End();
+            return;
+        }
+
+        if (g_iJogo >= total) g_iJogo = total - 1;
+        int base = g_primeiraLinha * COLUNAS;
+
+        // As capas primeiro: o texto vai todo num lote depois, porque o Begin/End da
+        // fonte salva e restaura estado de render e intercalar os dois embaralha o D3D.
+        struct Nome { FLOAT x, y; int i; };
+        Nome nomes[POR_PAGINA];
+        int qtdNomes = 0;
+
+        for (int k = 0; k < POR_PAGINA; k++)
+        {
+            int i = base + k;
+            if (i >= total) break;
+
+            D3DRECT r;
+            r.x1 = MARGEM_X + (k % COLUNAS) * (CAPA_L + ESPACO_X);
+            r.y1 = TOPO + (k / COLUNAS) * (CAPA_A + ESPACO_Y);
+            r.x2 = r.x1 + CAPA_L;
+            r.y2 = r.y1 + CAPA_A;
+
+            D3DTexture *capa = NoCache(L[i]->id, true);
+            bool marcado = !adicionando || SelecionadoNoRascunho(L[i]->id);
+
+            if (capa != NULL)
+            {
+                // Só a frente do encarte: amostra de U 0,532 até 1,0.
+                if (marcado)
+                    ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
+                        r, XMFLOAT2(FRENTE_U0, 0.0f), XMFLOAT2(1.0f, 0.0f),
+                        XMFLOAT2(FRENTE_U0, 1.0f), capa);
+                else
+                    ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(
+                        r, capa, D3DCOLOR_ARGB(150, 255, 255, 255));
+            }
+            else
+            {
+                ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
+            }
+
+            if (adicionando && SelecionadoNoRascunho(L[i]->id))
+                ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
+
+            if (i == g_iJogo)
+            {
+                D3DRECT anel = r;
+                anel.x1 -= 4; anel.y1 -= 4; anel.x2 += 4; anel.y2 += 4;
+                ATG::DebugDraw::DrawScreenSpaceRect(anel, 3.0f, COR_ANEL);
+            }
+
+            nomes[qtdNomes].x = (FLOAT)r.x1;
+            nomes[qtdNomes].y = (FLOAT)r.y2 + 8.0f;
+            nomes[qtdNomes].i = i;
+            qtdNomes++;
+        }
+
+        g_fonte.Begin();
+        if (adicionando)
+        {
+            swprintf_s(sub, 64, L"%d de %d marcados", (int)g_selecao.size(), (int)g_jogos.size());
+            Cabecalho(L"Adicionar jogos", sub);
+        }
+        else
+        {
+            Larga(g_atual->nome, texto, 256);
+            Cabecalho(texto, L"");
+        }
+
+        for (int k = 0; k < qtdNomes; k++)
+        {
+            Larga(L[nomes[k].i]->nome, texto, 256);
+            g_fonte.DrawText(nomes[k].x, nomes[k].y,
+                             (nomes[k].i == g_iJogo) ? COR_TEXTO : COR_APAGADO,
+                             texto, ATGFONT_TRUNCATED, (FLOAT)CAPA_L);
+        }
+
+        if (adicionando)
+        {
+            swprintf_s(texto, 256, L"%d marcados", (int)g_selecao.size());
+            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
+                   GLYPH_START_BUTTON L" Concluir", texto);
+        }
+        else
+        {
+            swprintf_s(texto, 256, L"%d de %d", g_iJogo + 1, total);
+            Rodape(GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
+                   GLYPH_X_BUTTON L" Adicionar jogos     " GLYPH_START_BUTTON L" Opções", texto);
+        }
+        g_fonte.End();
+
+        IndiceAlfabetico(L);
+    }
+
+    void DesenharMenu()
+    {
+        const int L = 460, A = 60 + g_menuQtd * 52;
+        const int x = (1280 - L) / 2, y = (720 - A) / 2;
+
+        D3DRECT fundo;
+        fundo.x1 = 0; fundo.y1 = 0; fundo.x2 = 1280; fundo.y2 = 720;
+        ATG::DebugDraw::DrawScreenSpaceTexturedRectColored(fundo, NULL,
+                                                           D3DCOLOR_ARGB(200, 6, 9, 8));
+        Caixa(x, y, L, A, false);
+
+        for (int i = 0; i < g_menuQtd; i++)
+            if (i == g_menuFoco)
+            {
+                D3DRECT r;
+                r.x1 = x + 14; r.y1 = y + 46 + i * 52;
+                r.x2 = x + L - 14; r.y2 = r.y1 + 42;
+                ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
+            }
+
+        WCHAR texto[256];
+        g_fonte.Begin();
+        Larga(g_menuTitulo, texto, 256);
+        g_fonte.DrawText((FLOAT)x + 20.0f, (FLOAT)y + 14.0f, COR_TEXTO,
+                         texto, ATGFONT_TRUNCATED, (FLOAT)L - 40.0f);
+
+        for (int i = 0; i < g_menuQtd; i++)
+        {
+            Larga(g_menuItens[i], texto, 256);
+            g_fonte.DrawText((FLOAT)x + 30.0f, (FLOAT)y + 56.0f + i * 52.0f,
+                             (i == g_menuFoco) ? COR_TEXTO : COR_APAGADO, texto, 0);
+        }
+        Rodape(GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar", L"");
+        g_fonte.End();
     }
 
     void Desenhar()
@@ -337,201 +581,221 @@ namespace
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
         d->Clear(0, NULL, D3DCLEAR_TARGET, COR_FUNDO, 1.0f, 0);
 
-        WCHAR texto[256];
-        int base = g_primeiraLinha * COLUNAS;
-        int total = (int)g_jogos.size();
+        if (g_tela == TELA_COLECOES) TelaColecoes();
+        else                          TelaJogos();
 
-        FLOAT nomeX[POR_PAGINA], nomeY[POR_PAGINA];
-        int   nomeDe[POR_PAGINA];
-        int   desenhados = 0;
-
-        // Uma passagem de Begin/End por quadro: a ATG pede para agrupar as chamadas de
-        // DrawText, e assim some a alternância de estado de render dez vezes por quadro.
-        g_fonte.Begin();
-        g_fonte.SetScaleFactors(1.5f, 1.5f);
-        g_fonte.DrawText((FLOAT)MARGEM_X, 34.0f, COR_TEXTO, L"Todos os jogos", 0);
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-        swprintf_s(texto, 256, L"%d jogos", total);
-        g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, texto, 0);
-        g_fonte.End();
-
-        // As capas primeiro, o texto todo depois: as texturas precisam sair fora do
-        // Begin/End da fonte, que troca estado de render.
-
-        // Grade
-        for (int i = 0; i < POR_PAGINA; i++)
-        {
-            int indice = base + i;
-            if (indice >= total)
-                break;
-
-            int coluna = i % COLUNAS;
-            int linha  = i / COLUNAS;
-
-            D3DRECT r;
-            r.x1 = MARGEM_X + coluna * (CAPA_L + ESPACO_X);
-            r.y1 = TOPO + linha * (CAPA_A + ESPACO_Y);
-            r.x2 = r.x1 + CAPA_L;
-            r.y2 = r.y1 + CAPA_A;
-
-            D3DTexture *capa = NoCache(indice, true);
-
-            if (capa != NULL)
-            {
-                // Só a frente do encarte: amostra de U 0,532 até 1,0.
-                ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
-                    r,
-                    XMFLOAT2(FRENTE_U0, 0.0f),
-                    XMFLOAT2(1.0f,      0.0f),
-                    XMFLOAT2(FRENTE_U0, 1.0f),
-                    capa);
-            }
-            else
-            {
-                ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
-            }
-
-            if (indice == g_foco)
-            {
-                D3DRECT anel = r;
-                anel.x1 -= 4; anel.y1 -= 4; anel.x2 += 4; anel.y2 += 4;
-                ATG::DebugDraw::DrawScreenSpaceRect(anel, 3.0f, COR_ANEL);
-            }
-
-            // O nome, cortado pela LARGURA da capa. É a ATG que resolve o problema dos
-            // "Call of Duty: Modern Wa..." indistinguíveis que o protótipo tinha.
-            nomeX[desenhados] = (FLOAT)r.x1;
-            nomeY[desenhados] = (FLOAT)r.y2 + 8.0f;
-            nomeDe[desenhados] = indice;
-            desenhados++;
-        }
-
-        // Agora todo o texto de uma vez.
-        g_fonte.Begin();
-        for (int k = 0; k < desenhados; k++)
-        {
-            Larga(g_jogos[nomeDe[k]].nome, texto, 256);
-            g_fonte.DrawText(nomeX[k], nomeY[k],
-                             (nomeDe[k] == g_foco) ? COR_TEXTO : COR_APAGADO,
-                             texto, ATGFONT_TRUNCATED, (FLOAT)CAPA_L);
-        }
-
-        g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO,
-                         GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar", 0);
-
-        int linhasTotais = (total + COLUNAS - 1) / COLUNAS;
-        swprintf_s(texto, 256, L"%d de %d", g_foco + 1, total);
-        g_fonte.DrawText(1180.0f, 660.0f, COR_FRACO, texto, ATGFONT_RIGHT);
-        (void)linhasTotais;
-        g_fonte.End();
+        if (g_menuAberto)
+            DesenharMenu();
 
         d->Present(NULL, NULL, NULL, NULL);
     }
 
-    // Modal de arranque: escolher qual instalacao do FreeStyle usar. NAO e uma tela da
-    // navegacao -- e um laco proprio, que roda uma vez e devolve. Quando a tela de
-    // colecoes existir, com ida e volta de verdade, ai um conceito de tela se paga.
-    std::string Escolher(const std::vector<biblioteca::Candidato> &candidatos)
+    // ---- navegação -------------------------------------------------------------
+    void SeguirFoco()
     {
-        int escolhido = 0;
-        XINPUT_STATE anterior;
-        ZeroMemory(&anterior, sizeof(anterior));
+        int linha = g_iJogo / COLUNAS;
+        if (linha < g_primeiraLinha) g_primeiraLinha = linha;
+        else if (linha >= g_primeiraLinha + LINHAS) g_primeiraLinha = linha - LINHAS + 1;
+    }
 
-        for (;;)
+    void MoverJogo(int delta)
+    {
+        int total = (int)ListaAtual().size();
+        if (total == 0) return;
+        int novo = g_iJogo + delta;
+        if (novo < 0 || novo >= total) return;
+        g_iJogo = novo;
+        SeguirFoco();
+    }
+
+    void SaltoLetra(int dir)
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        if (L.empty()) return;
+
+        char cur = Inicial(L[g_iJogo]->nome);
+        int i = g_iJogo;
+        while (i + dir >= 0 && i + dir < (int)L.size() && Inicial(L[i + dir]->nome) == cur)
+            i += dir;
+
+        int alvo = i + dir;
+        if (alvo < 0) alvo = 0;
+        if (alvo >= (int)L.size()) alvo = (int)L.size() - 1;
+        g_iJogo = alvo;
+        SeguirFoco();
+    }
+
+    void MoverColecao(int delta)
+    {
+        int total = (int)colecoes::Ordenadas().size();
+        if (total == 0) return;
+        int novo = g_iCol + delta;
+        if (novo >= 0 && novo < total) g_iCol = novo;
+    }
+
+    void AbrirColecao()
+    {
+        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        if (L.empty()) return;
+        g_atual = L[g_iCol];
+        g_tela = TELA_JOGOS;
+        g_iJogo = 0; g_primeiraLinha = 0;
+        carregador::DescartarPendentes();   // o que era da tela anterior já não serve
+        g_emVoo.clear();
+    }
+
+    // Ao adicionar trabalhamos numa CÓPIA. É o que dá sentido ao B: sem rascunho,
+    // "cancelar" não teria o que desfazer, porque cada marcação já estaria gravada.
+    void AbrirAdicionar()
+    {
+        g_selecao = g_atual->ids;
+        g_tela = TELA_ADICIONAR;
+        g_iJogo = 0; g_primeiraLinha = 0;
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
+
+    void FecharAdicionar(bool gravar)
+    {
+        if (gravar)
         {
-            XINPUT_STATE agora;
-            ZeroMemory(&agora, sizeof(agora));
-            XInputGetState(0, &agora);
-            WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
-            anterior = agora;
+            g_atual->ids = g_selecao;
+            colecoes::Gravar();
+        }
+        g_selecao.clear();
+        g_tela = TELA_JOGOS;
+        g_iJogo = 0; g_primeiraLinha = 0;
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
 
-            if (novos & XINPUT_GAMEPAD_DPAD_DOWN)
-                escolhido = (escolhido + 1) % (int)candidatos.size();
-            if (novos & XINPUT_GAMEPAD_DPAD_UP)
-                escolhido = (escolhido + (int)candidatos.size() - 1) % (int)candidatos.size();
-            if (novos & XINPUT_GAMEPAD_A)
-                return candidatos[escolhido].caminho;
+    void NovaColecao()
+    {
+        std::string nome;
+        if (!teclado::Pedir("Nova coleção", "Como se chama?", "", nome))
+            return;
 
-            ATG::D3DDevice *d = ATG::g_pd3dDevice;
-            d->Clear(0, NULL, D3DCLEAR_TARGET, COR_FUNDO, 1.0f, 0);
+        colecoes::Criar(nome);
+        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        for (size_t i = 0; i < L.size(); i++)
+            if (L[i]->nome == nome.substr(0, 28))
+                g_iCol = (int)i;
+        diario::Escrever("colecao criada: %s", nome.c_str());
+    }
 
-            WCHAR texto[512];
+    void Renomear()
+    {
+        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        if (L.empty()) return;
 
-            g_fonte.Begin();
-            g_fonte.SetScaleFactors(1.5f, 1.5f);
-            g_fonte.DrawText((FLOAT)MARGEM_X, 120.0f, COR_TEXTO, L"Qual biblioteca?", 0);
-            g_fonte.SetScaleFactors(1.0f, 1.0f);
-            g_fonte.DrawText((FLOAT)MARGEM_X, 180.0f, COR_APAGADO,
-                             L"Achei mais de uma instalacao do FreeStyle neste console.", 0);
-            g_fonte.End();
+        std::string nome;
+        if (!teclado::Pedir("Renomear", "Novo nome", L[g_iCol]->nome.c_str(), nome))
+            return;
 
-            for (int i = 0; i < (int)candidatos.size(); i++)
+        L[g_iCol]->nome = nome.substr(0, 28);
+        colecoes::Gravar();
+    }
+
+    void AbrirMenuColecao()
+    {
+        if (colecoes::Ordenadas().empty()) return;
+        g_menuTitulo = colecoes::Ordenadas()[g_iCol]->nome.c_str();
+        g_menuItens[0] = "Renomear";
+        g_menuItens[1] = "Apagar coleção";
+        g_menuQtd = 2; g_menuFoco = 0; g_menuAberto = true;
+    }
+
+    void AbrirMenuJogo()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        if (L.empty()) return;
+        g_menuTitulo = L[g_iJogo]->nome.c_str();
+        g_menuItens[0] = "Remover da coleção";
+        g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
+    }
+
+    void EscolherNoMenu()
+    {
+        g_menuAberto = false;
+
+        if (g_tela == TELA_COLECOES)
+        {
+            if (g_menuFoco == 0) Renomear();
+            else
             {
-                D3DRECT r;
-                r.x1 = MARGEM_X;
-                r.y1 = 240 + i * 62;
-                r.x2 = 1180;
-                r.y2 = r.y1 + 50;
-
-                if (i == escolhido)
-                    ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
-
-                Larga(candidatos[i].rotulo, texto, 512);
-                g_fonte.Begin();
-                g_fonte.DrawText((FLOAT)r.x1 + 18.0f, (FLOAT)r.y1 + 14.0f,
-                                 (i == escolhido) ? COR_TEXTO : COR_APAGADO, texto, 0);
-                g_fonte.End();
+                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+                if (!L.empty())
+                {
+                    colecoes::Apagar(L[g_iCol]);
+                    if (g_iCol > 0) g_iCol--;
+                }
             }
-
-            g_fonte.Begin();
-            g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO,
-                             GLYPH_A_BUTTON L" Escolher", 0);
-            g_fonte.DrawText(1180.0f, 660.0f, COR_FRACO,
-                             L"fica gravado; apague collectionui.ini para trocar",
-                             ATGFONT_RIGHT);
-            g_fonte.End();
-
-            d->Present(NULL, NULL, NULL, NULL);
+        }
+        else
+        {
+            std::vector<const biblioteca::Jogo *> L = ListaAtual();
+            if (!L.empty())
+            {
+                colecoes::Remover(g_atual, L[g_iJogo]->id);
+                if (g_iJogo > 0) g_iJogo--;
+                SeguirFoco();
+            }
         }
     }
 
-    void Mover(int delta)
+    void Confirmar()
     {
-        int total = (int)g_jogos.size();
-        if (total == 0)
-            return;
+        if (g_tela == TELA_COLECOES) AbrirColecao();
+        else if (g_tela == TELA_ADICIONAR)
+        {
+            std::vector<const biblioteca::Jogo *> L = ListaAtual();
+            if (L.empty()) return;
 
-        int novo = g_foco + delta;
-        if (novo < 0 || novo >= total)
-            return;                       // não dá a volta: bate no fim e para
-        g_foco = novo;
+            int id = L[g_iJogo]->id;
+            for (size_t i = 0; i < g_selecao.size(); i++)
+            {
+                if (g_selecao[i] == id) { g_selecao.erase(g_selecao.begin() + i); return; }
+            }
+            g_selecao.push_back(id);
+        }
+        else
+        {
+            // Lançar o jogo é a próxima fase: XLaunchNewImage para XEX solto e
+            // Xbox360Container para STFS/GOD, como faz o ContentItemNew::LaunchGame.
+            std::vector<const biblioteca::Jogo *> L = ListaAtual();
+            if (!L.empty())
+                diario::Escrever("jogar (ainda nao implementado): %s [tipo %d] %s",
+                                 L[g_iJogo]->nome.c_str(), L[g_iJogo]->tipoArquivo,
+                                 L[g_iJogo]->caminho.c_str());
+        }
+    }
 
-        // A grade segue o foco, rolando o mínimo necessário.
-        int linhaDoFoco = g_foco / COLUNAS;
-        if (linhaDoFoco < g_primeiraLinha)
-            g_primeiraLinha = linhaDoFoco;
-        else if (linhaDoFoco >= g_primeiraLinha + LINHAS)
-            g_primeiraLinha = linhaDoFoco - LINHAS + 1;
-
+    void Voltar()
+    {
+        if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
+        else if (g_tela == TELA_JOGOS)
+        {
+            g_tela = TELA_COLECOES;
+            g_atual = NULL;
+            carregador::DescartarPendentes();
+            g_emVoo.clear();
+        }
     }
 }
 
 void __cdecl main()
 {
     diario::Abrir("game:\\collectionui.log");
-    diario::Escrever("CollectionUI — grade de capas");
+    diario::Escrever("CollectionUI");
 
     for (int i = 0; i < CACHE_MAX; i++)
     {
-        g_cache[i].indice = -1;
-        g_cache[i].textura = NULL;
-        g_cache[i].uso = 0;
+        g_cache[i].jogoId = -1; g_cache[i].textura = NULL; g_cache[i].uso = 0;
     }
 
-    // --- D3D ---
-    // No Xbox 360 não há indireção de COM: Direct3D::CreateDevice é um método ESTÁTICO
-    // que encaminha para a função global Direct3D_CreateDevice, e o ponteiro devolvido
-    // por Direct3DCreate9 nunca é dereferenciado.
+    // No Xbox 360 não há indireção de COM: Direct3D::CreateDevice é método ESTÁTICO
+    // que encaminha para Direct3D_CreateDevice, e o ponteiro do Direct3DCreate9 nunca
+    // é dereferenciado.
     IDirect3D9 *d3d = Direct3DCreate9(D3D_SDK_VERSION);
     (void)d3d;
 
@@ -555,72 +819,46 @@ void __cdecl main()
     }
     diario::Escrever("D3D pronto em 1280x720");
 
-    // Registrar a intenção ANTES de cada chamada arriscada: se o console cair, o log
-    // diz onde. Logar só o sucesso faz a falha aparecer como silêncio.
-    diario::Escrever("chamando SimpleShaders::Initialize (espera game:\\media\\effects\\simpleshaders.fxobj)");
+    // Registrar a intenção ANTES de cada chamada arriscada: logar só o sucesso faz a
+    // falha aparecer como silêncio.
+    diario::Escrever("SimpleShaders::Initialize (espera game:\\media\\effects\\simpleshaders.fxobj)");
     ATG::SimpleShaders::Initialize(NULL, NULL);
     diario::Escrever("SimpleShaders ok");
 
-    diario::Escrever("carregando fonte game:\\media\\Arial_16.xpr");
+    diario::Escrever("fonte game:\\media\\Arial_16.xpr");
     if (FAILED(g_fonte.Create("game:\\media\\Arial_16.xpr")))
-        diario::Escrever("AVISO: fonte nao carregou — a tela sai sem texto");
-    else
-        diario::Escrever("fonte carregada");
+        diario::Escrever("AVISO: fonte nao carregou");
 
-    // --- biblioteca ---
-    // Antes de procurar qualquer arquivo: um título só enxerga "game:" por padrão.
-    // Sem montar, o HD simplesmente não existe para nós.
+    // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
     diario::Escrever("montando dispositivos");
     dispositivos::MontarTodos();
 
     std::vector<biblioteca::Candidato> candidatos;
     biblioteca::ListarCandidatos(candidatos);
 
-    // A escolha de antes, se ainda valer. Um caminho gravado que sumiu (instalacao
-    // apagada, pendrive trocado) faz perguntar de novo, em vez de falhar calado.
     g_caminhoBanco = config::LerBanco();
     if (!g_caminhoBanco.empty() && !biblioteca::Existe(g_caminhoBanco))
     {
         diario::Escrever("o banco gravado nao existe mais: %s", g_caminhoBanco.c_str());
         g_caminhoBanco.clear();
     }
-
     if (g_caminhoBanco.empty() && candidatos.size() == 1)
     {
-        // Uma so: nao ha escolha a fazer, nao se pergunta.
         g_caminhoBanco = candidatos[0].caminho;
         config::GravarBanco(g_caminhoBanco);
     }
-    else if (g_caminhoBanco.empty() && candidatos.size() > 1)
-    {
-        diario::Escrever("mais de uma instalacao: perguntando");
-        g_caminhoBanco = Escolher(candidatos);
-        config::GravarBanco(g_caminhoBanco);
-    }
 
-    diario::Escrever("biblioteca escolhida: %s",
-                     g_caminhoBanco.empty() ? "(nenhuma)" : g_caminhoBanco.c_str());
+    if (!g_caminhoBanco.empty())
+        biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
+    diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
 
-    if (!g_caminhoBanco.empty() &&
-        biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos))
-    {
-        diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
-        carregador::Iniciar();
-    }
-    else
-    {
-        diario::Escrever("ERRO: nao consegui ler a biblioteca");
-    }
+    colecoes::Carregar();
+    carregador::Iniciar();
 
-    diario::Escrever("entrando no laco de desenho");
-
-    // --- laço ---
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
     int   direcaoX = 0, direcaoY = 0;
-    DWORD proximoPasso = 0;
-    DWORD ultimoRelato = 0;
-    DWORD quadro = 0;
+    DWORD proximoPasso = 0, ultimoRelato = 0, quadro = 0;
 
     for (;;)
     {
@@ -629,43 +867,72 @@ void __cdecl main()
         XInputGetState(0, &agora);
 
         WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
-
-        // Registra qualquer botao, inclusive os que ainda nao fazem nada. Um crash foi
-        // relatado ao apertar A ou B, que este laco ignora -- sem registro nao da para
-        // saber se o app chegou a ver a tecla.
-        if (novos != 0)
-            diario::Escrever("botoes 0x%04X (quadro %u, foco %d)", novos, quadro, g_foco);
-
-        if (novos & XINPUT_GAMEPAD_DPAD_RIGHT) Mover(1);
-        if (novos & XINPUT_GAMEPAD_DPAD_LEFT)  Mover(-1);
-        if (novos & XINPUT_GAMEPAD_DPAD_DOWN)  Mover(COLUNAS);
-        if (novos & XINPUT_GAMEPAD_DPAD_UP)    Mover(-COLUNAS);
         anterior = agora;
 
-        // O analogico nao tem "apertou agora": e posicao continua. Damos a ele o
-        // comportamento de tecla segurada -- um passo imediato, pausa, depois repeticao.
         int dx = 0, dy = 0;
-        if (agora.Gamepad.sThumbLX >  ZONA_MORTA) dx =  1;
-        if (agora.Gamepad.sThumbLX < -ZONA_MORTA) dx = -1;
-        if (agora.Gamepad.sThumbLY >  ZONA_MORTA) dy = -1;   // para cima
-        if (agora.Gamepad.sThumbLY < -ZONA_MORTA) dy =  1;
+        if (novos & XINPUT_GAMEPAD_DPAD_RIGHT) dx =  1;
+        if (novos & XINPUT_GAMEPAD_DPAD_LEFT)  dx = -1;
+        if (novos & XINPUT_GAMEPAD_DPAD_DOWN)  dy =  1;
+        if (novos & XINPUT_GAMEPAD_DPAD_UP)    dy = -1;
+
+        // O analógico não tem "apertou agora": é posição contínua. Ganha comportamento
+        // de tecla segurada — passo imediato, pausa, depois repetição.
+        int ax = 0, ay = 0;
+        if (agora.Gamepad.sThumbLX >  ZONA_MORTA) ax =  1;
+        if (agora.Gamepad.sThumbLX < -ZONA_MORTA) ax = -1;
+        if (agora.Gamepad.sThumbLY >  ZONA_MORTA) ay = -1;
+        if (agora.Gamepad.sThumbLY < -ZONA_MORTA) ay =  1;
 
         DWORD tAgora = GetTickCount();
-        if (dx == 0 && dy == 0)
+        if (ax == 0 && ay == 0) { direcaoX = direcaoY = 0; proximoPasso = 0; }
+        else if (ax != direcaoX || ay != direcaoY)
         {
-            direcaoX = direcaoY = 0;
-            proximoPasso = 0;
-        }
-        else if (dx != direcaoX || dy != direcaoY)
-        {
-            direcaoX = dx; direcaoY = dy;
-            Mover(dx + dy * COLUNAS);
+            direcaoX = ax; direcaoY = ay; dx = ax; dy = ay;
             proximoPasso = tAgora + ESPERA_INICIAL;
         }
         else if (tAgora >= proximoPasso)
         {
-            Mover(dx + dy * COLUNAS);
+            dx = ax; dy = ay;
             proximoPasso = tAgora + ESPERA_REPETE;
+        }
+
+        if (g_menuAberto)
+        {
+            if (dy != 0 && g_menuQtd > 0)
+                g_menuFoco = (g_menuFoco + dy + g_menuQtd) % g_menuQtd;
+            if (novos & XINPUT_GAMEPAD_A) EscolherNoMenu();
+            if (novos & XINPUT_GAMEPAD_B) g_menuAberto = false;
+        }
+        else if (g_tela == TELA_COLECOES)
+        {
+            if (dx) MoverColecao(dx);
+            if (dy) MoverColecao(dy * COL_POR_LINHA);
+            if (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
+            if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
+            if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
+        }
+        else
+        {
+            bool segurando = (direcaoY != 0 && proximoPasso != 0 && tAgora >= proximoPasso - ESPERA_REPETE);
+            if (dx) MoverJogo(dx);
+            if (dy)
+            {
+                if (segurando && g_tela != TELA_ADICIONAR) SaltoLetra(dy);
+                else MoverJogo(dy * COLUNAS);
+            }
+            if (novos & XINPUT_GAMEPAD_LEFT_SHOULDER)  SaltoLetra(-1);
+            if (novos & XINPUT_GAMEPAD_RIGHT_SHOULDER) SaltoLetra(1);
+            if (novos & XINPUT_GAMEPAD_A) Confirmar();
+            if (novos & XINPUT_GAMEPAD_B) Voltar();
+            if (novos & XINPUT_GAMEPAD_X)
+            {
+                if (g_tela == TELA_JOGOS) AbrirAdicionar();
+            }
+            if (novos & XINPUT_GAMEPAD_START)
+            {
+                if (g_tela == TELA_ADICIONAR) FecharAdicionar(true);
+                else AbrirMenuJogo();
+            }
         }
 
         quadro++;
@@ -673,25 +940,18 @@ void __cdecl main()
         RecolherCarregadas();
         Desenhar();
 
-        // Relato de memoria uma vez por segundo. Nem eu nem a analise conseguimos
-        // explicar o ultimo crash so lendo o codigo; com isto, a proxima execucao diz
-        // se a memoria despenca (e entao e a fila) ou fica estavel (e entao e outra
-        // coisa), e o numero da linha mostra se houve rolagem.
-        DWORD agoraRelato = GetTickCount();
-        if (agoraRelato - ultimoRelato > 1000)
+        if (tAgora - ultimoRelato > 5000)
         {
-            ultimoRelato = agoraRelato;
-
-            MEMORYSTATUS mem;
-            mem.dwLength = sizeof(mem);
+            ultimoRelato = tAgora;
+            MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
             GlobalMemoryStatus(&mem);
 
             int cheias = 0;
             for (int i = 0; i < CACHE_MAX; i++)
                 if (g_cache[i].textura != NULL) cheias++;
 
-            diario::Escrever("quadro=%u linha=%d cache=%d emVoo=%d falhou=%d livre=%u KB",
-                             quadro, g_primeiraLinha, cheias, (int)g_emVoo.size(),
+            diario::Escrever("quadro=%u tela=%d cache=%d emVoo=%d falhou=%d livre=%u KB",
+                             quadro, (int)g_tela, cheias, (int)g_emVoo.size(),
                              (int)g_falhou.size(), (unsigned)(mem.dwAvailPhys / 1024));
         }
     }
