@@ -30,14 +30,29 @@ A fonte não bate exatamente: no console é o `Arial_16` da ATG, um atlas de bit
 altura, e aqui é uma sans do navegador aproximada em tamanho. Comprimento de texto pode variar
 alguns pixels.
 
-## As três abas
+## O app inteiro, não só o que já existe
 
-| | |
-|---|---|
-| **Todos os jogos** | o que o console desenha hoje — é a prévia de verdade |
-| **Coleções** | desenhado, ainda sem código em C++ |
-| **Índice A-Z** | desenhado, ainda sem código em C++ |
+A prévia mostra o aplicativo **como foi decidido** em
+[`../docs/interface.md`](../docs/interface.md), e é aqui que se itera antes de escrever C++ — não
+o contrário. A primeira versão desta prévia espelhava o estado do código e por isso abria na grade
+de jogos; está errado. **A tela inicial é a de coleções**, como sempre foi o desenho.
 
-As duas últimas ficam marcadas em amarelo na própria tela, para ninguém confundir o que existe com
-o que está planejado. Elas mostram, na linguagem visual do console, o que foi decidido em
-[`../docs/interface.md`](../docs/interface.md) e ainda falta implementar.
+O que está aqui e ainda não está no console: a tela de coleções, o índice alfabético, a tela de
+escolher jogos, o menu do `☰`. O que está no console e é fiel aqui: a grade de 5 por linha, a
+geometria toda, o corte de nome por largura e o rodapé.
+
+## Navegação
+
+| tecla | botão | o que faz |
+|---|---|---|
+| setas | d-pad | navegar |
+| `Enter` | `A` | abrir coleção, ou marcar no escolhedor |
+| `Esc` | `B` | voltar |
+| `X` | `X` | nova coleção |
+| `M` | `☰` | renomear/apagar, ou escolher jogos de dentro da coleção |
+| `Q` / `E` | `LB`/`RB` | pular por letra |
+| segurar `↓` | segurar `↓` | pular por letra |
+
+Os dois botões no topo da página são do desenvolvimento, não do app: um cria coleções de exemplo
+para não ter de montar tudo à mão a cada teste, e o outro zera. As coleções ficam no `localStorage`
+do navegador.
