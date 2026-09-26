@@ -42,11 +42,6 @@ namespace
     const int TOPO       = 92;
     const int POR_PAGINA = COLUNAS * LINHAS;
 
-    // A janela de capas carregadas é MAIOR que a tela: uma linha de folga para cada
-    // lado. Assim rolar uma linha não dispara carga nenhuma — a capa já estava pronta.
-    const int LINHAS_JANELA = LINHAS + 2;
-    const int NA_JANELA     = COLUNAS * LINHAS_JANELA;
-
     // O asset tipo 128 é o ENCARTE inteiro (contracapa + lombada + frente), não a capa.
     // A frente são os 46,8% da direita — fração calibrada à mão contra a biblioteca
     // real. Em vez de recortar a imagem, amostramos só essa parte ao desenhar.
@@ -72,22 +67,31 @@ namespace
     // Só as capas da página visível ficam na memória. Carregar as 120 de uma vez fazia
     // a tela ficar preta por um tempo longo antes do primeiro quadro — cada .assets tem
     // vários MB e é aberto do disco.
-    D3DTexture *g_capas[NA_JANELA];
-    int  g_capaDe[NA_JANELA];      // índice global em cada posição, -1 se vazia
-    bool g_pendente[NA_JANELA];    // ainda sem textura
-    bool g_pedido[NA_JANELA];      // ja foi para a fila; evita pedir duas vezes
-    int  g_janelaBase = 0;         // primeiro índice global da janela
-    int  g_medidas = 0;    // quantas texturas ja foram cronometradas no log
+    // Cache de capas. A versao anterior tinha uma janela que soltava a textura assim
+    // que a linha saia da tela, entao voltar obrigava a reler -- e a capa piscava vazia.
+    // O FreeStyle guarda num TextureCache; fazemos o mesmo.
+    //
+    // Cada capa ocupa cerca de 540 KB (900x600 em DXT5). Com 128 entradas sao uns 69 MB,
+    // o que cabe folgado nos 512 MB do console e faz uma biblioteca de 120 jogos ficar
+    // inteira em memoria depois da primeira passada: rolar de volta nunca mais recarrega.
+    // O teto existe para biblioteca grande, nao para esta.
+    const int CACHE_MAX = 128;
+
+    struct Entrada
+    {
+        int         indice;
+        D3DTexture *textura;
+        DWORD       uso;      // relogio logico, para descartar o mais antigo
+    };
+
+    Entrada g_cache[CACHE_MAX];
+    DWORD   g_relogio = 0;
+    std::vector<int> g_emVoo;    // indices ja pedidos, para nao pedir duas vezes
+
+    int  g_medidas = 0;
     int  g_foco = 0;
     int  g_primeiraLinha = 0;
 
-    // O SQLite devolve UTF-8. Converter com CP_ACP quebra tudo que nao for ASCII: o
-    // "BLAZBLUE\u3000CONTINUUM SHIFT" tem um espaco ideografico japones (U+3000, tres
-    // bytes), que virava tres caracteres de lixo na tela.
-    //
-    // Depois da conversao ainda ha saneamento: a fonte tem ASCII e Latin-1, e os codigos
-    // a partir de 0x100 sao os GLIFOS DE BOTAO do controle. Deixar um caractere japones
-    // passar desenharia um botao no meio do nome do jogo.
     void Larga(const std::string &origem, WCHAR *destino, int capacidade)
     {
         if (MultiByteToWideChar(CP_UTF8, 0, origem.c_str(), -1, destino, capacidade) <= 0)
@@ -141,121 +145,115 @@ namespace
         return textura;
     }
 
-    // Reposiciona a janela sem carregar nada: o que já estava carregado é transferido
-    // de posição e o resto fica pendente. Carregar aqui travaria o laço — era o engasgo
-    // a cada linha nova.
-    void MoverJanela(int novaBase)
+    D3DTexture *NoCache(int indice, bool marcarUso)
     {
-        if (novaBase < 0)
-            novaBase = 0;
-
-        D3DTexture *novas[NA_JANELA];
-        int  de[NA_JANELA];
-        bool pend[NA_JANELA];
-        bool ped[NA_JANELA];
-
-        for (int i = 0; i < NA_JANELA; i++)
+        for (int i = 0; i < CACHE_MAX; i++)
         {
-            int alvo = novaBase + i;
-            novas[i] = NULL;
-            de[i] = alvo;
-            pend[i] = true;
-            ped[i] = false;
-
-            for (int j = 0; j < NA_JANELA; j++)
+            if (g_cache[i].textura != NULL && g_cache[i].indice == indice)
             {
-                if (g_capaDe[j] == alvo && !g_pendente[j] && g_capas[j] != NULL)
-                {
-                    novas[i] = g_capas[j];
-                    g_capas[j] = NULL;
-                    pend[i] = false;
-                    ped[i] = false;
-                    break;
-                }
+                if (marcarUso)
+                    g_cache[i].uso = ++g_relogio;
+                return g_cache[i].textura;
+            }
+        }
+        return NULL;
+    }
+
+    bool EmVoo(int indice)
+    {
+        for (size_t i = 0; i < g_emVoo.size(); i++)
+            if (g_emVoo[i] == indice)
+                return true;
+        return false;
+    }
+
+    // Guarda no cache, descartando a entrada usada ha mais tempo quando cheio.
+    void Guardar(int indice, D3DTexture *textura)
+    {
+        int alvo = -1;
+        DWORD maisAntigo = 0xFFFFFFFF;
+
+        for (int i = 0; i < CACHE_MAX; i++)
+        {
+            if (g_cache[i].textura == NULL)
+            {
+                alvo = i;
+                break;
+            }
+            if (g_cache[i].uso < maisAntigo)
+            {
+                maisAntigo = g_cache[i].uso;
+                alvo = i;
             }
         }
 
-        for (int j = 0; j < NA_JANELA; j++)
-            if (g_capas[j] != NULL)
-                g_capas[j]->Release();
+        if (g_cache[alvo].textura != NULL)
+            g_cache[alvo].textura->Release();
 
-        for (int i = 0; i < NA_JANELA; i++)
-        {
-            g_capas[i] = novas[i];
-            g_capaDe[i] = de[i];
-            g_pendente[i] = pend[i];
-            g_pedido[i] = ped[i];
-        }
-        g_janelaBase = novaBase;
+        g_cache[alvo].indice  = indice;
+        g_cache[alvo].textura = textura;
+        g_cache[alvo].uso     = ++g_relogio;
+    }
 
-        // O que saiu da janela nao interessa mais; insistir nele atrasa o que esta na
-        // tela. Some da fila o que ainda nao comecou -- e o que ja estava pedido volta
-        // a poder ser pedido, porque o pedido morreu junto.
-        carregador::DescartarPendentes();
-        for (int i = 0; i < NA_JANELA; i++)
-            if (g_pendente[i])
-                g_pedido[i] = false;
+    // Pede o que falta para a tela e para uma linha de folga de cada lado. Sem estado
+    // de janela: o cache responde quem ja tem, e o resto vira pedido.
+    void PedirOQueFalta()
+    {
+        int base = (g_primeiraLinha - 1) * COLUNAS;
+        if (base < 0)
+            base = 0;
+        int fim = (g_primeiraLinha + LINHAS + 1) * COLUNAS;
+        if (fim > (int)g_jogos.size())
+            fim = (int)g_jogos.size();
 
         for (int volta = 0; volta < 2; volta++)
         {
-            for (int i = 0; i < NA_JANELA; i++)
+            for (int indice = base; indice < fim; indice++)
             {
-                if (!g_pendente[i] || g_pedido[i] || g_capaDe[i] >= (int)g_jogos.size())
-                    continue;
-
-                bool visivel = (g_capaDe[i] >= g_primeiraLinha * COLUNAS) &&
-                               (g_capaDe[i] <  (g_primeiraLinha + LINHAS) * COLUNAS);
+                bool visivel = (indice >= g_primeiraLinha * COLUNAS) &&
+                               (indice <  (g_primeiraLinha + LINHAS) * COLUNAS);
                 if ((volta == 0) != visivel)
                     continue;
+                if (NoCache(indice, false) != NULL || EmVoo(indice))
+                    continue;
 
-                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, g_jogos[g_capaDe[i]].id);
+                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, g_jogos[indice].id);
                 if (pasta.empty())
                     continue;
 
                 char arquivo[512];
-                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), g_jogos[g_capaDe[i]].id);
-                carregador::Pedir(g_capaDe[i], arquivo);
-                g_pedido[i] = true;
+                sprintf(arquivo, "%s\\%08X.assets", pasta.c_str(), g_jogos[indice].id);
+                carregador::Pedir(indice, arquivo);
+                g_emVoo.push_back(indice);
             }
         }
     }
 
-    // Recolhe o que a thread de leitura terminou e cria a textura -- isto sim na thread
-    // de desenho, para o D3D nao ser tocado por duas threads. De bytes ja em memoria e
-    // rapido: o DDS vem em DXT5 e nao ha decodificacao a fazer.
+    // Recolhe o que a thread de leitura terminou e cria a textura -- isto na thread de
+    // desenho, para o D3D nao ser tocado por duas. De bytes em memoria e rapido: o DDS
+    // vem em DXT5 e nao ha decodificacao a fazer.
     void RecolherCarregadas()
     {
         int indice;
         std::vector<unsigned char> bytes;
 
-        // UMA por quadro. Mesmo barata, criar cinco de uma vez daria um solavanco.
+        // UMA por quadro. Mesmo a 3 ms, cinco de uma vez dariam um solavanco.
         if (!carregador::Retirar(&indice, bytes))
             return;
 
-        int i = indice - g_janelaBase;
-        if (i < 0 || i >= NA_JANELA || g_capaDe[i] != indice)
-            return;                       // saiu da janela enquanto lia; descarta
-
-        // Um pedido que o worker ja tinha pego pode ser pedido de novo ao rolar, e os
-        // dois resultados voltam. Sem esta checagem, o segundo sobrescrevia o ponteiro
-        // do primeiro sem liberar -- meio mega de vazamento por capa, ate a memoria
-        // acabar. Quem chega primeiro preenche; o resto e descartado.
-        if (!g_pendente[i])
-            return;
-
-        g_pendente[i] = false;
-        g_pedido[i] = false;
-
-        if (g_capas[i] != NULL)           // defensivo: nunca sobrescrever sem liberar
+        for (size_t k = 0; k < g_emVoo.size(); k++)
         {
-            g_capas[i]->Release();
-            g_capas[i] = NULL;
+            if (g_emVoo[k] == indice)
+            {
+                g_emVoo.erase(g_emVoo.begin() + k);
+                break;
+            }
         }
-        if (bytes.empty())
-            return;
 
-        // O formato vem do proprio DDS (fourCC no offset 84). Passar explicito evita
-        // que o D3DX decida converter.
+        if (bytes.empty() || NoCache(indice, false) != NULL)
+            return;      // falhou, ou chegou duplicado; nao sobrescreve nada
+
+        // O formato vem do fourCC do proprio DDS, para o D3DX nao decidir converter.
         D3DFORMAT formato = D3DFMT_UNKNOWN;
         if (bytes.size() > 88)
         {
@@ -264,25 +262,21 @@ namespace
         }
 
         DWORD t0 = GetTickCount();
+        D3DTexture *textura = NULL;
 
-        // A versao Ex com estes parametros e o que o FreeStyle faz, e a diferenca e
-        // enorme. A versao sem Ex usa D3DX_DEFAULT em tudo: redimensiona 900x600 para
-        // 1024x1024 com filtragem e depois gera a cadeia inteira de mipmaps, uns onze
-        // niveis, cada um filtrado. Por capa. Era isso que travava a cada linha nova --
-        // nao a leitura do disco.
+        // A versao Ex com estes parametros e o que o FreeStyle faz. A versao sem Ex usa
+        // D3DX_DEFAULT em tudo: redimensiona 900x600 para 1024x1024 com filtragem e gera
+        // a cadeia inteira de mipmaps, uns onze niveis. Era o que travava a cada linha.
         HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
-            ATG::g_pd3dDevice,
-            &bytes[0], (UINT)bytes.size(),
-            D3DX_DEFAULT_NONPOW2,          // sem redimensionar para potencia de 2
-            D3DX_DEFAULT_NONPOW2,
+            ATG::g_pd3dDevice, &bytes[0], (UINT)bytes.size(),
+            D3DX_DEFAULT_NONPOW2, D3DX_DEFAULT_NONPOW2,
             1,                             // um mipmap so
-            D3DUSAGE_CPU_CACHED_MEMORY,
-            formato,
-            D3DPOOL_DEFAULT,
-            D3DX_FILTER_NONE,              // sem filtragem
-            D3DX_FILTER_NONE,
-            0, NULL, NULL,
-            &g_capas[i]);
+            D3DUSAGE_CPU_CACHED_MEMORY, formato, D3DPOOL_DEFAULT,
+            D3DX_FILTER_NONE, D3DX_FILTER_NONE,
+            0, NULL, NULL, &textura);
+
+        if (SUCCEEDED(hr) && textura != NULL)
+            Guardar(indice, textura);
 
         if (g_medidas < 8)
         {
@@ -317,7 +311,6 @@ namespace
             if (indice >= total)
                 break;
 
-            int naJanela = indice - g_janelaBase;
             int coluna = i % COLUNAS;
             int linha  = i / COLUNAS;
 
@@ -327,9 +320,7 @@ namespace
             r.x2 = r.x1 + CAPA_L;
             r.y2 = r.y1 + CAPA_A;
 
-            D3DTexture *capa = NULL;
-            if (naJanela >= 0 && naJanela < NA_JANELA)
-                capa = g_capas[naJanela];
+            D3DTexture *capa = NoCache(indice, true);
 
             if (capa != NULL)
             {
@@ -462,11 +453,6 @@ namespace
         else if (linhaDoFoco >= g_primeiraLinha + LINHAS)
             g_primeiraLinha = linhaDoFoco - LINHAS + 1;
 
-        // Janela com uma linha de folga acima da primeira visível.
-        int baseJanela = (g_primeiraLinha - 1) * COLUNAS;
-        if (baseJanela < 0)
-            baseJanela = 0;
-        MoverJanela(baseJanela);
     }
 }
 
@@ -475,10 +461,11 @@ void __cdecl main()
     diario::Abrir("game:\\collectionui.log");
     diario::Escrever("CollectionUI — grade de capas");
 
-    for (int i = 0; i < NA_JANELA; i++)
+    for (int i = 0; i < CACHE_MAX; i++)
     {
-        g_capas[i] = NULL; g_capaDe[i] = -1;
-        g_pendente[i] = false; g_pedido[i] = false;
+        g_cache[i].indice = -1;
+        g_cache[i].textura = NULL;
+        g_cache[i].uso = 0;
     }
 
     // --- D3D ---
@@ -559,7 +546,6 @@ void __cdecl main()
     {
         diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
         carregador::Iniciar();
-        MoverJanela(0);
     }
     else
     {
@@ -613,6 +599,7 @@ void __cdecl main()
             proximoPasso = tAgora + ESPERA_REPETE;
         }
 
+        PedirOQueFalta();
         RecolherCarregadas();
         Desenhar();
     }
