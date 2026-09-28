@@ -18,6 +18,7 @@
 #include "teclado.h"
 #include "fsda.h"
 #include "lancador.h"
+#include "som.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
 #include "AtgDebugDraw.h"
@@ -667,6 +668,7 @@ namespace
 
     void Avisar(const char *texto)
     {
+        som::Tocar(som::SOM_ERRO);
         _snprintf(g_aviso, sizeof(g_aviso), "%s", texto);
         g_aviso[sizeof(g_aviso) - 1] = '\0';
         g_avisoAte = GetTickCount() + 6000;
@@ -727,6 +729,7 @@ namespace
 
         if (novo < 0 || novo >= total) return;
         g_iJogo = novo;
+        som::Tocar(som::SOM_FOCO);
         SeguirFoco();
     }
 
@@ -759,6 +762,7 @@ namespace
         if (alvo < 0) alvo = 0;
         if (alvo >= (int)L.size()) alvo = (int)L.size() - 1;
         g_iJogo = alvo;
+        som::Tocar(som::SOM_FOCO);
         SeguirFoco();
     }
 
@@ -771,7 +775,11 @@ namespace
         if (delta == COL_POR_LINHA && novo >= total && g_iCol < total - 1)
             novo = total - 1;
 
-        if (novo >= 0 && novo < total) g_iCol = novo;
+        if (novo >= 0 && novo < total)
+        {
+            g_iCol = novo;
+            som::Tocar(som::SOM_FOCO);
+        }
     }
 
     void AbrirColecao()
@@ -890,6 +898,7 @@ namespace
         if (L.empty()) return;
 
         CopiarTitulo(L[g_iCol]->nome);
+        som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
         g_menuItens[0] = "Renomear";
         g_menuItens[1] = "Apagar coleção";
@@ -901,6 +910,7 @@ namespace
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         if (L.empty()) return;
         CopiarTitulo(L[g_iJogo]->nome);
+        som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_JOGO;
 
         // A coleção guarda TitleId, então remover tira TODOS os itens que o
@@ -952,6 +962,7 @@ namespace
     // justamente lendo .assets.
     void SoltarTudo()
     {
+        som::Parar();
         carregador::Parar();
         carregador::DescartarPendentes();
         g_emVoo.clear();
@@ -990,6 +1001,7 @@ namespace
 
     void Confirmar()
     {
+        som::Tocar(som::SOM_CONFIRMA);
         if (g_tela == TELA_COLECOES) AbrirColecao();
         else if (g_tela == TELA_ADICIONAR)
         {
@@ -1023,6 +1035,7 @@ namespace
 
     void Voltar()
     {
+        if (g_tela != TELA_COLECOES) som::Tocar(som::SOM_VOLTA);
         if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
         else if (g_tela == TELA_JOGOS)
         {
@@ -1106,6 +1119,7 @@ void __cdecl main()
 
     colecoes::Carregar();
     carregador::Iniciar();
+    som::Iniciar();
 
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
@@ -1159,7 +1173,10 @@ void __cdecl main()
         else if (g_menuAberto)
         {
             if (dy != 0 && g_menuQtd > 0)
+            {
                 g_menuFoco = (g_menuFoco + dy + g_menuQtd) % g_menuQtd;
+                som::Tocar(som::SOM_FOCO);
+            }
             // UMA ação por quadro: "novos" é máscara e nada impede A e ☰ juntos.
             // Encadeados com if solto, o segundo rodava sobre o estado que o primeiro
             // acabara de trocar -- inclusive sobre um ponteiro recém-invalidado.

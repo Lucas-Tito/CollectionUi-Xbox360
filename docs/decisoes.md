@@ -454,3 +454,41 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     `tipoArquivo == 1` (XEX solto), pelo `XLaunchNewImage`. O ramo do container
     (`XContentLaunchImageFromFile`, 55 jogos deste acervo) **continua sem prova**: é o único
     risco de descoberta que resta, e falha devolvendo código de erro, não travando.
+
+58. **Som de interface: os `.xma` do skin padrão da FreeStyle, tocados direto pelo XAudio2.**
+    São RIFF/WAVE com codec XMA2 (`0x166`), que o XAudio2 do 360 consome **nativamente** — quem
+    decodifica é o hardware do Xenon. Não convertemos para PCM: converter jogaria fora o
+    `XMA2WAVEFORMATEX` do próprio arquivo, que é exatamente o que o `CreateSourceVoice` quer
+    receber, e ainda acrescentaria uma dependência de ffmpeg ao build sem simplificar nada.
+    Cinco efeitos: `btn_Focus` (mover foco), `btn_Select` (A), `btn_Back` (B), `flyout` (menu),
+    `NotifyPopup` (erro).
+
+59. **Não seguimos a arquitetura da FreeStyle, e não poderíamos.** Ela não toca som pelo C++:
+    é uma aplicação XUI e só chama `XuiSoundXAudioRegister()` em `FreestyleUIApp.cpp:230`,
+    deixando as cenas `.xur` do skin dispararem os sons. Ir por ali exigiria trazer o XUI
+    inteiro — cenas, `.xur`, `XuiTool` —, outro framework de interface. O **motor**, porém, é o
+    mesmo: o nome da função diz que o backend de som do XUI é o XAudio2.
+
+60. **XMA exige `XPhysicalAlloc` alinhado em 2 KB.** *"XMA packets must be 2K aligned"*, da
+    amostra `XAudio2BasicSound` do XDK. Um `new BYTE[]` daria um ponteiro qualquer, e quem lê
+    esses bytes é o decodificador de hardware, não a CPU. Os 38 arquivos do skin são, sem
+    exceção, `N × 2048 + 92` bytes — 2048 é o `XMA_BYTES_PER_PACKET` do `xma2defs.h`.
+
+61. **O cabeçalho RIFF vem little-endian e o Xenon é big-endian.** O XDK resolve com
+    `LocalizeXma2Format()` (`xma2defs.h:679`), que detecta pela `wFormatTag` e troca no lugar.
+    Os tamanhos de chunk são lidos byte a byte: além da ordem, um chunk pode começar em
+    endereço não alinhado, e no PowerPC isso não é só lento — pode falhar.
+
+62. **A imagem do Docker copia as libs do XDK uma a uma.** Som exigiu acrescentar `xaudio2.lib`
+    (repare que o sufixo de depuração fica no MEIO: `xaudiod2.lib`) e `xmcore.lib`, porque o
+    XAudio2 usa a fila sem trava do xmcore (`XLFQueueCreate`/`XLFQueueAdd`) e sem ela o link
+    para com quatro símbolos não resolvidos. Biblioteca nova do XDK = editar o Dockerfile e
+    reconstruir a imagem.
+
+63. **Som não pode derrubar o app.** Falha no `XAudio2Create`, no arquivo ou num efeito
+    específico é registrada no log e o app segue — mudo, ou mudo só naquele efeito. É enfeite
+    num launcher; a régua é diferente da do lançamento de jogo.
+
+64. **`som::Parar()` entra na desmontagem antes de lançar** (decisão 41), junto do carregador e
+    das texturas: uma voz tocando é o motor de áudio vivo, e a doc do XDK proíbe lançar com I/O
+    pendente.

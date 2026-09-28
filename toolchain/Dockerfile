@@ -158,6 +158,16 @@ COPY $XDK/lib/xbox/xjsond.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xjson.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xnetd.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xnet.lib /xdk/lib/xbox/
+
+# Som de interface (src/som.cpp). O xtl.h nao puxa o XAudio2 sozinho, como nao puxa
+# o D3D: a lib entra explicitamente e o nome muda entre Debug e Release -- repare que
+# aqui o "d" fica no MEIO, xaudiod2, nao no fim como nas outras.
+COPY $XDK/lib/xbox/xaudiod2.lib /xdk/lib/xbox/
+COPY $XDK/lib/xbox/xaudio2.lib /xdk/lib/xbox/
+# O xaudio2 usa a fila sem trava do xmcore (XLFQueueCreate/XLFQueueAdd). Sem esta
+# lib o link para com 4 simbolos externos nao resolvidos.
+COPY $XDK/lib/xbox/xmcored.lib /xdk/lib/xbox/
+COPY $XDK/lib/xbox/xmcore.lib /xdk/lib/xbox/
 # COPY $XDK/lib/xbox/xonlined.lib /xdk/lib/xbox/
 # COPY $XDK/lib/xbox/xonline.lib /xdk/lib/xbox/
 
