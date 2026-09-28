@@ -7,16 +7,11 @@
 
 namespace
 {
-    // Intervalo minimo entre dois sons IGUAIS. Sem isto, segurar o analogico dispara o
-    // som de foco a cada repeticao do direcional e vira metralhadora.
-    const DWORD INTERVALO_MIN = 45;
-
     struct Voz
     {
         IXAudio2SourceVoice *voz;
         BYTE                *dados;     // XPhysicalAlloc, alinhado em 2 KB
         DWORD                tamanho;
-        DWORD                ultimoToque;
     };
 
     IXAudio2               *g_motor = NULL;
@@ -55,10 +50,15 @@ namespace
         {
             DWORD tam = LerDwordLE(arquivo + p + 4);
 
+            // Testado por SUBTRACAO, nunca por soma: um tamanho corrompido como
+            // 0xFFFFFFF8 faria "p + 8 + tam" dar a volta em DWORD, passar no teste de
+            // limite e, pior, deixar "p" parado -- laco infinito dentro do Iniciar(),
+            // antes do primeiro quadro, com tela preta e nada no log.
+            if (tam > total - p - 8)
+                return false;
+
             if (memcmp(arquivo + p, id, 4) == 0)
             {
-                if (p + 8 + tam > total)
-                    return false;
                 *inicio = p + 8;
                 *tamanho = tam;
                 return true;
@@ -78,6 +78,7 @@ namespace
         DWORD tam = GetFileSize(h, NULL);
         if (tam == 0xFFFFFFFF || tam == 0 || tam > 1024 * 1024)
         {
+            diario::Escrever("som: %s tem tamanho recusado (%u bytes)", caminho, tam);
             CloseHandle(h);
             return false;
         }
@@ -154,10 +155,9 @@ namespace
             return false;
         }
 
-        g_vozes[i].voz         = voz;
-        g_vozes[i].dados       = dados;
-        g_vozes[i].tamanho     = dadosTam;
-        g_vozes[i].ultimoToque = 0;
+        g_vozes[i].voz     = voz;
+        g_vozes[i].dados   = dados;
+        g_vozes[i].tamanho = dadosTam;
         return true;
     }
 }
@@ -166,6 +166,12 @@ namespace som
 {
     void Iniciar()
     {
+        // Idempotente. Sem esta guarda, uma segunda chamada sem Parar() entre elas
+        // zeraria os ponteiros das vozes e da memoria fisica sem soltar nada, e criaria
+        // mais um IXAudio2 -- e o limite e XAUDIO2_MAX_INSTANCES.
+        if (g_motor != NULL)
+            return;
+
         ZeroMemory(g_vozes, sizeof(g_vozes));
 
         HRESULT hr = XAudio2Create(&g_motor, 0);
@@ -232,15 +238,22 @@ namespace som
         if (v.voz == NULL)
             return;         // este efeito nao carregou; o resto do app segue igual
 
-        DWORD agora = GetTickCount();
-        if (v.ultimoToque != 0 && agora - v.ultimoToque < INTERVALO_MIN)
+        // Ainda tocando? Deixa terminar.
+        //
+        // A tentacao e Stop + FlushSourceBuffers + Submit, para recomecar. Nao funciona
+        // aqui: "Stop is always asynchronous", e o Flush nao tira da fila o buffer que
+        // esta tocando enquanto a voz nao parou de verdade -- entao o Submit entraria
+        // ATRAS dele e o som sairia cada vez mais atrasado em relacao ao dedo. A
+        // amostra XAudio2VoiceReuse do XDK resolve esperando o flush drenar com
+        // Sleep(1), o que numa thread de desenho e pior que o sintoma.
+        //
+        // Isto tambem cobre a diagonal no analogico, que chama Tocar duas vezes no
+        // mesmo quadro. O som de foco tem 86 ms e o repique do direcional e de 110 ms
+        // (ESPERA_REPETE), entao segurar o analogico nunca cai aqui.
+        XAUDIO2_VOICE_STATE estado;
+        v.voz->GetState(&estado, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+        if (estado.BuffersQueued > 0)
             return;
-        v.ultimoToque = agora;
-
-        // Recomecar, nao empilhar: em UI, o som novo cancela o anterior. Sem o Flush, o
-        // Submit enfileiraria e o som atrasaria cada vez mais em relacao ao foco.
-        v.voz->Stop(0);
-        v.voz->FlushSourceBuffers();
 
         XAUDIO2_BUFFER buffer;
         ZeroMemory(&buffer, sizeof(buffer));
@@ -248,7 +261,12 @@ namespace som
         buffer.AudioBytes = v.tamanho;
         buffer.Flags      = XAUDIO2_END_OF_STREAM;
 
-        if (SUCCEEDED(v.voz->SubmitSourceBuffer(&buffer)))
-            v.voz->Start(0);
+        HRESULT hr = v.voz->SubmitSourceBuffer(&buffer);
+        if (FAILED(hr))
+        {
+            diario::Escrever("som: SubmitSourceBuffer efeito %d = 0x%08X", (int)e, hr);
+            return;
+        }
+        v.voz->Start(0);
     }
 }
