@@ -492,3 +492,43 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
 64. **`som::Parar()` entra na desmontagem antes de lançar** (decisão 41), junto do carregador e
     das texturas: uma voz tocando é o motor de áudio vivo, e a doc do XDK proíbe lançar com I/O
     pendente.
+
+65. **`Tocar()` não reinicia som que ainda está tocando — desiste.** A sequência intuitiva
+    (`Stop` → `FlushSourceBuffers` → `Submit` → `Start`) não recomeça o som: *"Stop is always
+    asynchronous"*, e o `Flush` não tira da fila o buffer em reprodução enquanto a voz não
+    parou de verdade. O `Submit` entraria **atrás** dele, e o som sairia cada vez mais atrasado
+    em relação ao dedo — justo o que eu achava estar evitando. A amostra `XAudio2VoiceReuse` do
+    XDK resolve esperando o flush drenar com `Sleep(1)`, o que numa thread de desenho é pior
+    que o sintoma. Consultamos `GetState` e saímos se `BuffersQueued > 0`.
+
+    Isso tornou o `INTERVALO_MIN` de 45 ms desnecessário — e o comentário dele estava **errado**:
+    dizia proteger contra o analógico segurado, mas `ESPERA_REPETE` é 110 ms, maior que 45, e
+    ele nunca disparava nesse caso. O que ele de fato cobria era a diagonal, que chama `Tocar`
+    duas vezes no mesmo quadro — e o `GetState` cobre isso também.
+
+66. **Som e carregador voltam juntos depois de um lançamento que falha.** O `SoltarTudo()`
+    destrói as vozes antes de lançar (decisão 64). No caminho de erro, o `Jogar()` remontava só
+    o carregador: o aviso saía mudo e o app ficava **silencioso para sempre**, até reiniciar.
+    `som::Iniciar()` também ganhou guarda de idempotência — sem ela, uma segunda chamada
+    zeraria os ponteiros das vozes e da memória física sem soltar nada.
+
+67. **Som só toca quando algo aconteceu.** `Confirmar()` tocava na primeira linha, então A com
+    a lista vazia dava clique de confirmação sem confirmar nada. O som foi para dentro de cada
+    ramo, depois do teste de lista vazia. Mesmo motivo no `SaltoLetra`: com o foco já na ponta,
+    LB/RB tocavam sem o foco sair do lugar.
+
+68. **Tamanho de chunk se testa por SUBTRAÇÃO.** `p + 8 + tam > total` dá a volta em `DWORD`
+    com um tamanho corrompido como `0xFFFFFFF8`: o teste passa, e pior, `p` não avança — laço
+    infinito dentro do `Iniciar()`, antes do primeiro quadro, com tela preta e nada no log.
+
+69. **XMA nunca se troca de ordem de bytes.** Confirmado na doc do XDK (*Audio Data and
+    Endianness*): *"XMA, XMA2, and xWMA audio data should never be byte-swapped"* — o que precisa
+    de troca é o cabeçalho e o campo de tamanho do chunk, que é exatamente o que
+    `LocalizeXma2Format` e `LerDwordLE` fazem. Confirmado também pelo `AtgAudio.cpp` do XDK, cujo
+    byte-swap do `ReadSample` trata só PCM e EXTENSIBLE.
+
+70. **A cópia com `memcpy` para a memória física não precisa de flush de cache.** A amostra lê o
+    arquivo direto para o buffer do `XPhysicalAlloc`; nós lemos para um `new BYTE[]` e copiamos,
+    o que levantaria a dúvida de dado sujo na L2 sendo lido por hardware. O white paper *Xbox 360
+    CPU Caches* responde: o South Bridge — onde vive o decodificador XMA — **faz snoop da L2**.
+    Quem não faz é a GPU.

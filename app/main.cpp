@@ -761,6 +761,8 @@ namespace
         int alvo = i + dir;
         if (alvo < 0) alvo = 0;
         if (alvo >= (int)L.size()) alvo = (int)L.size() - 1;
+        if (alvo == g_iJogo) return;    // já estava na ponta: nada andou, nada soa
+
         g_iJogo = alvo;
         som::Tocar(som::SOM_FOCO);
         SeguirFoco();
@@ -786,6 +788,8 @@ namespace
     {
         std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
         if (L.empty()) return;
+
+        som::Tocar(som::SOM_CONFIRMA);
         g_atual = L[g_iCol];
         g_tela = TELA_JOGOS;
         g_iJogo = 0; g_primeiraLinha = 0;
@@ -797,6 +801,7 @@ namespace
     // "cancelar" não teria o que desfazer, porque cada marcação já estaria gravada.
     void AbrirAdicionar()
     {
+        som::Tocar(som::SOM_CONFIRMA);
         g_selecao = g_atual->ids;
         g_tela = TELA_ADICIONAR;
         g_iJogo = 0; g_primeiraLinha = 0;
@@ -823,7 +828,10 @@ namespace
     void NovaColecao()
     {
         if (teclado::Abrir("Nova coleção", "Como se chama?", ""))
+        {
+            som::Tocar(som::SOM_CONFIRMA);
             g_pedido = PEDIDO_NOVA;
+        }
     }
 
     void Renomear()
@@ -930,6 +938,9 @@ namespace
 
     void EscolherNoMenu()
     {
+        // Apagar coleção e remover jogo são as duas ações mais consequentes do app.
+        // Eram também as duas mais silenciosas.
+        som::Tocar(som::SOM_CONFIRMA);
         g_menuAberto = false;
 
         if (g_menuDe == MENU_COLECAO)
@@ -987,21 +998,29 @@ namespace
         if (L.empty()) return;
 
         const biblioteca::Jogo *j = L[g_iJogo];
+
+        // Vai sair cortado: o SoltarTudo logo abaixo destrói a voz em poucos
+        // milissegundos. É de propósito -- esperar os 525 ms do som atrasaria o
+        // lançamento, e o estalo já é retorno suficiente de que o A pegou.
+        som::Tocar(som::SOM_CONFIRMA);
         SoltarTudo();
 
         std::string erro;
         if (lancador::Lancar(*j, erro))
             return;                     // nunca acontece: sucesso não devolve
 
-        // Voltamos vivos, então falhou. O app continua usável: remonta o carregador e
-        // diz na tela o que houve, em vez de ficar mudo com a grade vazia.
-        Avisar(erro.c_str());
+        // Voltamos vivos, então falhou. O app continua usável: remonta o carregador E O
+        // SOM antes de avisar -- o SoltarTudo destruiu as vozes, e sem remontar o aviso
+        // sairia mudo e o app ficaria silencioso para sempre.
         carregador::Iniciar();
+        som::Iniciar();
+        Avisar(erro.c_str());
     }
 
     void Confirmar()
     {
-        som::Tocar(som::SOM_CONFIRMA);
+        // O som mora em cada ramo, não aqui: com a lista vazia, A não faz nada, e um
+        // clique de confirmação sem confirmação nenhuma é ruído.
         if (g_tela == TELA_COLECOES) AbrirColecao();
         else if (g_tela == TELA_ADICIONAR)
         {
@@ -1019,6 +1038,8 @@ namespace
                 Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");
                 return;
             }
+
+            som::Tocar(som::SOM_CONFIRMA);
 
             for (size_t i = 0; i < g_selecao.size(); i++)
             {
@@ -1181,7 +1202,12 @@ void __cdecl main()
             // Encadeados com if solto, o segundo rodava sobre o estado que o primeiro
             // acabara de trocar -- inclusive sobre um ponteiro recém-invalidado.
             if      (novos & XINPUT_GAMEPAD_A) EscolherNoMenu();
-            else if (novos & XINPUT_GAMEPAD_B) g_menuAberto = false;
+            else if (novos & XINPUT_GAMEPAD_B)
+            {
+                // Abrir o menu soa; fechar tem de soar também, ou a assimetria se ouve.
+                som::Tocar(som::SOM_VOLTA);
+                g_menuAberto = false;
+            }
         }
         else if (g_tela == TELA_COLECOES)
         {
@@ -1207,8 +1233,12 @@ void __cdecl main()
             else if (novos & XINPUT_GAMEPAD_X) { if (g_tela == TELA_JOGOS) AbrirAdicionar(); }
             else if (novos & XINPUT_GAMEPAD_START)
             {
-                if (g_tela == TELA_ADICIONAR) FecharAdicionar(true);
-                else                          AbrirMenuJogo();
+                if (g_tela == TELA_ADICIONAR)
+                {
+                    som::Tocar(som::SOM_CONFIRMA);   // conclui a seleção inteira
+                    FecharAdicionar(true);
+                }
+                else AbrirMenuJogo();
             }
         }
 
