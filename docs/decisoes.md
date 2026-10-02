@@ -703,8 +703,16 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
     Verificado: cópia limpa do XDK + patch reproduz byte a byte o que estamos compilando.
 
-93. **`app/media/` também não está versionada**, e ninguém tinha notado. São o `SimpleShaders.fxobj`
-    e o `Arial_16.xpr` (do XDK, proprietários) e os cinco `.xma` (do skin da FreeStyle, GPLv3).
-    Ficar de fora é defensável pelo mesmo critério da ATG, mas então **o README precisa dizer de
-    onde vem cada um** — hoje não diz, e "compilar do fonte" não produz um app que funciona.
+93. **O `media/` se divide por procedência.** O `Arial_16.xpr` e o `SimpleShaders.fxobj` são do
+    XDK e ficam fora do git pelo mesmo motivo da ATG — e o `vendor-atg.sh` **já os copiava**,
+    inclusive com o aviso sobre o `fxobj`, cuja falta dá fatal crash no arranque. (Eu afirmei
+    numa rodada que não havia receita nenhuma para o `media/`; estava errado, havia para dois
+    dos três.)
+
+    Os cinco `.xma` eram o caso órfão: vêm do repositório **público** da FreeStyle
+    (`Skins/Default/Audio`), são 43 KB, e não há impedimento de licença do lado do XDK. Passam a
+    ser **versionados**, para o build não depender de um repositório de terceiro continuar
+    existindo. A ressalva de procedência dos sons segue registrada na issue #2.
+
+    Regra que fica: **o que é do XDK, o script resolve; o que é público e pequeno, o git guarda.**
     Pendência registrada, não resolvida.
