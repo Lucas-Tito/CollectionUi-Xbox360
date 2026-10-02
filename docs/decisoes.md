@@ -800,3 +800,36 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
      No card, a dinâmica se distingue por um **símbolo de raio** no canto, gerado no arranque como
      a máscara de canto arredondado — sem arquivo novo.
+
+105. **A união não guarda lista resolvida: ela responde "este jogo entra?".** A primeira versão
+     tinha um `Resolver()` que devolvia o vetor de TitleIds da união. Ele nunca chegou a ser
+     chamado — os três lugares que precisavam dele continuaram usando `Tem()`, que só olhava
+     `ids`, sempre vazio numa união. **A união aparecia e abria vazia, e a funcionalidade inteira
+     era código morto.** Pego por agente de revisão, não por teste.
+
+     A correção não foi passar a chamar `Resolver`: foi levar a união para dentro do `Tem()` e
+     apagar o `Resolver`. Os três chamadores varrem a biblioteca perguntando item por item se
+     entra na coleção; devolver o vetor resolvido a cada um deles seria **alocação dentro do laço
+     de desenho** — oito cards vezes a biblioteca inteira, por quadro.
+
+     O guarda de ciclo mora nesse `Tem()`: ele só desce em origem que **não** é união. Um
+     `colecoes.txt` editado à mão com uma união apontando para si mesma para ali, em vez de
+     recorrer sem fim.
+
+106. **Apagar conserta as uniões na hora, não no próximo arranque.** `LimparUnioes()` só rodava no
+     `Carregar()`. Faltando no `Apagar()`, três coisas quebravam, e a terceira é a séria:
+     `ProximoId()` devolve `maior + 1` sobre as coleções **vivas**, então apagar a de maior id
+     libera aquele id. Com a referência pendurada no disco, a próxima coleção criada herdava o id
+     e **entrava numa união sem ninguém ter pedido** — com o arquivo internamente coerente, isto
+     é, reiniciar não consertava. Corrupção silenciosa e permanente.
+
+107. **Abrir com número não diz que a linha é do formato novo.** O teste de migração era "dígitos
+     até a primeira barra". Uma coleção chamada `1942` ou `007` — nada improvável num app de
+     jogos — casava, as outras barras não eram achadas e a linha era **descartada em silêncio**.
+     Como `Gravar()` reescreve o arquivo inteiro a partir do que foi lido, a primeira gravação
+     seguinte apagava a coleção do disco para sempre.
+
+     Agora quem decide é o segundo campo: no formato antigo ali vão TitleIds em hexa, nunca as
+     palavras `jogos` ou `uniao`. E a regra que vale para todo leitor de arquivo daqui em diante:
+     **linha que não entendi eu preservo, não descarto** — numa leitura que alimenta uma
+     reescrita total, descartar é apagar.

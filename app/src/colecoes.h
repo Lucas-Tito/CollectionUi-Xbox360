@@ -1,4 +1,4 @@
-// As coleções do usuário: nome e a lista de jogos que estão nela.
+﻿// As coleções do usuário: nome e a lista de jogos que estão nela.
 //
 // Guardadas em game:\colecoes.txt, ao lado do .xex, uma coleção por linha:
 //     Para jogar em dois|4156081C,4D530910,555308B6
@@ -26,10 +26,15 @@
 
 namespace colecoes
 {
+    // Uma coleção é de JOGOS ou é UNIÃO de outras, nunca as duas. União não contém
+    // união -- isso elimina ciclo por construção, sem precisar detectar.
     struct Colecao
     {
+        int                       id;      // estável; é por ele que uma união referencia
+        bool                      uniao;
         std::string               nome;
-        std::vector<unsigned int> ids;   // TitleId, ver o cabeçalho
+        std::vector<unsigned int> ids;     // TitleId, se for de jogos
+        std::vector<int>          origens; // ids de coleção, se for união
     };
 
     // Corta em 28 bytes SEM partir uma sequência UTF-8 ao meio, e troca o '|' e as
@@ -43,8 +48,14 @@ namespace colecoes
     std::vector<Colecao *> Ordenadas();
 
     Colecao *Criar(const std::string &nome);
+    Colecao *CriarUniao(const std::string &nome);
+
+    Colecao *PorId(int id);
+
     void     Apagar(Colecao *c);
 
+    // Vale para os dois tipos: numa união, pergunta a cada origem. É por ela que a
+    // união sabe o que mostrar -- não há lista resolvida guardada em lugar nenhum.
     bool Tem(const Colecao *c, unsigned int titleId);
     void Alternar(Colecao *c, unsigned int titleId);
     void Remover(Colecao *c, unsigned int titleId);
