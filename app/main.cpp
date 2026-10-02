@@ -42,8 +42,13 @@ namespace
     const int TOPO       = 92;
     const int POR_PAGINA = COLUNAS * LINHAS;
 
-    const int COL_LADO = 180, COL_GAP = 30;
-    const int COL_POR_LINHA = 5, COL_LINHAS = 2, COL_TOPO = 64;
+    // Quatro por linha em vez de cinco: o quadrado passa de 180 para 244, e sobrava
+    // espaço de qualquer jeito -- com 5 colunas a grade terminava em x=1120 e as duas
+    // linhas em y=454, numa tela que vai até 720.
+    const int COL_LADO = 244, COL_GAP = 32;
+    const int COL_POR_LINHA = 4, COL_LINHAS = 2, COL_TOPO = 72;
+    // Centralizada: 4*244 + 3*32 = 1072, sobra 208 dividida nos dois lados.
+    const int COL_MARGEM = (1280 - (COL_POR_LINHA * COL_LADO + (COL_POR_LINHA - 1) * COL_GAP)) / 2;
     const int COL_POR_PAGINA = COL_POR_LINHA * COL_LINHAS;
 
     // O asset tipo 128 é o ENCARTE inteiro (contracapa + lombada + frente). A frente
@@ -124,9 +129,51 @@ namespace
     // "BLAZBLUE　CONTINUUM SHIFT" tem um espaço ideográfico japonês (três bytes)
     // que virava lixo. E acima de 0x100 ficam os GLIFOS DE BOTÃO da fonte, então um
     // caractere japonês que passasse desenharia um botão no meio do nome.
+    // O texto que chega aqui vem de DUAS codificações diferentes.
+    //
+    // O SQLite e o colecoes.txt devolvem UTF-8 de verdade. Mas um literal estreito do
+    // próprio fonte NÃO é UTF-8: com o BOM no arquivo, o cl.exe converte "..." para a
+    // codificação de execução, e "coleção" vira os bytes e7 e3 6f -- conferido no .obj.
+    // Com CP_UTF8 o e7 é começo de sequência inválida e a conversão PARA ALI: era por
+    // isso que o menu mostrava "Remover da cole".
+    //
+    // MB_ERR_INVALID_CHARS não existe nos headers do Xbox, então a validação é nossa.
+    bool EhUtf8(const char *s)
+    {
+        const unsigned char *p = (const unsigned char *)s;
+        while (*p)
+        {
+            int extras;
+            if (*p < 0x80)                       extras = 0;
+            else if ((*p & 0xE0) == 0xC0)        extras = 1;
+            else if ((*p & 0xF0) == 0xE0)        extras = 2;
+            else if ((*p & 0xF8) == 0xF0)        extras = 3;
+            else return false;                   // continuação solta ou byte inválido
+
+            p++;
+            while (extras-- > 0)
+                if ((*p++ & 0xC0) != 0x80) return false;
+        }
+        return true;
+    }
+
+    // Latin-1 puro: cada byte vira o ponto de código de mesmo valor. Cobre exatamente
+    // os acentos dos nossos literais (e7 = ç, e3 = ã) sem depender de nenhuma página
+    // de código estar presente no console.
+    void LarguraLatin1(const char *origem, WCHAR *destino, int capacidade)
+    {
+        int i = 0;
+        for (; origem[i] != '\0' && i < capacidade - 1; i++)
+            destino[i] = (WCHAR)(unsigned char)origem[i];
+        destino[i] = L'\0';
+    }
+
     void Larga(const std::string &origem, WCHAR *destino, int capacidade)
     {
-        if (MultiByteToWideChar(CP_UTF8, 0, origem.c_str(), -1, destino, capacidade) <= 0)
+        if (!EhUtf8(origem.c_str()))
+            LarguraLatin1(origem.c_str(), destino, capacidade);
+        else if (MultiByteToWideChar(CP_UTF8, 0, origem.c_str(), -1,
+                                     destino, capacidade) <= 0)
         {
             destino[0] = L'\0';
             return;
@@ -428,7 +475,7 @@ namespace
             int i = paginaInicio + k;
             if (i >= (int)L.size()) break;
 
-            int x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
             int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
             Caixa(x, y, COL_LADO, COL_LADO, i == g_iCol);
         }
@@ -439,7 +486,7 @@ namespace
             int i = paginaInicio + k;
             if (i >= (int)L.size()) break;
 
-            int x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
             int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
 
             Larga(L[i]->nome, texto, 256);

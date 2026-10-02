@@ -553,3 +553,25 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     então `DELE` + `RNFR`/`RNTO`. Confirmação final por md5, baixando de volta. Um envio
     abortado também **tranca** o arquivo temporário até a sessão cair: nem `STOR` nem `DELE`
     funcionam nele, e a saída é outro nome ou reiniciar o console.
+
+74. **Literal estreito do fonte NÃO é UTF-8 — e isso cortava texto na tela.** Com o BOM no
+    arquivo (decisão da rodada do mojibake), o `cl.exe` converte `"..."` para a codificação de
+    execução: `"coleção"` vira os bytes `e7 e3 6f`, conferido no `.obj`. O `Larga()` chamava
+    `MultiByteToWideChar(CP_UTF8, ...)`, e `0xE7` é começo de sequência inválida — a conversão
+    **parava ali**. Sintoma: o menu mostrava "Remover da cole", e o título "Nova coleção" chegava
+    cortado ao teclado do sistema.
+
+    O BOM continua certo: ele é o que faz os literais LARGOS (`L"..."`) saírem corretos, e são a
+    maioria da interface. O que faltava era o `Larga()` aceitar as duas codificações que de fato
+    chegam nele — UTF-8 do SQLite e do `colecoes.txt`, ANSI dos literais do fonte.
+
+75. **A validação de UTF-8 é nossa, e o recuo é Latin-1 puro.** `MB_ERR_INVALID_CHARS` não existe
+    nos headers do Xbox, e não dá para depender de uma flag não documentada. `EhUtf8()` percorre
+    os bytes conferindo o padrão de byte líder e continuação; não sendo UTF-8 válido, cada byte
+    vira o ponto de código de mesmo valor. Latin-1 cobre exatamente os acentos dos nossos
+    literais (`e7` = ç, `e3` = ã) sem exigir que página de código nenhuma exista no console. E
+    texto UTF-8 válido nunca chega ao recuo — é o que mantém certo o nome de jogo japonês.
+
+76. **Quadrado de coleção: 244 px, quatro por linha.** Era 180 com cinco por linha, e sobrava
+    tela de qualquer jeito — a grade terminava em x=1120 e as duas linhas em y=454, numa tela de
+    1280x720. Agora a grade é centralizada por cálculo (`COL_MARGEM`), não pela margem geral.

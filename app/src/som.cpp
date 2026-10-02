@@ -13,7 +13,12 @@ namespace
     // corta -- o som sai estourado. Na FreeStyle quem atenua e o XUI, que nos nao temos.
     // Abaixar aqui e o equivalente, e de quebra som de interface nao deve competir com
     // o jogo em volume.
-    const float VOLUME = 0.65f;
+    //
+    // 0,65 ainda saiu "o dobro da FreeStyle" no console, entao 0,32 -- metade da
+    // amplitude, -6 dB. A FreeStyle nao guarda volume de som nas configuracoes dela
+    // (procurado nas 80 colunas de GlobalSettings): quem atenua e o XUI, por dentro,
+    // e o numero nao da para extrair de lugar nenhum. E ajuste de ouvido mesmo.
+    const float VOLUME = 0.32f;
 
     struct Voz
     {
