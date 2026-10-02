@@ -582,3 +582,32 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     `SeguirFocoColecao()` espelhando o `SeguirFoco()` dos jogos — sobe uma linha por vez. A
     inconsistência não era decisão: foi como saiu ao implementar as duas telas em momentos
     diferentes.
+
+78. **A capa se cria como `D3DFMT_LIN_DXT5`, não `D3DFMT_DXT5`.** No Xbox 360 a textura normal é
+    **ladrilhada**, e o DDS dentro do `.assets` é **linear**, como todo DDS de PC. Pedindo o
+    formato ladrilhado, o D3DX converte o layout de cada capa; pedindo o linear, usa os bytes
+    como estão. Era a **única** diferença entre a nossa chamada e a do FreeStyle
+    (`TextureCache.cpp:91`), e causava um fatal crash determinístico na tela de adicionar jogos,
+    sempre na 45ª textura. Passamos também largura e altura explícitas, lidas do cabeçalho DDS,
+    em vez de `D3DX_DEFAULT_NONPOW2`.
+
+    A lição é a mesma de rodadas atrás, e foi preciso repetir: **conferir como o FreeStyle faz
+    antes de escrever**, não depois de quebrar.
+
+79. **Os quatro controles, somados.** Lia só `XInputGetState(0, ...)` — quem estivesse com o
+    segundo controle não navegava. Não havia motivo: é um launcher de sofá. Botões entram por OU
+    e, no analógico, vale o que estiver mais longe do centro, para um controle parado não anular
+    o que está em uso.
+
+80. **`XPhysicalAlloc` com alinhamento ZERO, não 2048.** A doc: *"must be a power of two that is
+    greater than or equal to the page size"* — e a página do 360 é 4096. As amostras do XDK
+    passam 2048 assim mesmo; zero significa "o tamanho da página", que satisfaz a doc e os 2 KB
+    que o XMA exige, porque 4096 é múltiplo de 2048.
+
+81. **O `FatalError` da ATG agora escreve no nosso log antes de morrer.** Ele faz `DebugSpew`
+    (que só sai pelo XBDM, e não há depurador acoplado), `DebugBreak()` e `exit(0)` — ou seja, um
+    fatal crash **mudo**. Há quatro chamadas dele só no `AtgDebugDraw`. Essa linha foi o que
+    permitiu **descartar** o ring buffer como causa e procurar no lugar certo.
+
+    Junto, cada textura deixa duas linhas no log: uma antes da criação e outra depois. Foi o par
+    que mostrou que todas as 45 criações completavam — e que o problema estava depois delas.

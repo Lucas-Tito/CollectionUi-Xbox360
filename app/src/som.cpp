@@ -149,7 +149,15 @@ namespace
         // "XMA packets must be 2K aligned" -- a amostra XAudio2BasicSound do XDK. Um
         // new BYTE[] daria um ponteiro qualquer, e quem le estes bytes e o
         // decodificador de hardware, nao a CPU.
-        BYTE *dados = (BYTE *)XPhysicalAlloc(dadosTam, MAXULONG_PTR, 2048, PAGE_READWRITE);
+        //
+        // Mas o alinhamento pedido aqui e ZERO, nao 2048. A doc do XPhysicalAlloc e
+        // explicita: "This parameter must be a power of two that is greater than or
+        // equal to the page size" -- e a pagina do 360 e 4096. As amostras do XDK
+        // passam 2048 assim mesmo; nos passamos abaixo da pagina e tinhamos um crash
+        // sem rastro justamente na tela que mais movimenta memoria fisica. Zero quer
+        // dizer "alinhamento padrao, o tamanho da pagina", que satisfaz a doc E os 2 KB
+        // que o XMA exige, porque 4096 e multiplo de 2048.
+        BYTE *dados = (BYTE *)XPhysicalAlloc(dadosTam, MAXULONG_PTR, 0, PAGE_READWRITE);
         if (dados == NULL)
         {
             delete[] arquivo;
