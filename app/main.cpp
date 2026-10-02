@@ -121,6 +121,7 @@ namespace
     Pedido g_pedido = PEDIDO_NENHUM;
     colecoes::Colecao *g_renomeando = NULL;
 
+    bool  g_anelMarcado = true;      // ver config::Ligado("anel")
     char  g_aviso[192] = "";         // erro mostrado por alguns segundos
     DWORD g_avisoAte = 0;
 
@@ -495,7 +496,7 @@ namespace
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhuma coleção ainda",
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(GLYPH_X_BUTTON L" Nova coleção     " GLYPH_B_BUTTON L" Sair", L"");
+            Rodape(GLYPH_X_BUTTON L" Nova coleção", L"");
             g_fonte.End();
             return;
         }
@@ -548,7 +549,7 @@ namespace
 
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
         Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
-               GLYPH_START_BUTTON L" Opções     " GLYPH_B_BUTTON L" Sair", texto);
+               GLYPH_START_BUTTON L" Opções", texto);
         g_fonte.End();
     }
 
@@ -622,6 +623,12 @@ namespace
         Nome nomes[POR_PAGINA];
         int qtdNomes = 0;
 
+        // Composição do que está sendo desenhado. O crash só aparece MARCANDO DURANTE O
+        // CARREGAMENTO, e a combinação que só existe nesse caso é item marcado com a
+        // capa ainda nula -- aí saem três DrawScreenSpaceRect seguidos no mesmo item.
+        // Registrado só quando MUDA, senão seria uma linha por quadro.
+        int marcadosVisiveis = 0, semCapaVisiveis = 0;
+
         for (int k = 0; k < POR_PAGINA; k++)
         {
             int i = base + k;
@@ -657,7 +664,7 @@ namespace
                 ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
             }
 
-            if (adicionando && SelecionadoNoRascunho(L[i]->titleId))
+            if (g_anelMarcado && adicionando && SelecionadoNoRascunho(L[i]->titleId))
                 ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
 
             if (i == g_iJogo)
@@ -666,6 +673,9 @@ namespace
                 anel.x1 -= 4; anel.y1 -= 4; anel.x2 += 4; anel.y2 += 4;
                 ATG::DebugDraw::DrawScreenSpaceRect(anel, 3.0f, COR_ANEL);
             }
+
+            if (marcado)   marcadosVisiveis++;
+            if (capa == NULL) semCapaVisiveis++;
 
             nomes[qtdNomes].x = (FLOAT)r.x1;
             nomes[qtdNomes].y = (FLOAT)r.y2 + 8.0f;
@@ -708,6 +718,14 @@ namespace
         g_fonte.End();
 
         IndiceAlfabetico(L);
+
+        static int ultMarcados = -1, ultSemCapa = -1, ultBase = -1;
+        if (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase)
+        {
+            ultMarcados = marcadosVisiveis; ultSemCapa = semCapaVisiveis; ultBase = base;
+            diario::Escrever("tela: base=%d visiveis=%d marcados=%d semCapa=%d",
+                             base, qtdNomes, marcadosVisiveis, semCapaVisiveis);
+        }
     }
 
     void DesenharMenu()
@@ -1155,32 +1173,17 @@ namespace
         else Jogar();
     }
 
-    // Sair de verdade, em vez de deixar o sistema nos matar à força.
+    // Sem saída pelo B.
     //
-    // O app não tinha saída nenhuma: o único jeito de sair era lançar um jogo. Pedindo
-    // o dashboard pela Guide, o título era encerrado com a thread do carregador viva, o
-    // motor de áudio tocando e 120 texturas alocadas -- e o resultado era tela preta.
-    void SairParaDash()
-    {
-        som::Tocar(som::SOM_VOLTA);
-        SoltarTudo();
-
-        std::string erro;
-        if (lancador::VoltarAoDash(erro))
-            return;                 // nunca acontece: sucesso não devolve
-
-        carregador::Iniciar();
-        som::Iniciar();
-        Avisar(erro.c_str());
-    }
-
+    // Houve uma tentativa: B na tela de coleções chamaria XLaunchNewImage(NULL, 0) para
+    // voltar ao dashboard, depois da mesma desmontagem do lançamento de jogo. Ela nunca
+    // funcionou -- o ramo de TELA_COLECOES no laço de entrada trata A, X e ☰, e nunca
+    // chamou Voltar(), então o "B Sair" existia só no rodapé. E o usuário preferiu não
+    // ter a opção. Sai-se do app lançando um jogo, ou pela Guide.
     void Voltar()
     {
         if (g_tela == TELA_COLECOES)
-        {
-            SairParaDash();
             return;
-        }
 
         som::Tocar(som::SOM_VOLTA);
         if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
@@ -1195,9 +1198,44 @@ namespace
     }
 }
 
+// Último recurso: roda quando ninguém mais trata a exceção.
+//
+// Faz três coisas, nessa ordem de importância: registra ONDE morreu (o Iar é o endereço
+// da instrução que falhou, e o .map do link resolve para função), cala o motor de áudio,
+// e garante o log no disco.
+//
+// Devolve EXCEPTION_CONTINUE_SEARCH de propósito. A doc do SetUnhandledExceptionFilter
+// avisa que devolver EXCEPTION_EXECUTE_HANDLER "usually results in the game console
+// freezing" -- e congelar é exatamente o que a gente está tentando evitar.
+LONG WINAPI AoMorrer(LPEXCEPTION_POINTERS p)
+{
+    if (p != NULL && p->ExceptionRecord != NULL && p->ContextRecord != NULL)
+    {
+        diario::Escrever("CRASH code=0x%08X addr=0x%08X Iar=0x%08X Lr=0x%08X",
+                         (unsigned)p->ExceptionRecord->ExceptionCode,
+                         (unsigned)(ULONG_PTR)p->ExceptionRecord->ExceptionAddress,
+                         (unsigned)p->ContextRecord->Iar,
+                         (unsigned)p->ContextRecord->Lr);
+    }
+    else
+    {
+        diario::Escrever("CRASH sem contexto");
+    }
+
+    // StopEngine, não Parar(): aqui não se aloca, não se espera e não se desmonta nada.
+    som::Calar();
+    diario::Fechar();
+
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 void __cdecl main()
 {
     diario::Abrir("game:\\collectionui.log");
+
+    // Antes de tudo: é o que transforma morte silenciosa em endereço no log, e o que
+    // cala o áudio para o console não pendurar.
+    SetUnhandledExceptionFilter(AoMorrer);
     diario::Escrever("CollectionUI");
 
     for (int i = 0; i < CACHE_MAX; i++)
@@ -1266,12 +1304,22 @@ void __cdecl main()
 
     colecoes::Carregar();
     carregador::Iniciar();
-    som::Iniciar();
+
+    // Chaves do .ini para separar hipotese sem recompilar -- o crash ao marcar e
+    // intermitente e marcar mexe em exatamente duas coisas: o som e o anel do marcado.
+    if (config::Ligado("som"))
+        som::Iniciar();
+    else
+        diario::Escrever("som DESLIGADO pelo .ini");
+
+    g_anelMarcado = config::Ligado("anel");
+    if (!g_anelMarcado)
+        diario::Escrever("anel do marcado DESLIGADO pelo .ini");
 
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
-    int   direcaoX = 0, direcaoY = 0;
-    DWORD proximoPasso = 0, ultimoRelato = 0, quadro = 0;
+    int   direcaoX = 0, direcaoY = 0, ombroAtual = 0;
+    DWORD proximoPasso = 0, proximoOmbro = 0, ultimoRelato = 0, quadro = 0;
 
     for (;;)
     {
@@ -1299,20 +1347,23 @@ void __cdecl main()
         WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
         anterior = agora;
 
-        int dx = 0, dy = 0;
-        if (novos & XINPUT_GAMEPAD_DPAD_RIGHT) dx =  1;
-        if (novos & XINPUT_GAMEPAD_DPAD_LEFT)  dx = -1;
-        if (novos & XINPUT_GAMEPAD_DPAD_DOWN)  dy =  1;
-        if (novos & XINPUT_GAMEPAD_DPAD_UP)    dy = -1;
-
-        // O analógico não tem "apertou agora": é posição contínua. Ganha comportamento
-        // de tecla segurada — passo imediato, pausa, depois repetição.
+        // Direção: analógico E direcional pela MESMA máquina de repetição -- passo
+        // imediato, pausa, depois repetição enquanto estiver segurado. O direcional era
+        // disparado por borda ("apertou agora"), então segurá-lo dava um passo só.
         int ax = 0, ay = 0;
         if (agora.Gamepad.sThumbLX >  ZONA_MORTA) ax =  1;
         if (agora.Gamepad.sThumbLX < -ZONA_MORTA) ax = -1;
         if (agora.Gamepad.sThumbLY >  ZONA_MORTA) ay = -1;
         if (agora.Gamepad.sThumbLY < -ZONA_MORTA) ay =  1;
 
+        // O direcional entra como deflexão total. Vem depois do analógico de propósito:
+        // com os dois em uso ao mesmo tempo, o direcional manda, que é o mais preciso.
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) ax =  1;
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT)  ax = -1;
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN)  ay =  1;
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP)    ay = -1;
+
+        int dx = 0, dy = 0;
         DWORD tAgora = GetTickCount();
         if (ax == 0 && ay == 0) { direcaoX = direcaoY = 0; proximoPasso = 0; }
         else if (ax != direcaoX || ay != direcaoY)
@@ -1324,6 +1375,25 @@ void __cdecl main()
         {
             dx = ax; dy = ay;
             proximoPasso = tAgora + ESPERA_REPETE;
+        }
+
+        // LB/RB na mesma máquina: segurar passa letra atrás de letra, em vez de um
+        // salto por clique.
+        int ombro = 0;
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER)  ombro = -1;
+        if (agora.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) ombro =  1;
+
+        int salto = 0;
+        if (ombro == 0) { ombroAtual = 0; proximoOmbro = 0; }
+        else if (ombro != ombroAtual)
+        {
+            ombroAtual = ombro; salto = ombro;
+            proximoOmbro = tAgora + ESPERA_INICIAL;
+        }
+        else if (tAgora >= proximoOmbro)
+        {
+            salto = ombro;
+            proximoOmbro = tAgora + ESPERA_REPETE;
         }
 
         // Enquanto a Guide está na tela o controle é DELA. Continuamos desenhando --
@@ -1369,8 +1439,7 @@ void __cdecl main()
                 if (segurando && g_tela != TELA_ADICIONAR) SaltoLetra(dy);
                 else MoverJogo(dy * COLUNAS);
             }
-            if      (novos & XINPUT_GAMEPAD_LEFT_SHOULDER)  SaltoLetra(-1);
-            else if (novos & XINPUT_GAMEPAD_RIGHT_SHOULDER) SaltoLetra(1);
+            if      (salto) SaltoLetra(salto);
             else if (novos & XINPUT_GAMEPAD_A) Confirmar();
             else if (novos & XINPUT_GAMEPAD_B) Voltar();
             else if (novos & XINPUT_GAMEPAD_X) { if (g_tela == TELA_JOGOS) AbrirAdicionar(); }

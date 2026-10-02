@@ -633,3 +633,58 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
 85. **O `NORETURN` pegou de novo.** O `cl.exe` recusou com `C4702` o `return` depois do
     `XLaunchNewImage` da saída, exatamente como já recusara no lançamento de jogo (decisão 36).
     Segunda vez: **nada vai depois de um `XLaunchNewImage`.**
+
+## O crash do `DrawText`, e o que ele ensinou
+
+Esta seção existe porque o defeito custou **oito rodadas de teste no console** e cinco hipóteses
+erradas minhas. O que resolveu não foi nenhuma delas.
+
+86. **A causa: `ATG::Font::DrawText` escreve 64 bytes além do que reserva, sempre que trunca.**
+    Ele reserva `4 * (wcslen + 3)` vértices no `BeginVertices` quando há `ATGFONT_TRUNCATED`. A
+    terceira reticência escreve o quad dela e sai pelo `break` **antes** do `dwNumChars--`; o laço
+    de preenchimento logo abaixo escreve o saldo inteiro. Sobra 1 quad = 16 floats = **64 bytes**
+    fora da região reservada. Corrigido movendo o `dwNumChars--` para antes do `break`
+    (`app/vendor/atg/AtgFont.cpp` — alteração NOSSA, não do XDK).
+
+    Explica cada peça: só nas telas com nome truncado (os dois grids usam `TRUNCATED`);
+    intermitente, porque quase sempre o ring buffer tem folga e só vira violação de acesso quando
+    a reserva cai perto do fim; e sensível a qualquer coisa que mude o volume de desenho.
+
+87. **Hipóteses minhas que estavam erradas, e por que eu acreditei nelas.** Ficam registradas
+    porque cada uma consumiu rodadas do usuário:
+    - *"É o Forza Motorsport 4"* — o log parava sempre na textura 117. **Era artefato**: a 117 é o
+      último item da janela de prefetch na posição onde ele parava de rolar. Nada quebrava ali.
+    - *"É ladrilhado contra linear"* — `D3DFMT_LIN_DXT5` É a chamada correta (decisão 78) e deve
+      ficar, mas **não era a causa**; só mudou o limiar.
+    - *"É o anel do jogo marcado"* — a bisseção apontou para ele, mas era **timing**: menos
+      desenho por quadro, outra probabilidade de a reserva cair no lugar ruim.
+    - *"É o array de vértices na pilha do `DrawScreenSpaceRect`"* — **derrubada pela doc**:
+      *"The vertex data passed to DrawPrimitiveUP does not need to persist after the call."*
+    - *"É o ring buffer estourando"* — a doc diz que `BeginVertices` só devolve `E_OUTOFMEMORY`
+      dentro de `BeginTiling`/`BeginZPass`/`BeginCommandBuffer`, e não usamos nenhum.
+
+88. **O que de fato resolveu: parar de adivinhar e instrumentar o ponto de morte.**
+    `SetUnhandledExceptionFilter` registrando `ExceptionCode`, `Iar` e `Lr`, mais `-MAP` no link
+    para resolver o endereço. Entregou `0xC0000005` dentro do `DrawText` numa única sessão —
+    depois de oito sessões de bisseção que só devolviam um bit cada ("travou / não travou").
+
+    **Regra para a próxima vez: num crash sem explicação, o primeiro passo é fazer o programa
+    dizer ONDE morreu, não tentar adivinhar o quê.**
+
+89. **Log em que não se pode confiar envenena todo o diagnóstico.** Três rodadas foram construídas
+    sobre "o log termina sempre no mesmo ponto" quando o log é que estava perdendo o fim
+    (decisão 82). Quem desfez o engano foi uma observação do usuário, não o código. Antes de tirar
+    conclusão de um log, confirme que ele sobrevive ao evento que se quer diagnosticar.
+
+90. **Bisseção por chave no `.ini` é barata, mas cada rodada devolve UM BIT.** As chaves `som=` e
+    `anel=` (`config::Ligado`) foram úteis e ficam. Mas um contraste de uma sessão vale pouco: a
+    sessão que "provou" o anel tinha p≈5% de acontecer por acaso. Instrumentar vale mais que
+    bisseccionar quando o espaço de hipóteses é grande.
+
+91. **O áudio transformava crash em travamento do console.** Com som ligado, a falha pendurava a
+    máquina (desligamento forçado); sem som, era fatal crash limpo e a FreeStyle voltava. O filtro
+    de exceção chama `som::Calar()` → `IXAudio2::StopEngine` ("stops the audio processing thread",
+    sem desmontar nada) e isso resolveu — **confirmado no console**. Não se usa `som::Parar()` ali:
+    ele faz `DestroyVoice`/`Release`, que alocam e esperam, coisas que não se faz num contexto já
+    faltoso. O filtro devolve `EXCEPTION_CONTINUE_SEARCH` porque a doc avisa que
+    `EXCEPTION_EXECUTE_HANDLER` *"usually results in the game console freezing"*.
