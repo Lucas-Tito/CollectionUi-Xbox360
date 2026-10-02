@@ -1,3 +1,14 @@
 build/
+
+# Codigo de amostra da Microsoft (XDK). Fora do git por licenca; o
+# toolchain/vendor-atg.sh copia do seu SDK e aplica toolchain/patches/atg.patch,
+# que carrega as NOSSAS alteracoes nele.
 vendor/atg/
-media/
+
+# Tambem do XDK, pelo mesmo motivo. O mesmo script copia os dois.
+media/Arial_16.xpr
+media/effects/
+
+# media/sounds/ NAO entra aqui de proposito: sao 43 KB vindos do repositorio
+# publico da FreeStyle (Skins/Default/Audio). Versionados para o build nao
+# depender de um repositorio de terceiro continuar existindo.
