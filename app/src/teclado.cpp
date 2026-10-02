@@ -20,9 +20,44 @@ namespace
     XOVERLAPPED g_ov;
     bool        g_aberto = false;
 
+    // Ver o Larga de main.cpp: literal estreito do fonte vem em ANSI, nao em UTF-8, e
+    // CP_UTF8 parava no primeiro acento -- o titulo "Nova colecao" chegava ao teclado
+    // do sistema cortado em "Nova cole".
+    bool EhUtf8(const char *s)
+    {
+        const unsigned char *p = (const unsigned char *)s;
+        while (*p)
+        {
+            int extras;
+            if (*p < 0x80)                extras = 0;
+            else if ((*p & 0xE0) == 0xC0) extras = 1;
+            else if ((*p & 0xF0) == 0xE0) extras = 2;
+            else if ((*p & 0xF8) == 0xF0) extras = 3;
+            else return false;
+
+            p++;
+            while (extras-- > 0)
+                if ((*p++ & 0xC0) != 0x80) return false;
+        }
+        return true;
+    }
+
     void Larga(const char *origem, WCHAR *destino, int capacidade)
     {
-        if (origem == NULL || MultiByteToWideChar(CP_UTF8, 0, origem, -1, destino, capacidade) <= 0)
+        if (origem == NULL)
+        {
+            destino[0] = L'\0';
+            return;
+        }
+        if (!EhUtf8(origem))
+        {
+            int i = 0;
+            for (; origem[i] != '\0' && i < capacidade - 1; i++)
+                destino[i] = (WCHAR)(unsigned char)origem[i];
+            destino[i] = L'\0';
+            return;
+        }
+        if (MultiByteToWideChar(CP_UTF8, 0, origem, -1, destino, capacidade) <= 0)
             destino[0] = L'\0';
     }
 }
