@@ -225,6 +225,12 @@ namespace som
         diario::Escrever("som: %d de %d efeitos prontos", montadas, (int)SOM_QUANTOS);
     }
 
+    void Calar()
+    {
+        if (g_motor != NULL)
+            g_motor->StopEngine();
+    }
+
     void Parar()
     {
         for (int i = 0; i < SOM_QUANTOS; i++)

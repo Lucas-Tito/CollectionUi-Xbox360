@@ -34,6 +34,14 @@ namespace som
     void Parar();
 
     void Tocar(Efeito e);
+
+    // Cala o motor NA MARRA, para usar dentro do filtro de excecao.
+    //
+    // Nao e o Parar(): aquele faz DestroyVoice e Release, que alocam, esperam e podem
+    // travar num contexto ja faltoso. StopEngine so "stops the audio processing thread"
+    // e deixa o grafo de pe -- e e o que impede o console de pendurar quando o titulo
+    // morre com audio tocando.
+    void Calar();
 }
 
 #endif

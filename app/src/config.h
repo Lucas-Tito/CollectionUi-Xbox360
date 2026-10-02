@@ -12,6 +12,11 @@ namespace config
     // Vazio se nao houver escolha gravada.
     std::string LerBanco();
     void        GravarBanco(const std::string &caminho);
+
+    // Chaves liga/desliga para separar hipotese sem recompilar: basta editar o .ini
+    // pelo FTP. "som=0" nao inicia o audio; "anel=0" nao desenha o anel do jogo
+    // marcado. Ausente, vale o padrao (ligado).
+    bool Ligado(const char *chave);
 }
 
 #endif

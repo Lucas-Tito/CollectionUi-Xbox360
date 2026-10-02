@@ -71,8 +71,12 @@ namespace diario
         int n = _vsnprintf(linha, sizeof(linha) - 2, formato, args);
         va_end(args);
 
-        if (n < 0) n = (int)strlen(linha);        // truncou: _vsnprintf devolve -1
-        if (n > (int)sizeof(linha) - 2) n = (int)sizeof(linha) - 2;
+        // Truncando, o _vsnprintf devolve -1 e NAO termina a string. O strlen que
+        // estava aqui lia alem do buffer e o '\n' seguinte escrevia fora dele. Nenhuma
+        // linha de hoje chega perto de 1022 bytes, mas era estouro esperando caminho
+        // novo -- e um deles seria justamente o filtro de excecao.
+        if (n < 0 || n > (int)sizeof(linha) - 2)
+            n = (int)sizeof(linha) - 2;
         linha[n++] = '\n';
 
         EnterCriticalSection(&g_trava);
