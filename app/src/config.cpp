@@ -58,6 +58,28 @@ namespace config
         return ligado;
     }
 
+    bool LigadoSeDito(const char *chave)
+    {
+        FILE *f = fopen(ARQUIVO, "r");
+        if (f == NULL)
+            return false;
+
+        char linha[512];
+        bool ligado = false;
+        size_t n = strlen(chave);
+
+        while (fgets(linha, sizeof(linha), f) != NULL)
+        {
+            if (strncmp(linha, chave, n) != 0 || linha[n] != '=')
+                continue;
+            ligado = (linha[n + 1] != '0');
+            break;
+        }
+
+        fclose(f);
+        return ligado;
+    }
+
     void GravarBanco(const std::string &caminho)
     {
         FILE *f = fopen(ARQUIVO, "w");

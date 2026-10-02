@@ -26,6 +26,27 @@ namespace
             // Devolve zero no sucesso -- mas no sucesso o console reinicia e ninguem
             // le este retorno. Na pratica so voltamos daqui com erro.
             p->codigo = XContentLaunchImageFromFile(p->caminho, p->imagem);
+            if (p->codigo == 0)
+                return 0;
+
+            // ERROR_FILE_NOT_FOUND com o arquivo existindo (a sondagem achou ele antes)
+            // aponta para o FORMATO do caminho: "Hdd:" e um apelido que NOS criamos com
+            // ObCreateSymbolicLink, e quem resolve o caminho aqui e o xam, noutro
+            // contexto. O FreeStyle monta container passando "\??\Hdd1:\...", o
+            // caminho do namespace de objetos. Tentamos essa forma antes de desistir.
+            if (p->codigo == ERROR_FILE_NOT_FOUND)
+            {
+                char outro[512];
+                _snprintf(outro, sizeof(outro), "\\??\\%s", p->caminho);
+                outro[sizeof(outro) - 1] = '\0';
+
+                diario::Reabrir();
+                diario::Escrever("container: %u no caminho direto; tentando %s",
+                                 (unsigned)p->codigo, outro);
+                diario::Fechar();
+
+                p->codigo = XContentLaunchImageFromFile(outro, p->imagem);
+            }
             return 0;
         }
 

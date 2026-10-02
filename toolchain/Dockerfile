@@ -168,6 +168,11 @@ COPY $XDK/lib/xbox/xaudio2.lib /xdk/lib/xbox/
 # lib o link para com 4 simbolos externos nao resolvidos.
 COPY $XDK/lib/xbox/xmcored.lib /xdk/lib/xbox/
 COPY $XDK/lib/xbox/xmcore.lib /xdk/lib/xbox/
+
+# XNotifyQueueUI, a notificacao do sistema (o balao do canto). Nao esta em header
+# nenhum do XDK -- declaramos a mao --, mas esta exportada aqui.
+COPY $XDK/lib/xbox/xavd.lib /xdk/lib/xbox/
+COPY $XDK/lib/xbox/xav.lib /xdk/lib/xbox/
 # COPY $XDK/lib/xbox/xonlined.lib /xdk/lib/xbox/
 # COPY $XDK/lib/xbox/xonline.lib /xdk/lib/xbox/
 

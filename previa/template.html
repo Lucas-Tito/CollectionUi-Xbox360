@@ -167,9 +167,13 @@ const JOGOS = __DADOS__;
 // que se desenha aqui é o que o console consegue desenhar. Mudou lá, muda aqui.
 // ===========================================================================
 const COLUNAS = 5, LINHAS = 2;
-const CAPA_L = 170, CAPA_A = 238;
-const ESPACO_X = 56, ESPACO_Y = 40;
-const MARGEM_X = 100, TOPO = 92;
+// Capa menor e mais folga: com 170x238 e 56 de espaço as capas ficavam coladas.
+// A altura segue a proporção da FRENTE do encarte (421x600 = 1,425), não 1,4.
+const CAPA_L = 146, CAPA_A = 208;
+const ESPACO_X = 72, ESPACO_Y = 56;
+const MARGEM_X = 100, TOPO = 92;            // MARGEM_X é do texto, não da grade
+// A grade é centralizada por cálculo, como a de coleções.
+const GRID_MARGEM = (1280 - (COLUNAS * CAPA_L + (COLUNAS - 1) * ESPACO_X)) / 2;
 const POR_PAGINA = COLUNAS * LINHAS;
 
 const COR_FUNDO   = 'rgb(13,17,15)';
@@ -561,7 +565,7 @@ function telaJogos(){
     const indice = base + i;
     if (indice >= total) break;
     const g = L[indice];
-    const x1 = MARGEM_X + (i % COLUNAS) * (CAPA_L + ESPACO_X);
+    const x1 = GRID_MARGEM + (i % COLUNAS) * (CAPA_L + ESPACO_X);
     const y1 = TOPO + ((i / COLUNAS)|0) * (CAPA_A + ESPACO_Y);
 
     const idx = JOGOS.indexOf(g);
