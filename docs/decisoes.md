@@ -833,3 +833,48 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      palavras `jogos` ou `uniao`. E a regra que vale para todo leitor de arquivo daqui em diante:
      **linha que não entendi eu preservo, não descarto** — numa leitura que alimenta uma
      reescrita total, descartar é apagar.
+
+108. **ROM de emulador não está em banco nenhum.** O `content.db` da FreeStyle tem oito tabelas
+     (`ContentItems`, `ContentTypes`, `Favorites`, `HttpQueue`, `MountedDevices`,
+     `RecentlyPlayedTitles`, `TitleUpdates`, `UserRatings`) e **nenhuma guarda ROM**. A FreeStyle
+     indexa só o que o 360 lança: XEX, XBE e container. Os emuladores são itens comuns da
+     biblioteca — o Snes360 é o `FFED0707` que já aparecia no `colecoes.txt`, com
+     `ContentItemPath = \EMULADORES\Snes360\Snes360.xex`.
+
+     As ROMs são arquivo solto dentro da pasta do emulador: `Snes360/Roms/*.smc`, `Ps1/roms/*.bin`,
+     `FBANext*/roms/*.zip`. Trazê-las não é ler mais uma tabela — é o CollectionUI virar uma
+     segunda fonte, que varre pasta.
+
+     Achado lateral: `EMUS/SNES360/Preview` **não** é instalação velha. É o `PreviewPath` do
+     `settings.xml` do Snes360, onde as imagens dele moram. Está vazia.
+
+109. **Id sintético para item de emulador.** Todas as 20 ROMs de SNES compartilham o TitleId do
+     Snes360: marcar uma marcaria as vinte. A identidade de item de emulador passa a ser derivada
+     de emulador + nome do arquivo, em 32 bits, ocupando o mesmo campo do TitleId.
+
+     Escolhido assim porque **não mexe em nada**: `Tem`, `Alternar`, `Remover` e o formato do
+     `colecoes.txt` continuam iguais. Colisão com TitleId real é possível e tolerável — o efeito
+     seria dois itens sempre marcados juntos, que é exatamente o caso de multi-disco, já previsto
+     e já suportado pela tela.
+
+110. **Lançar a ROM direto não é bifurcação de projeto: é tentativa grátis.** `XSetLaunchData`,
+     `XGetLaunchData` e `XGetLaunchDataSize` estão exportadas em `xav.lib` e `xapilib.lib` e
+     **não aparecem em header nenhum** do XDK — mesma situação do `XNotifyQueueUI`, que já se
+     declara à mão. Gravar o caminho da ROM antes de lançar custa dez linhas.
+
+     Dos emuladores instalados, nenhum anuncia ler isso: o Readme do Snes360 descreve a operação
+     inteira sem mencionar, o `default.ini` do pcsxr-360 é `[pcsx] nothing = 0`, e o
+     `FBANext.ini` só tem lista de recentes (`szPrevGames[0..9]`), não autoload.
+
+     Então a regra: **constrói-se a versão que cai no menu do emulador, e grava-se a launch data
+     na saída de qualquer jeito.** Quem souber ler abre direto; quem não souber ignora e abre o
+     menu, que é o comportamento aceito. Não há o que decidir hoje, e um emulador que leia entra
+     funcionando sem mudança.
+
+111. **Capa de ROM não precisa do formato da FreeStyle.** A textura nasce de
+     `D3DXCreateTextureFromFileInMemoryEx`, que decodifica JPG, PNG, BMP, DDS e TGA de bytes em
+     memória. O container `FSDA` é como a FreeStyle guarda a arte dela, não um requisito nosso:
+     para ROM, arquivo comum na pasta serve.
+
+     De onde vem essa arte continua em aberto — nem o `Preview` do Snes360 nem a `covers/` do Ps1
+     têm imagem dos jogos que ele tem.
