@@ -183,6 +183,11 @@ const FUNDOS = {
   sutil:    { de:'rgb(10,20,15)', para:'rgb(18,34,26)', ang:'diag' },
   medio:    { de:'rgb(9,24,17)',  para:'rgb(26,52,38)', ang:'diag' },
   vertical: { de:'rgb(16,32,24)', para:'rgb(8,16,12)',  ang:'vert' },
+
+  // Azul eclesiástico: o azul profundo de vitral e paramento, puxando para o roxo.
+  // Mais saturado que o verde, então vale olhar como fica com a capa por cima.
+  azul:     { de:'rgb(12,20,44)', para:'rgb(28,42,86)', ang:'diag' },
+  azulEsc:  { de:'rgb(8,14,32)',  para:'rgb(20,30,64)', ang:'diag' },
 };
 let FUNDO = 'medio';
 
@@ -199,7 +204,12 @@ let FUNDO = 'medio';
 //  +---+ |  3  |
 //        +-----+
 const CARDS = {
-  grupo30:  { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
+  // O tom do card é GRADIENTE, mais escuro em cima, aliviando embaixo onde o véu de
+  // legibilidade já trabalha. O azul segue exatamente a mesma forma, só trocando a cor.
+  grupo30:  { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+              tomG:['rgba(9,20,13,0.66)', 'rgba(14,30,20,0.38)'], vert:true },
+  azul30:   { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+              tomG:['rgba(10,16,38,0.66)', 'rgba(16,24,52,0.38)'], vert:true },
   grupo20:  { tipo:'colagem', r:10, giro:-20, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
   grupo45:  { tipo:'colagem', r:10, giro:-45, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
   // Mesmo grupo30, mas com GRADIENTE por cima da colagem em vez de tom chapado.
@@ -250,7 +260,8 @@ function pintarCard(ctx, x, y, l, a, selecionado, col) {
     caminhoArredondado(ctx, x, y, l, a, c.r);
     ctx.clip();
 
-    ctx.fillStyle = 'rgb(18,28,22)'; ctx.fillRect(x, y, l, a);
+    ctx.fillStyle = CARD.indexOf('azul') === 0 ? 'rgb(20,28,52)' : 'rgb(18,28,22)';
+    ctx.fillRect(x, y, l, a);
 
     // O grupo inteiro gira junto; dentro dele as tres se encostam.
     const ids = (col && col.ids) ? col.ids.slice(0, 3) : [];

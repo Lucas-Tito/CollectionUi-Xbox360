@@ -75,7 +75,7 @@ namespace
     // um jogo diferente em cada uma: chavear por posição mostraria a capa errada ao
     // trocar de coleção. Pelo id, as três telas compartilham o mesmo cache e trocar
     // de tela não perde nem recarrega nada.
-    const int CACHE_MAX = 128;
+    const int CACHE_MAX = 160;   // 36 dos cards (12 na janela x 3) + 120 do adicionar
 
     struct Entrada
     {
@@ -311,10 +311,63 @@ namespace
         g_cache[alvo].uso     = ++g_relogio;
     }
 
+    // As tres primeiras da colecao NA ORDEM DA TELA. g_jogos ja vem alfabetica de
+    // biblioteca::Ler, entao basta varrer na ordem e parar na terceira. Previsivel: o
+    // card mostra o comeco do que se ve ao entrar.
+    void TresDaColecao(const colecoes::Colecao *c, const biblioteca::Jogo *saida[3], int *quantas)
+    {
+        *quantas = 0;
+        if (c == NULL) return;
+
+        for (size_t i = 0; i < g_jogos.size() && *quantas < 3; i++)
+            if (colecoes::Tem(c, g_jogos[i].titleId))
+                saida[(*quantas)++] = &g_jogos[i];
+    }
+
     void PedirOQueFalta()
     {
+        // A tela de coleções tambem carrega agora: tres capas por card. Sao as MESMAS
+        // texturas que a colecao usa por dentro (a chave do cache e o ContentItemId),
+        // entao isto deixa a tela de jogos mais rapida em vez de custar o dobro.
         if (g_tela == TELA_COLECOES)
+        {
+            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+            // Uma linha de folga para CADA lado, como a tela de jogos faz: sem a de
+            // cima, rolar para tras mostra card sem capa por um instante.
+            int base = (g_primeiraLinhaCol - 1) * COL_POR_LINHA;
+            if (base < 0) base = 0;
+            int fim  = (g_primeiraLinhaCol + COL_LINHAS + 1) * COL_POR_LINHA;
+            if (fim > (int)L.size()) fim = (int)L.size();
+
+            for (int i = base; i < fim; i++)
+            {
+                const biblioteca::Jogo *tres[3];
+                int n = 0;
+                TresDaColecao(L[i], tres, &n);
+
+                for (int k = 0; k < n; k++)
+                {
+                    if ((int)g_emVoo.size() >= EM_VOO_MAX)
+                        return;
+
+                    int id = tres[k]->id;
+                    if (NoCache(id, false) != NULL || EstaNaLista(g_emVoo, id) ||
+                        EstaNaLista(g_falhou, id))
+                        continue;
+
+                    std::string pasta = biblioteca::PastaArte(g_caminhoBanco, id);
+                    if (pasta.empty())
+                        continue;
+
+                    char arquivo[512];
+                    _snprintf(arquivo, sizeof(arquivo), "%s\\%08X.assets", pasta.c_str(), id);
+                    arquivo[sizeof(arquivo) - 1] = '\0';
+                    carregador::Pedir(id, arquivo);
+                    g_emVoo.push_back(id);
+                }
+            }
             return;
+        }
 
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         int base = (g_primeiraLinha - 1) * COLUNAS;
@@ -449,6 +502,233 @@ namespace
             g_fonte.DrawText(1180.0f, 656.0f, COR_FRACO, direita, ATGFONT_RIGHT);
     }
 
+    // ---- primitivas de desenho -------------------------------------------------
+    //
+    // Tudo aqui desenha com os QUATRO cantos explicitos, em triangulos. Nada de
+    // D3DPT_RECTLIST com tres vertices: a doc do XDK e literal -- "Each set of three
+    // vertices (upper-left corner, upper-right corner, and lower-left corner) defines a
+    // SCREEN-ALIGNED quadrilateral" --, o hardware forca alinhamento aos eixos e deduz
+    // o quarto canto por igualdade de coordenada. Capa girada sai em pe e com a largura
+    // errada. O gradiente tinha o problema irmao: a COR do vertice deduzido tambem nao
+    // e coisa que a gente controle.
+    struct VertPC { XMFLOAT3 pos; D3DCOLOR cor; };
+    struct VertPT { XMFLOAT3 pos; XMFLOAT2 uv;  };
+
+    void Mistura(bool ligada)
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        d->SetRenderState(D3DRS_ALPHABLENDENABLE, ligada ? TRUE : FALSE);
+        if (ligada)
+        {
+            d->SetRenderState(D3DRS_SRCBLEND,  D3DBLEND_SRCALPHA);
+            d->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_INVSRCALPHA);
+            d->SetRenderState(D3DRS_BLENDOP,   D3DBLENDOP_ADD);
+        }
+    }
+
+    void SemZ()
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        d->SetRenderState(D3DRS_ZENABLE, FALSE);
+        d->SetRenderState(D3DRS_ZWRITEENABLE, FALSE);
+        d->SetRenderState(D3DRS_VIEWPORTENABLE, FALSE);
+
+        // CULLMODE explicito: com RECTLIST nao havia culling nenhum ("No back-face
+        // culling is performed"), mas TRIANGLELIST sofre -- "Back-face culling is
+        // affected by the current winding-order render state". Funcionaria por heranca,
+        // porque todo mundo em volta deixa CCW; mas o gradiente do fundo e o PRIMEIRO
+        // desenho do quadro e herda o estado do quadro anterior. Um dia alguem grava CW
+        // e a tela inteira apaga em silencio.
+        d->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE);
+    }
+
+    void VoltaViewport()
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        d->SetRenderState(D3DRS_VIEWPORTENABLE, TRUE);
+        d->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW);   // como o resto espera achar
+    }
+
+    D3DCOLOR Media(D3DCOLOR a, D3DCOLOR b)
+    {
+        return D3DCOLOR_ARGB((((a >> 24) & 0xFF) + ((b >> 24) & 0xFF)) / 2,
+                             (((a >> 16) & 0xFF) + ((b >> 16) & 0xFF)) / 2,
+                             (((a >>  8) & 0xFF) + ((b >>  8) & 0xFF)) / 2,
+                             (( a        & 0xFF) + ( b        & 0xFF)) / 2);
+    }
+
+    // Gradiente por cor de vertice, com os QUATRO cantos explicitos.
+    //
+    // Era RECTLIST com tres vertices, deixando o hardware deduzir o quarto -- mas a COR
+    // do vertice deduzido nao e coisa que a gente controle, e numa diagonal e justamente
+    // o canto que importa. Dois triangulos custam o mesmo e sao deterministicos.
+    void Gradiente(float x1, float y1, float x2, float y2,
+                   D3DCOLOR inicio, D3DCOLOR fim, bool diagonal)
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+
+        D3DCOLOR cTL, cTR, cBL, cBR;
+        if (diagonal)
+        {
+            cTL = inicio; cBR = fim;
+            cTR = cBL = Media(inicio, fim);
+        }
+        else
+        {
+            cTL = cTR = inicio;
+            cBL = cBR = fim;
+        }
+
+        VertPC v[6];
+        v[0].pos = XMFLOAT3(x1, y1, 0); v[0].cor = cTL;
+        v[1].pos = XMFLOAT3(x2, y1, 0); v[1].cor = cTR;
+        v[2].pos = XMFLOAT3(x1, y2, 0); v[2].cor = cBL;
+        v[3].pos = XMFLOAT3(x2, y1, 0); v[3].cor = cTR;
+        v[4].pos = XMFLOAT3(x2, y2, 0); v[4].cor = cBR;
+        v[5].pos = XMFLOAT3(x1, y2, 0); v[5].cor = cBL;
+
+        ATG::SimpleShaders::SetDeclPosColor();
+        ATG::SimpleShaders::BeginShader_PreTransformed_VertexColor();
+        SemZ();
+        Mistura(true);
+        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, v, sizeof(VertPC));
+        Mistura(false);
+        ATG::SimpleShaders::EndShader();
+        VoltaViewport();
+    }
+
+    // Quad texturizado com os QUATRO cantos e UVs explicitos, em dois triangulos.
+    //
+    // Era RECTLIST com tres vertices, deixando o hardware deduzir o quarto. RECTLIST
+    // existe para retangulo ALINHADO AOS EIXOS; com a capa girada a deducao nao
+    // corresponde ao paralelogramo que a gente quer, e o quad sai deformado. Dois
+    // triangulos custam o mesmo e nao dependem de suposicao nenhuma -- mesma licao do
+    // gradiente, que tinha o problema irmao na COR do vertice deduzido.
+    //
+    // Ordem dos cantos: 0 superior esquerdo, 1 superior direito, 2 inferior direito,
+    // 3 inferior esquerdo.
+    void QuadTex(const XMFLOAT2 pos[4], const XMFLOAT2 uv[4],
+                 D3DTexture *tex, D3DCOLOR cor, bool usarCor)
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        const int ordem[6] = { 0, 1, 3,  1, 2, 3 };
+
+        VertPT v[6];
+        for (int i = 0; i < 6; i++)
+        {
+            const int k = ordem[i];
+            v[i].pos = XMFLOAT3(pos[k].x, pos[k].y, 0);
+            v[i].uv  = uv[k];
+        }
+
+        ATG::SimpleShaders::SetDeclPosTex();
+        if (usarCor) ATG::SimpleShaders::BeginShader_PreTransformed_TexturedConstantColor(tex, cor);
+        else         ATG::SimpleShaders::BeginShader_PreTransformed_Textured(tex);
+        SemZ();
+        d->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP);
+        d->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP);
+        d->DrawPrimitiveUP(D3DPT_TRIANGLELIST, 2, v, sizeof(VertPT));
+        ATG::SimpleShaders::EndShader();
+        VoltaViewport();
+    }
+
+    // ---- canto arredondado -----------------------------------------------------
+    //
+    // Gerada no arranque, nao e arquivo: um quarto de circulo em alfa, 16x16. Desenhada
+    // nos quatro cantos NA COR DO FUNDO, por cima da colagem, para "comer" o canto da
+    // imagem -- o D3D nao tem recorte por caminho e o device nem tem stencil.
+    //
+    // LIN_A8R8G8B8 e nao A8R8G8B8: textura normal do 360 e LADRILHADA, e escrever
+    // pixel a pixel numa ladrilhada daria lixo. Mesma licao das capas.
+    const int CANTO_N = 16;
+    D3DTexture *g_canto = NULL;        // mascara do lado de FORA da curva
+    D3DTexture *g_arco[2] = { NULL, NULL };   // [0] fino (1 px), [1] grosso (3 px)
+
+    // 'arco' negativo gera a mascara externa; positivo gera uma faixa sobre a curva.
+    D3DTexture *GerarCanto(float arco)
+    {
+        D3DTexture *t = NULL;
+        if (FAILED(ATG::g_pd3dDevice->CreateTexture(CANTO_N, CANTO_N, 1, 0,
+                                                    D3DFMT_LIN_A8R8G8B8,
+                                                    D3DPOOL_DEFAULT, &t, NULL)))
+            return NULL;
+
+        D3DLOCKED_RECT tr;
+        if (FAILED(t->LockRect(0, &tr, NULL, 0)))
+        {
+            t->Release();
+            return NULL;
+        }
+
+        const float R = (float)CANTO_N;
+        for (int y = 0; y < CANTO_N; y++)
+        {
+            DWORD *linha = (DWORD *)((BYTE *)tr.pBits + y * tr.Pitch);
+            for (int x = 0; x < CANTO_N; x++)
+            {
+                float dx = R - ((float)x + 0.5f);
+                float dy = R - ((float)y + 0.5f);
+                float dist = sqrtf(dx * dx + dy * dy);
+                float a;
+
+                if (arco < 0.0f)
+                {
+                    float d = dist - R + 0.5f;                  // >0 fora da curva
+                    a = d < 0.0f ? 0.0f : (d > 1.0f ? 1.0f : d);
+                }
+                else
+                {
+                    // Faixa sobre a propria curva, para o anel de foco acompanhar o
+                    // arredondamento em vez de ser cortado pela mascara.
+                    float d = (dist - (R - arco * 0.5f)) / arco;  // 0..1 na faixa
+                    float f = d < 0.0f ? -d : (d > 1.0f ? d - 1.0f : 0.0f);
+                    a = f > 1.0f ? 0.0f : 1.0f - f;
+                }
+                linha[x] = ((DWORD)(a * 255.0f) << 24) | 0x00FFFFFF;
+            }
+        }
+        t->UnlockRect(0);
+        return t;
+    }
+
+    void CriarCanto()
+    {
+        g_canto   = GerarCanto(-1.0f);
+        g_arco[0] = GerarCanto(1.0f);
+        g_arco[1] = GerarCanto(3.0f);
+
+        if (g_canto == NULL)
+            diario::Escrever("AVISO: sem a mascara de canto, os cards ficam retos");
+        if (g_arco[0] == NULL || g_arco[1] == NULL)
+            diario::Escrever("AVISO: sem o arco, o contorno do card fica cortado no canto");
+        if (g_canto != NULL)
+            diario::Escrever("texturas de canto %dx%d geradas", CANTO_N, CANTO_N);
+    }
+
+    // Uma fonte da verdade para o fundo: o gradiente da tela e a cor dos cantos saem
+    // dos MESMOS numeros, senao os cantos aparecem como quadradinhos de outro tom.
+    // Mais claros que os da previa de propósito: o console passa a saida por uma rampa
+    // de gama que o navegador nao aplica, e os mesmos numeros chegam visivelmente mais
+    // escuros na TV. Estes sao os da previa corrigidos por uma curva de 1/1,3 -- e sao
+    // um botao: se ainda ficar escuro, sobe; se lavar, desce.
+    const int FUNDO_DE[3]   = { 19, 40, 31 };
+    const int FUNDO_PARA[3] = { 43, 73, 57 };
+
+    D3DCOLOR CorDoFundo(float x, float y)
+    {
+        // A MESMA interpolacao do gradiente diagonal, que e bilinear com os cantos
+        // laterais na media: t = (x/largura + y/altura) / 2. Com (x+y)/2000 os dois
+        // coincidiam so nos extremos e divergiam ~3 de 255 no meio -- pouco, mas e um
+        // degrau de borda dura em fundo escuro, que e o pior caso para banding.
+        float t = 0.5f * (x / 1280.0f + y / 720.0f);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        return D3DCOLOR_XRGB(
+            (int)(FUNDO_DE[0] + (FUNDO_PARA[0] - FUNDO_DE[0]) * t),
+            (int)(FUNDO_DE[1] + (FUNDO_PARA[1] - FUNDO_DE[1]) * t),
+            (int)(FUNDO_DE[2] + (FUNDO_PARA[2] - FUNDO_DE[2]) * t));
+    }
+
     // Retângulo CHEIO, com alfa de verdade.
     //
     // Não use DrawScreenSpaceTexturedRectColored com textura NULL para isto: ela faz
@@ -473,6 +753,199 @@ namespace
         // O AtgFont salva e restaura este estado no Begin/End dele, mas só o que ELE
         // mexe. Devolver ao desligado é o que o resto do desenho espera.
         d->SetRenderState(D3DRS_ALPHABLENDENABLE, FALSE);
+    }
+
+    // Quebra o nome em ate duas linhas, medindo com a PROPRIA fonte. A segunda linha e
+    // cortada por nos, nao com ATGFONT_CENTER_X|ATGFONT_TRUNCATED juntos -- essa
+    // combinacao tem um defeito conhecido: o teste de largura nao considera que o
+    // cursor comeca deslocado meia largura, e o texto transborda em vez de cortar.
+    int QuebrarNome(const std::string &nome, float maxLargura, WCHAR l1[96], WCHAR l2[96])
+    {
+        WCHAR largo[256];
+        Larga(nome, largo, 256);
+        l1[0] = l2[0] = L'\0';
+
+        FLOAT w = 0.0f, h = 0.0f;
+        g_fonte.GetTextExtent(largo, &w, &h);
+        if (w <= maxLargura)
+        {
+            wcsncpy(l1, largo, 95); l1[95] = L'\0';
+            return 1;
+        }
+
+        // O limite e o TAMANHO DE l1, nao um numero solto: corte maior que 95 escreve
+        // fora do buffer na pilha. Hoje nao dispara porque a tabela de larguras da
+        // fonte nao deixa 95 caracteres caberem em 216 px -- mas quem segura o buffer
+        // passa a ser a metrica da fonte, e nao o programa. Um colecoes.txt editado a
+        // mao basta para provar o ponto.
+        int corte = -1;
+        for (int i = 0; largo[i] != L'\0' && i < 95; i++)
+        {
+            if (largo[i] != L' ') continue;
+            WCHAR t[256];
+            wcsncpy(t, largo, i); t[i] = L'\0';
+            g_fonte.GetTextExtent(t, &w, &h);
+            if (w <= maxLargura) corte = i; else break;
+        }
+
+        if (corte <= 0)                      // palavra unica maior que a linha
+        {
+            wcsncpy(l1, largo, 95); l1[95] = L'\0';
+            while (l1[0] != L'\0')
+            {
+                g_fonte.GetTextExtent(l1, &w, &h);
+                if (w <= maxLargura) break;
+                l1[wcslen(l1) - 1] = L'\0';
+            }
+            return 1;
+        }
+
+        wcsncpy(l1, largo, corte); l1[corte] = L'\0';
+        wcsncpy(l2, largo + corte + 1, 95); l2[95] = L'\0';
+
+        // corta a segunda a mao, com reticencias
+        g_fonte.GetTextExtent(l2, &w, &h);
+        while (w > maxLargura && wcslen(l2) > 1)
+        {
+            size_t n = wcslen(l2);
+            l2[n - 1] = L'\0';
+            if (n >= 4) { l2[n - 2] = L'.'; l2[n - 3] = L'.'; l2[n - 4] = L'.'; }
+            g_fonte.GetTextExtent(l2, &w, &h);
+        }
+        return 2;
+    }
+
+    // Card de coleção: colagem de três capas inclinadas, tom por cima, véu embaixo
+    // para o texto, e os quatro cantos arredondados por último -- eles comem o canto da
+    // colagem E do anel de foco, então o anel sai arredondado de brinde.
+    void DesenharCard(int x, int y, int lado, const colecoes::Colecao *col, bool focado)
+    {
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        D3DRECT r;
+        r.x1 = x; r.y1 = y; r.x2 = x + lado; r.y2 = y + lado;
+
+        // Todas as cores do card passaram pela MESMA correcao de gama do fundo (curva
+        // de 1/1,3): sem isso o card fica escuro contra um fundo que clareou.
+        Preencher(r, D3DCOLOR_XRGB(33, 47, 39));
+
+        const biblioteca::Jogo *tres[3];
+        int n = 0;
+        TresDaColecao(col, tres, &n);
+
+        if (n > 0)
+        {
+            // Scissor: é o recorte que o D3D oferece sem stencil, e o card é alinhado
+            // aos eixos, então serve exatamente.
+            RECT sc;
+            sc.left = x; sc.top = y; sc.right = x + lado; sc.bottom = y + lado;
+            d->SetScissorRect(&sc);
+            d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+
+            const float w = lado * 0.56f;
+            const float h = w * 1.425f;                 // proporção da frente do encarte
+            const float g = w * 0.14f;                  // folga entre as capas
+            const float ang = -30.0f * 3.14159265f / 180.0f;
+            const float co = cosf(ang), si = sinf(ang);
+            const float cx = x + lado * 0.5f, cy = y + lado * 0.5f;
+
+            const float ox[3] = { -(w + g), 0.0f,          0.0f  };
+            const float oy[3] = { -h * 0.5f, -(h + g * 0.5f), g * 0.5f };
+
+            XMFLOAT2 uv[4];
+            uv[0] = XMFLOAT2(FRENTE_U0, 0.0f);
+            uv[1] = XMFLOAT2(1.0f,      0.0f);
+            uv[2] = XMFLOAT2(1.0f,      1.0f);
+            uv[3] = XMFLOAT2(FRENTE_U0, 1.0f);
+
+            Mistura(true);
+            for (int k = 0; k < n; k++)
+            {
+                D3DTexture *capa = NoCache(tres[k]->id, true);
+                if (capa == NULL) continue;
+
+                const float px = ox[k], py = oy[k];
+                const float canto[4][2] = {
+                    { px,     py     }, { px + w, py     },
+                    { px + w, py + h }, { px,     py + h }
+                };
+
+                XMFLOAT2 pos[4];
+                for (int c = 0; c < 4; c++)
+                    pos[c] = XMFLOAT2(cx + canto[c][0] * co - canto[c][1] * si,
+                                      cy + canto[c][0] * si + canto[c][1] * co);
+
+                QuadTex(pos, uv, capa, D3DCOLOR_ARGB(153, 255, 255, 255), true);
+            }
+            Mistura(false);
+
+            d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
+
+            // O tom por cima é GRADIENTE, mais forte em cima e aliviando embaixo --
+            // era chapado aqui, porque portei a versão anterior à decisão do gradiente.
+            Gradiente((float)x, (float)y, (float)(x + lado), (float)(y + lado),
+                      D3DCOLOR_ARGB(168, 19, 36, 26),
+                      D3DCOLOR_ARGB( 97, 27, 49, 36), false);
+
+            // Véu só na parte de baixo: é o que mantém nome e contagem legíveis.
+            Gradiente((float)x, (float)(y + lado * 0.42f),
+                      (float)(x + lado), (float)(y + lado),
+                      D3DCOLOR_ARGB(0, 18, 27, 21), D3DCOLOR_ARGB(240, 18, 27, 21), false);
+        }
+
+        // O contorno sai em QUATRO SEGMENTOS RETOS, parando antes dos cantos -- e a
+        // curva vem depois, da textura de arco. Desenhar o retângulo inteiro e deixar a
+        // máscara comer os cantos deixava o contorno CORTADO, com falha nas quinas, em
+        // vez de arredondado.
+        const int R = (g_canto != NULL) ? CANTO_N : 0;
+        const int esp = focado ? 3 : 1;
+        const D3DCOLOR corAnel = focado ? COR_ANEL : COR_LINHA;
+
+        {
+            D3DRECT seg;
+            seg.x1 = x + R; seg.x2 = x + lado - R;
+            seg.y1 = y;             seg.y2 = y + esp;            Preencher(seg, corAnel);
+            seg.y1 = y + lado - esp; seg.y2 = y + lado;          Preencher(seg, corAnel);
+
+            seg.y1 = y + R; seg.y2 = y + lado - R;
+            seg.x1 = x;              seg.x2 = x + esp;           Preencher(seg, corAnel);
+            seg.x1 = x + lado - esp; seg.x2 = x + lado;          Preencher(seg, corAnel);
+        }
+
+        if (g_canto != NULL)
+        {
+            const float u[2] = { 0.0f, 1.0f };
+            // superior esquerdo, superior direito, inferior esquerdo, inferior direito
+            const int px[4] = { x, x + lado - R, x,            x + lado - R };
+            const int py[4] = { y, y,            y + lado - R, y + lado - R };
+            const int fx[4] = { 0, 1, 0, 1 };      // espelha em U
+            const int fy[4] = { 0, 0, 1, 1 };      // espelha em V
+
+            D3DTexture *arco = g_arco[focado ? 1 : 0];
+
+            for (int c = 0; c < 4; c++)
+            {
+                XMFLOAT2 pos[4], uvc[4];
+                pos[0] = XMFLOAT2((float)px[c],     (float)py[c]);
+                pos[1] = XMFLOAT2((float)px[c] + R, (float)py[c]);
+                pos[2] = XMFLOAT2((float)px[c] + R, (float)py[c] + R);
+                pos[3] = XMFLOAT2((float)px[c],     (float)py[c] + R);
+
+                const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
+                const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
+                uvc[0] = XMFLOAT2(u0, v0);
+                uvc[1] = XMFLOAT2(u1, v0);
+                uvc[2] = XMFLOAT2(u1, v1);
+                uvc[3] = XMFLOAT2(u0, v1);
+
+                Mistura(true);
+                // Máscara primeiro: ela apaga o canto da colagem. Depois o arco, na cor
+                // do contorno -- se viesse antes, a máscara o apagaria junto.
+                QuadTex(pos, uvc, g_canto, CorDoFundo((float)px[c], (float)py[c]), true);
+                if (arco != NULL)
+                    QuadTex(pos, uvc, arco, corAnel, true);
+                Mistura(false);
+            }
+        }
     }
 
     void Caixa(int x, int y, int l, int a, bool focada)
@@ -513,7 +986,7 @@ namespace
 
             int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
             int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            Caixa(x, y, COL_LADO, COL_LADO, i == g_iCol);
+            DesenharCard(x, y, COL_LADO, L[i], i == g_iCol);
         }
 
         g_fonte.Begin();
@@ -525,26 +998,35 @@ namespace
             int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
             int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
 
-            Larga(L[i]->nome, texto, 256);
-            g_fonte.DrawText((FLOAT)x + 14.0f, (FLOAT)y + COL_LADO - 56.0f,
-                             (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
-                             texto, ATGFONT_TRUNCATED, (FLOAT)COL_LADO - 28.0f);
+            // Nome e contagem centrados na HORIZONTAL, e o bloco ancorado pela base a
+            // 86% da altura do card, crescendo para cima quando o nome ocupa duas
+            // linhas. Nem centralizado na vertical, nem colado no rodapé.
+            const float ALT_LINHA = 28.0f, ALT_CONT = 24.0f;
+            const float meio = (FLOAT)x + COL_LADO * 0.5f;
 
-            // Conta os itens que a coleção REALMENTE mostra, não quantos TitleIds
-            // ela guarda: um TitleId de multi-disco casa com dois itens, e "1 jogo"
-            // sobre uma grade com duas capas é o tipo de detalhe que corrói confiança.
-            if (L[i]->ids.empty())
-                swprintf_s(texto, 256, L"vazia");
-            else
-            {
-                int quantos = 0;
-                for (size_t j = 0; j < g_jogos.size(); j++)
-                    if (colecoes::Tem(L[i], g_jogos[j].titleId))
-                        quantos++;
-                swprintf_s(texto, 256, (quantos == 1) ? L"%d jogo" : L"%d jogos", quantos);
-            }
-            g_fonte.DrawText((FLOAT)x + 14.0f, (FLOAT)y + COL_LADO - 30.0f,
-                             COR_FRACO, texto, 0);
+            WCHAR l1[96], l2[96];
+            int nLinhas = QuebrarNome(L[i]->nome, (FLOAT)COL_LADO - 28.0f, l1, l2);
+
+            float topo = (FLOAT)y + COL_LADO * 0.86f - (nLinhas * ALT_LINHA + ALT_CONT);
+
+            g_fonte.DrawText(meio, topo, (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
+                             l1, ATGFONT_CENTER_X);
+            if (nLinhas == 2 && l2[0] != L'\0')
+                g_fonte.DrawText(meio, topo + ALT_LINHA,
+                                 (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
+                                 l2, ATGFONT_CENTER_X);
+
+            // Conta os ITENS que a coleção mostra, não quantos TitleIds guarda: um
+            // TitleId de multi-disco casa com dois itens. Entre parênteses e sem a
+            // palavra "jogos" -- vazia vira "( 0 )".
+            int quantos = 0;
+            for (size_t j = 0; j < g_jogos.size(); j++)
+                if (colecoes::Tem(L[i], g_jogos[j].titleId))
+                    quantos++;
+
+            swprintf_s(texto, 256, L"( %d )", quantos);
+            g_fonte.DrawText(meio, topo + nLinhas * ALT_LINHA, COR_FRACO,
+                             texto, ATGFONT_CENTER_X);
         }
 
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
@@ -566,29 +1048,43 @@ namespace
         }
 
         char atual = Inicial(L[g_iJogo]->nome);
-        float passo = (640.0f - 92.0f) / 27.0f;
+        const float passo = (640.0f - 92.0f) / 27.0f;      // 20,3 px por letra
 
+        // A fonte tem 27 px de altura e o passo e 20,3: no tamanho cheio a letra nao
+        // cabe na propria faixa -- transborda da caixa verde e encosta nas vizinhas.
+        // Reduzida, ela cabe, e aí a caixa pode ser exatamente a faixa.
+        const float ESCALA = 0.72f;
+        const float ALT_LETRA = 27.0f * ESCALA;
+
+        g_fonte.SetScaleFactors(ESCALA, ESCALA);
         g_fonte.Begin();
         for (int i = 0; i < 27; i++)
         {
             float y = 92.0f + i * passo;
             bool acesa = ((i == 26) ? '#' : (char)('A' + i)) == atual;
 
+            // Centra a letra na faixa, e a caixa É a faixa.
+            float yLetra = y + (passo - ALT_LETRA) * 0.5f;
+
             if (acesa)
             {
+                // Caixa ESCURA com a letra clara, nao o contrario. Letra escura sobre
+                // verde forte fica com cara de negrito borrado nesse tamanho -- o
+                // antisserrilhado engorda o traco contra o fundo claro.
                 D3DRECT r;
-                r.x1 = 1204; r.y1 = (LONG)y - 1;
+                r.x1 = 1204; r.y1 = (LONG)y;
                 r.x2 = 1232; r.y2 = (LONG)(y + passo);
-                Preencher(r, COR_ANEL);
+                Preencher(r, D3DCOLOR_ARGB(190, 20, 34, 16));
                 g_fonte.End();          // o retângulo trocou estado; refaz o lote
                 g_fonte.Begin();
             }
 
             WCHAR letra[2] = { (WCHAR)((i == 26) ? L'#' : (L'A' + i)), L'\0' };
-            g_fonte.DrawText(1218.0f, y, acesa ? COR_FUNDO
+            g_fonte.DrawText(1218.0f, yLetra, acesa ? COR_ANEL
                              : (tem[i] ? COR_APAGADO : COR_LINHA), letra, ATGFONT_CENTER_X);
         }
         g_fonte.End();
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
     }
 
     void TelaJogos()
@@ -793,6 +1289,12 @@ namespace
     {
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
         d->Clear(0, NULL, D3DCLEAR_TARGET, COR_FUNDO, 1.0f, 0);
+
+        // Fundo em gradiente, na diagonal. Nao e imagem: e cor por vertice, entao custa
+        // um retangulo e nenhum arquivo -- e nao tem como ser cortado por overscan.
+        Gradiente(0.0f, 0.0f, 1280.0f, 720.0f,
+                  D3DCOLOR_XRGB(FUNDO_DE[0],   FUNDO_DE[1],   FUNDO_DE[2]),
+                  D3DCOLOR_XRGB(FUNDO_PARA[0], FUNDO_PARA[1], FUNDO_PARA[2]), true);
 
         if (g_tela == TELA_COLECOES) TelaColecoes();
         else                          TelaJogos();
@@ -1299,6 +1801,8 @@ void __cdecl main()
     }
 
     // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
+    CriarCanto();
+
     diario::Escrever("montando dispositivos");
     dispositivos::MontarTodos();
 
