@@ -101,7 +101,7 @@ namespace
     Tela g_tela = TELA_COLECOES;
     colecoes::Colecao *g_atual = NULL;
     std::vector<unsigned int> g_selecao;   // rascunho ao adicionar; TitleIds
-    int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0;
+    int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0, g_primeiraLinhaCol = 0;
 
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
@@ -468,7 +468,10 @@ namespace
             return;
         }
 
-        int paginaInicio = (g_iCol / COL_POR_PAGINA) * COL_POR_PAGINA;
+        // Rola de uma linha por vez, como a tela de jogos -- não troca a página
+        // inteira. Paginar fazia a tela mudar de uma vez ao passar do 8º item, e com
+        // tudo saindo junto perde-se a referência de onde se estava.
+        int paginaInicio = g_primeiraLinhaCol * COL_POR_LINHA;
 
         for (int k = 0; k < COL_POR_PAGINA; k++)
         {
@@ -754,6 +757,14 @@ namespace
     }
 
     // ---- navegação -------------------------------------------------------------
+    void SeguirFocoColecao()
+    {
+        int linha = g_iCol / COL_POR_LINHA;
+        if (linha < g_primeiraLinhaCol) g_primeiraLinhaCol = linha;
+        else if (linha >= g_primeiraLinhaCol + COL_LINHAS)
+            g_primeiraLinhaCol = linha - COL_LINHAS + 1;
+    }
+
     void SeguirFoco()
     {
         int linha = g_iJogo / COLUNAS;
@@ -788,6 +799,7 @@ namespace
         int nCol = (int)colecoes::Ordenadas().size();
         if (g_iCol >= nCol) g_iCol = nCol - 1;
         if (g_iCol < 0)     g_iCol = 0;
+        SeguirFocoColecao();
 
         int nJogos = (int)ListaAtual().size();
         if (g_iJogo >= nJogos) g_iJogo = nJogos - 1;
@@ -828,6 +840,7 @@ namespace
         {
             g_iCol = novo;
             som::Tocar(som::SOM_FOCO);
+            SeguirFocoColecao();
         }
     }
 

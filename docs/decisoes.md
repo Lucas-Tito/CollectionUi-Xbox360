@@ -575,3 +575,10 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
 76. **Quadrado de coleção: 244 px, quatro por linha.** Era 180 com cinco por linha, e sobrava
     tela de qualquer jeito — a grade terminava em x=1120 e as duas linhas em y=454, numa tela de
     1280x720. Agora a grade é centralizada por cálculo (`COL_MARGEM`), não pela margem geral.
+
+77. **A tela de coleções ROLA, não pagina.** Era `paginaInicio = (g_iCol / COL_POR_PAGINA) *
+    COL_POR_PAGINA`: passar do 8º item trocava a página inteira de uma vez, e com tudo saindo
+    junto perde-se a referência de onde se estava. Agora tem `g_primeiraLinhaCol` e um
+    `SeguirFocoColecao()` espelhando o `SeguirFoco()` dos jogos — sobe uma linha por vez. A
+    inconsistência não era decisão: foi como saiu ao implementar as duas telas em momentos
+    diferentes.
