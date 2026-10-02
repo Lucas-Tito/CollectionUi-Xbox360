@@ -17,6 +17,10 @@ namespace config
     // pelo FTP. "som=0" nao inicia o audio; "anel=0" nao desenha o anel do jogo
     // marcado. Ausente, vale o padrao (ligado).
     bool Ligado(const char *chave);
+
+    // Igual, mas o PADRAO e desligado: so devolve true se a chave existir com valor
+    // diferente de 0. Para coisas caras que so se liga de proposito.
+    bool LigadoSeDito(const char *chave);
 }
 
 #endif

@@ -24,6 +24,14 @@
 #include "AtgDebugDraw.h"
 #include "AtgSimpleShaders.h"
 
+// XNotifyQueueUI nao esta em header nenhum do XDK, mas esta exportada em xav.lib --
+// e o balao de notificacao do sistema, o mesmo que a Guide usa. O hiddriver a usa
+// assim, e e bem melhor que uma caixa desenhada por nos no meio da tela.
+extern "C" VOID __stdcall XNotifyQueueUI(DWORD tipo, DWORD usuario, ULONGLONG prioridade,
+                                         PWCHAR texto, PVOID contexto);
+#define XNOTIFY_GENERIC         3    // icone de carta
+#define XNOTIFY_PRIORIDADE_ALTA 2
+
 // A ATG espera este ponteiro global; normalmente quem o define é o AtgApp.cpp, que não
 // usamos. Atenção ao tipo: dentro do namespace, D3DDevice é o ATG::D3DDevice do
 // AtgDevice.h, que herda do global. Definir com o tipo global compila e falha no link.
@@ -34,12 +42,19 @@ namespace
     // ---- geometria, em pixels de 1280x720 --------------------------------------
     const int COLUNAS    = 5;
     const int LINHAS     = 2;          // visíveis por vez; o resto rola
-    const int CAPA_L     = 170;
-    const int CAPA_A     = 238;        // 5:7, a proporção da capa de 360
-    const int ESPACO_X   = 56;
-    const int ESPACO_Y   = 40;
-    const int MARGEM_X   = 100;
+    // Capa menor e mais folga: com 170x238 e 56 de espaço as capas ficavam coladas,
+    // sem ar entre uma e outra. A altura segue a proporção da FRENTE do encarte, que é
+    // 421x600 depois do recorte em U -- 1,425, não 1,4.
+    const int CAPA_L     = 146;
+    const int ESPACO_X   = 72;
+    const int ESPACO_Y   = 56;
+    const int MARGEM_X   = 100;        // margem do texto (cabeçalho e rodapé)
+    const int CAPA_A     = 208;        // 146 * 1,425, a proporção da frente
     const int TOPO       = 92;
+
+    // A grade é centralizada por cálculo, como a de coleções: 5*150 + 4*70 = 1070,
+    // sobra 210 dividida nos dois lados.
+    const int GRID_MARGEM = (1280 - (COLUNAS * CAPA_L + (COLUNAS - 1) * ESPACO_X)) / 2;
     const int POR_PAGINA = COLUNAS * LINHAS;
 
     // Quatro por linha em vez de cinco: o quadrado passa de 180 para 244, e sobrava
@@ -122,8 +137,13 @@ namespace
     colecoes::Colecao *g_renomeando = NULL;
 
     bool  g_anelMarcado = true;      // ver config::Ligado("anel")
-    char  g_aviso[192] = "";         // erro mostrado por alguns segundos
-    DWORD g_avisoAte = 0;
+
+    // O rastro por textura e por marcacao foi o que achou o bug do AtgFont, e fica --
+    // mas DESLIGADO por padrao. Cada linha custa um WriteFile mais um FlushFileBuffers,
+    // que forca a gravacao no disco; no carregamento sao duas linhas por capa, 240 idas
+    // ao disco para a biblioteca inteira, no meio do quadro. Ligue com "logDetalhe=1"
+    // no .ini quando precisar cacar alguma coisa.
+    bool  g_logDetalhe = false;
 
     // ---- texto -----------------------------------------------------------------
     // O SQLite devolve UTF-8. Converter com CP_ACP quebra o que não for ASCII: o
@@ -458,8 +478,9 @@ namespace
         }
 
         D3DTexture *textura = NULL;
-        diario::Escrever("criando textura %d (%u bytes, %ux%u)", jogoId,
-                         (unsigned)bytes.size(), (unsigned)largura, (unsigned)altura);
+        if (g_logDetalhe)
+            diario::Escrever("criando textura %d (%u bytes, %ux%u)", jogoId,
+                             (unsigned)bytes.size(), (unsigned)largura, (unsigned)altura);
         HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
             ATG::g_pd3dDevice, &bytes[0], (UINT)bytes.size(),
             largura, altura,
@@ -470,12 +491,13 @@ namespace
 
         if (SUCCEEDED(hr) && textura != NULL)
         {
-            // Rastro por textura. São ~120 linhas no pior caso, e é o que diz EM QUE
-            // PONTO o app morreu quando ele morre sem avisar.
-            MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
-            GlobalMemoryStatus(&mem);
-            diario::Escrever("textura %d (%u bytes, livre %u KB)", jogoId,
-                             (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
+            if (g_logDetalhe)
+            {
+                MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
+                GlobalMemoryStatus(&mem);
+                diario::Escrever("textura %d (%u bytes, livre %u KB)", jogoId,
+                                 (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
+            }
             Guardar(jogoId, textura);
         }
         else
@@ -1131,7 +1153,7 @@ namespace
             if (i >= total) break;
 
             D3DRECT r;
-            r.x1 = MARGEM_X + (k % COLUNAS) * (CAPA_L + ESPACO_X);
+            r.x1 = GRID_MARGEM + (k % COLUNAS) * (CAPA_L + ESPACO_X);
             r.y1 = TOPO + (k / COLUNAS) * (CAPA_A + ESPACO_Y);
             r.x2 = r.x1 + CAPA_L;
             r.y2 = r.y1 + CAPA_A;
@@ -1216,7 +1238,8 @@ namespace
         IndiceAlfabetico(L);
 
         static int ultMarcados = -1, ultSemCapa = -1, ultBase = -1;
-        if (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase)
+        if (g_logDetalhe &&
+            (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase))
         {
             ultMarcados = marcadosVisiveis; ultSemCapa = semCapaVisiveis; ultBase = base;
             diario::Escrever("tela: base=%d visiveis=%d marcados=%d semCapa=%d",
@@ -1262,27 +1285,16 @@ namespace
         g_fonte.End();
     }
 
+    // Usa a notificacao do SISTEMA, o balao do canto, em vez de uma caixa desenhada por
+    // nos no meio da tela. E o mesmo caminho que o hiddriver usa.
     void Avisar(const char *texto)
     {
         som::Tocar(som::SOM_ERRO);
-        _snprintf(g_aviso, sizeof(g_aviso), "%s", texto);
-        g_aviso[sizeof(g_aviso) - 1] = '\0';
-        g_avisoAte = GetTickCount() + 6000;
-    }
+        diario::Escrever("aviso: %s", texto);
 
-    void DesenharAviso()
-    {
-        const int L = 760, A = 74;
-        const int x = (1280 - L) / 2, y = 560;
-
-        Caixa(x, y, L, A, true);
-
-        WCHAR texto[256];
-        Larga(g_aviso, texto, 256);
-        g_fonte.Begin();
-        g_fonte.DrawText(640.0f, (FLOAT)y + 24.0f, COR_TEXTO, texto,
-                         ATGFONT_CENTER_X | ATGFONT_TRUNCATED, (FLOAT)L - 40.0f);
-        g_fonte.End();
+        WCHAR largo[192];
+        Larga(texto, largo, 192);
+        XNotifyQueueUI(XNOTIFY_GENERIC, XUSER_INDEX_ANY, XNOTIFY_PRIORIDADE_ALTA, largo, NULL);
     }
 
     void Desenhar()
@@ -1301,9 +1313,6 @@ namespace
 
         if (g_menuAberto)
             DesenharMenu();
-
-        if (g_aviso[0] != '\0' && GetTickCount() < g_avisoAte)
-            DesenharAviso();
 
         d->Present(NULL, NULL, NULL, NULL);
     }
@@ -1654,23 +1663,21 @@ namespace
             // Rastro cercando CADA etapa do ato de marcar. O carregamento ja foi
             // inocentado pelo log (120 de 120 texturas prontas e estaveis); o que resta
             // e isto aqui, e cada linha ausente aponta para a etapa seguinte a ela.
-            diario::Escrever("marcar: i=%d id=%d titleId=%08X selecao=%d",
-                             g_iJogo, L[g_iJogo]->id, titleId, (int)g_selecao.size());
+            if (g_logDetalhe)
+                diario::Escrever("marcar: i=%d id=%d titleId=%08X selecao=%d",
+                                 g_iJogo, L[g_iJogo]->id, titleId, (int)g_selecao.size());
 
             som::Tocar(som::SOM_CONFIRMA);
-            diario::Escrever("marcar: som ok");
 
             for (size_t i = 0; i < g_selecao.size(); i++)
             {
                 if (g_selecao[i] == titleId)
                 {
                     g_selecao.erase(g_selecao.begin() + i);
-                    diario::Escrever("marcar: desmarcado, selecao=%d", (int)g_selecao.size());
                     return;
                 }
             }
             g_selecao.push_back(titleId);
-            diario::Escrever("marcar: marcado, selecao=%d", (int)g_selecao.size());
         }
         else Jogar();
     }
@@ -1838,6 +1845,11 @@ void __cdecl main()
     g_anelMarcado = config::Ligado("anel");
     if (!g_anelMarcado)
         diario::Escrever("anel do marcado DESLIGADO pelo .ini");
+
+    // Ao contrario das outras chaves, esta e desligada por PADRAO: so liga com
+    // "logDetalhe=1" explicito no .ini.
+    g_logDetalhe = config::LigadoSeDito("logDetalhe");
+    diario::Escrever("log detalhado: %s", g_logDetalhe ? "ligado" : "desligado");
 
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
