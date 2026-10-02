@@ -1211,11 +1211,22 @@ LONG WINAPI AoMorrer(LPEXCEPTION_POINTERS p)
 {
     if (p != NULL && p->ExceptionRecord != NULL && p->ContextRecord != NULL)
     {
-        diario::Escrever("CRASH code=0x%08X addr=0x%08X Iar=0x%08X Lr=0x%08X",
+        // Para 0xC0000005, ExceptionInformation[0] diz leitura(0) ou escrita(1) e [1]
+        // e o ENDERECO acessado. Esse par fecha sozinho casos que de outro jeito
+        // exigem desassemblar o binario -- foi o que faltou no crash do DrawText.
+        unsigned acesso = 0, onde = 0;
+        if (p->ExceptionRecord->NumberParameters >= 2)
+        {
+            acesso = (unsigned)p->ExceptionRecord->ExceptionInformation[0];
+            onde   = (unsigned)p->ExceptionRecord->ExceptionInformation[1];
+        }
+
+        diario::Escrever("CRASH code=0x%08X addr=0x%08X Iar=0x%08X Lr=0x%08X %s=0x%08X",
                          (unsigned)p->ExceptionRecord->ExceptionCode,
                          (unsigned)(ULONG_PTR)p->ExceptionRecord->ExceptionAddress,
                          (unsigned)p->ContextRecord->Iar,
-                         (unsigned)p->ContextRecord->Lr);
+                         (unsigned)p->ContextRecord->Lr,
+                         acesso ? "escrevendo" : "lendo", onde);
     }
     else
     {
@@ -1277,7 +1288,15 @@ void __cdecl main()
 
     diario::Escrever("fonte game:\\media\\Arial_16.xpr");
     if (FAILED(g_fonte.Create("game:\\media\\Arial_16.xpr")))
-        diario::Escrever("AVISO: fonte nao carregou");
+    {
+        // Sem fonte não há app: toda a interface é texto sobre capa. Antes isto era só
+        // um aviso e o laço seguia -- e o primeiro DrawText morria desreferenciando
+        // m_TranslatorTable nulo (AtgFont.cpp:710, sem checagem). Melhor sair aqui,
+        // dizendo o que falta, do que dar fatal crash três linhas adiante.
+        diario::Escrever("ERRO: a fonte nao carregou. Falta game:\\media\\Arial_16.xpr?");
+        diario::Fechar();
+        return;
+    }
 
     // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
     diario::Escrever("montando dispositivos");

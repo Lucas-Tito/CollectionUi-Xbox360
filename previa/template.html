@@ -173,6 +173,153 @@ const MARGEM_X = 100, TOPO = 92;
 const POR_PAGINA = COLUNAS * LINHAS;
 
 const COR_FUNDO   = 'rgb(13,17,15)';
+
+// --- fundo em gradiente (experimento; ainda NAO esta no C++) -----------------
+// No console isto nao precisa virar imagem: da para desenhar com cor por vertice
+// (SetDeclPosColor + BeginShader_PreTransformed_VertexColor), entao e zero arquivo,
+// zero carregamento e sem risco de corte por overscan.
+const FUNDOS = {
+  chapado:  null,                                       // o de hoje, para comparar
+  sutil:    { de:'rgb(10,20,15)', para:'rgb(18,34,26)', ang:'diag' },
+  medio:    { de:'rgb(9,24,17)',  para:'rgb(26,52,38)', ang:'diag' },
+  vertical: { de:'rgb(16,32,24)', para:'rgb(8,16,12)',  ang:'vert' },
+};
+let FUNDO = 'medio';
+
+// --- fundo do card ----------------------------------------------------------
+// Canto arredondado no console NAO sai de graca: o Caixa() do C++ desenha
+// retangulo cheio + contorno, e arredondar exigiria uma textura 9-slice (uma so,
+// reusada por todos os cards). O gradiente em si sai de graca, igual ao do fundo.
+// Tres capas SEPARADAS: uma a esquerda e duas empilhadas a direita, com folga entre
+// elas. O grupo inteiro inclina junto. 'folga' e em fracao da largura da capa.
+//
+//        +-----+
+//  +---+ |  2  |
+//  | 1 |  - - -       <- folga tambem entre as duas da direita
+//  +---+ |  3  |
+//        +-----+
+const CARDS = {
+  grupo30:  { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
+  grupo20:  { tipo:'colagem', r:10, giro:-20, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
+  grupo45:  { tipo:'colagem', r:10, giro:-45, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
+  // Mesmo grupo30, mas com GRADIENTE por cima da colagem em vez de tom chapado.
+  // 'tomG' vai do canto superior esquerdo ao inferior direito.
+  grad30:   { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+              tomG:['rgba(14,30,20,0.18)', 'rgba(10,22,15,0.80)'] },
+  grad30Inv:{ tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+              tomG:['rgba(10,22,15,0.80)', 'rgba(14,30,20,0.18)'] },
+  grad30Ver:{ tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+              tomG:['rgba(14,30,20,0.12)', 'rgba(8,18,12,0.88)'], vert:true },
+  folgaMai: { tipo:'colagem', r:10, giro:-30, larg:0.52, folga:0.26, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
+  grupo30F: { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.85, tom:'rgba(14,30,20,0.28)' },
+  gradiente:{ tipo:'gradiente', de:'rgb(32,50,39)', para:'rgb(20,32,25)', r:10 },
+  chapado:  null,                                                  // o de hoje
+};
+let CARD = 'grupo30';
+
+// id do jogo -> indice em JOGOS, para achar a capa a partir do que a coleção guarda
+let PORID = null;
+function capaPorId(id){
+  if (!PORID){ PORID = {}; JOGOS.forEach((j,i) => { PORID[j.id] = i; }); }
+  return (id in PORID) ? capa(PORID[id]) : null;
+}
+
+function caminhoArredondado(ctx, x, y, l, a, r) {
+  if (!r) { ctx.beginPath(); ctx.rect(x, y, l, a); return; }
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + l, y,     x + l, y + a, r);
+  ctx.arcTo(x + l, y + a, x,     y + a, r);
+  ctx.arcTo(x,     y + a, x,     y,     r);
+  ctx.arcTo(x,     y,     x + l, y,     r);
+  ctx.closePath();
+}
+
+function pintarCard(ctx, x, y, l, a, selecionado, col) {
+  const c = CARDS[CARD];
+
+  if (!c) {                                   // chapado: o de hoje
+    ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, l, a);
+  } else if (c.tipo === 'gradiente') {
+    const g = ctx.createLinearGradient(x, y, x + l, y + a);
+    g.addColorStop(0, c.de); g.addColorStop(1, c.para);
+    caminhoArredondado(ctx, x, y, l, a, c.r);
+    ctx.fillStyle = g; ctx.fill();
+  } else {                                    // colagem, como a Steam
+    ctx.save();
+    caminhoArredondado(ctx, x, y, l, a, c.r);
+    ctx.clip();
+
+    ctx.fillStyle = 'rgb(18,28,22)'; ctx.fillRect(x, y, l, a);
+
+    // O grupo inteiro gira junto; dentro dele as tres se encostam.
+    const ids = (col && col.ids) ? col.ids.slice(0, 3) : [];
+    if (ids.length) {
+      ctx.save();
+      ctx.translate(x + l / 2, y + a / 2);
+      ctx.rotate(c.giro * Math.PI / 180);
+      ctx.globalAlpha = c.alfa;
+
+      const w = l * c.larg;
+      const tres = ids.map(capaPorId);
+      const prim = tres.find(Boolean);
+      const h = prim ? w * (prim.height / prim.width) : w * 1.42;
+      const g = w * (c.folga || 0);
+
+      // 1 a esquerda, centrada na altura; 2 e 3 empilhadas a direita com folga
+      // entre si, e a folga delas na mesma altura do centro da 1.
+      const pos = [
+        { x: -(w + g), y: -h / 2        },
+        { x:  0,       y: -(h + g / 2)  },
+        { x:  0,       y:  g / 2        },
+      ];
+      tres.forEach((img, n) => { if (img) ctx.drawImage(img, pos[n].x, pos[n].y, w, h); });
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // Tom por cima, para a colagem não competir com a grade de capas de verdade.
+    // Chapado ou em gradiente, conforme a variante.
+    if (c.tomG) {
+      const t = c.vert ? ctx.createLinearGradient(x, y, x, y + a)
+                       : ctx.createLinearGradient(x, y, x + l, y + a);
+      t.addColorStop(0, c.tomG[0]);
+      t.addColorStop(1, c.tomG[1]);
+      ctx.fillStyle = t;
+    } else {
+      ctx.fillStyle = c.tom;
+    }
+    ctx.fillRect(x, y, l, a);
+
+    // véu embaixo: é o que mantém nome e contagem legíveis sobre a arte
+    const v = ctx.createLinearGradient(0, y + a * 0.42, 0, y + a);
+    v.addColorStop(0, 'rgba(8,14,10,0)');
+    v.addColorStop(1, 'rgba(8,14,10,0.94)');
+    ctx.fillStyle = v; ctx.fillRect(x, y + a * 0.42, l, a * 0.58);
+
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = selecionado ? COR_ANEL : COR_LINHA;
+  ctx.lineWidth = selecionado ? 3 : 1;
+  if (c && c.r) { caminhoArredondado(ctx, x, y, l, a, c.r); ctx.stroke(); }
+  else {
+    const d = selecionado ? 1.5 : 0.5, e = selecionado ? 3 : 1;
+    ctx.strokeRect(x + d, y + d, l - e, a - e);
+  }
+}
+
+function pintarFundo(ctx) {
+  const f = FUNDOS[FUNDO];
+  if (!f) { ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720); return; }
+  const g = f.ang === 'vert' ? ctx.createLinearGradient(0, 0, 0, 720)
+                             : ctx.createLinearGradient(0, 0, 1280, 720);
+  g.addColorStop(0, f.de);
+  g.addColorStop(1, f.para);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 1280, 720);
+}
 const COR_PAINEL  = 'rgb(21,27,24)';
 const COR_TEXTO   = 'rgb(231,237,233)';
 const COR_APAGADO = 'rgb(142,156,148)';
@@ -226,6 +373,31 @@ function cortar(txt, larguraMax){
   let s = txt;
   while (s.length > 1 && ctx.measureText(s+'...').width > larguraMax) s = s.slice(0,-1);
   return s + '...';
+}
+
+// Quebra por PALAVRA ate maxLinhas, cortando a ultima com reticencias se nao couber.
+// A ATG sabe desenhar '\n' (DrawText trata o caractere), entao isto e reproduzivel no
+// C++ -- mas la a quebra tem de ser feita por nos, medindo com GetTextExtent, e NAO
+// com ATGFONT_TRUNCATED junto, que e um caminho que ja nos deu estouro de memoria.
+function quebrar(texto, maxLargura, maxLinhas){
+  const palavras = String(texto).split(/\s+/).filter(Boolean);
+  const linhas = [];
+  let atual = '';
+
+  for (let i = 0; i < palavras.length; i++){
+    const tenta = atual ? atual + ' ' + palavras[i] : palavras[i];
+    if (ctx.measureText(tenta).width <= maxLargura){ atual = tenta; continue; }
+
+    // Na última linha permitida, o resto todo entra e o cortar() põe as reticências.
+    if (linhas.length === maxLinhas - 1){
+      linhas.push(cortar((atual ? atual + ' ' : '') + palavras.slice(i).join(' '), maxLargura));
+      return linhas;
+    }
+    if (atual) linhas.push(atual);
+    atual = palavras[i];
+  }
+  if (atual) linhas.push(cortar(atual, maxLargura));   // palavra única maior que a linha
+  return linhas;
 }
 
 function capa(indice){
@@ -290,7 +462,7 @@ function cabecalho(titulo, sub){
 // ---- tela de coleções ------------------------------------------------------
 function telaColecoes(){
   const L = ordenadas();
-  ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720);
+  pintarFundo(ctx);
   // Sem título nem contagem: o rodapé já diz "1 de 4", e o quadrado em foco já diz
   // onde se está. Cabeçalho aqui seria repetir o que a tela toda já mostra.
   ctx.textBaseline = 'top';
@@ -314,20 +486,36 @@ function telaColecoes(){
     const y = COL_TOPO + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
     zona(x, y, COL_LADO, COL_LADO, 'colecao', i);
 
-    ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, COL_LADO, COL_LADO);
     const sel = (i === iCol);
-    ctx.strokeStyle = sel ? COR_ANEL : COR_LINHA;
-    ctx.lineWidth = sel ? 3 : 1;
-    ctx.strokeRect(x+ (sel?1.5:0.5), y+(sel?1.5:0.5), COL_LADO-(sel?3:1), COL_LADO-(sel?3:1));
+    pintarCard(ctx, x, y, COL_LADO, COL_LADO, sel, L[i]);
+
+    // Texto como no card da Steam: o bloco inteiro (nome + contagem) CENTRALIZADO NA
+    // VERTICAL, não colado embaixo. A contagem entre parênteses e sem a palavra
+    // "jogos" -- coleção vazia vira "( 0 )". O nome quebra em até duas linhas, e o
+    // bloco cresce para os dois lados a partir do centro.
+    const PAD = 14, LINHA_ALT = F_BASE + 7, ALT_CONT = F_MINI + 10;
 
     ctx.font = `600 ${F_BASE+1}px sans-serif`;
+    const linhas = quebrar(L[i].nome, COL_LADO - PAD*2, 2);
+
+    // Centrado só na HORIZONTAL. Na vertical o bloco é ancorado pela BASE, a 86% da
+    // altura do card, e cresce para cima quando o nome ocupa duas linhas. Nem
+    // centralizado, nem colado no rodapé.
+    //
+    // ATENÇÃO ao textBaseline: nesta prévia ele é 'top', então o y do fillText é o
+    // TOPO da linha, não a base.
+    const alturaBloco = linhas.length * LINHA_ALT + ALT_CONT;
+    const cx = x + COL_LADO / 2;
+    let yLinha = y + COL_LADO * 0.86 - alturaBloco;
+
+    ctx.textAlign = 'center';
     ctx.fillStyle = sel ? COR_TEXTO : COR_APAGADO;
-    const nome = cortar(L[i].nome, COL_LADO - 28);
-    ctx.fillText(nome, x+14, y+COL_LADO-56);
+    linhas.forEach(ln => { ctx.fillText(ln, cx, yLinha); yLinha += LINHA_ALT; });
 
     ctx.font = `${F_MINI}px var(--mono), monospace`;
     ctx.fillStyle = COR_FRACO;
-    ctx.fillText(L[i].ids.length ? `${L[i].ids.length} jogos` : 'vazia', x+14, y+COL_LADO-30);
+    ctx.fillText(`( ${L[i].ids.length} )`, cx, yLinha + 3);
+    ctx.textAlign = 'left';
   }
   rodape([['A','Abrir'],['X','Nova coleção'],['menu','Opções']],
          `${iCol+1} de ${L.length}`);
@@ -336,7 +524,7 @@ function telaColecoes(){
 // ---- grade de jogos --------------------------------------------------------
 function telaJogos(){
   const L = lista(), total = L.length;
-  ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720);
+  pintarFundo(ctx);
 
   const escolhendo = tela === 'adicionar';
   // O nome da coleção fica: diz ONDE você está. A contagem sai, que o rodapé já
@@ -436,6 +624,17 @@ function indiceAlfabetico(L){
 }
 
 // ---- navegação -------------------------------------------------------------
+// Rotulo do experimento. SO na previa -- nao existe no C++.
+function rotuloExperimento(ctx){
+  ctx.save();
+  ctx.font = '500 15px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = 'rgba(142,156,148,0.75)';
+  ctx.fillText('F fundo: ' + FUNDO + '    C card: ' + CARD, 1264, 700);
+  ctx.restore();
+}
+
 function desenhar(){
   zonas = [];
   if (tela === 'colecoes') telaColecoes(); else telaJogos();
@@ -443,6 +642,7 @@ function desenhar(){
   $('#estado').textContent = tela === 'colecoes'
     ? `${cols.length} coleções`
     : `${iJogo+1}/${L.length} · linha ${primeiraLinha} · ${L[iJogo] ? L[iJogo].nome : ''}`;
+  rotuloExperimento(ctx);
 }
 
 function moverJogo(delta){
@@ -500,6 +700,17 @@ document.addEventListener('keydown', e => {
   if (!$('#dlg-ajuda').hidden){ if (e.key === 'Escape' || e.key === 'Enter') $('#dlg-ajuda').hidden = true; return; }
 
   const k = e.key;
+
+  // Experimento de fundo: F alterna o fundo da tela, C o fundo do card.
+  if (k === 'f' || k === 'F'){
+    const ns = Object.keys(FUNDOS); FUNDO = ns[(ns.indexOf(FUNDO)+1) % ns.length];
+    desenhar(); return;
+  }
+  if (k === 'c' || k === 'C'){
+    const ns = Object.keys(CARDS); CARD = ns[(ns.indexOf(CARD)+1) % ns.length];
+    desenhar(); return;
+  }
+
   if (tela === 'colecoes'){
     const L = ordenadas();
     if (k === 'ArrowRight') iCol = Math.min(L.length-1, iCol+1);
@@ -614,7 +825,10 @@ $('#bt-exemplos').onclick = () => {
     {nome:'Tiro', ids:porGenero('Shooter')},
     {nome:'Aventura', ids:porGenero('Action & Adventure')},
     {nome:'Para jogar em dois', ids:JOGOS.slice(0,14).map(j=>j.id)},
-    {nome:'Terminar algum dia', ids:[]}
+    {nome:'Terminar algum dia', ids:[]},
+    // Nome proposital de teste: duas linhas + reticências, para ver o limite.
+    {nome:'Jogos para terminar numa tarde chuvosa de domingo', ids:JOGOS.slice(20,26).map(j=>j.id)},
+    {nome:'Supercalifragilisticexpialidocious', ids:JOGOS.slice(30,33).map(j=>j.id)}
   ];
   salvar(); tela='colecoes'; iCol=0; desenhar();
 };
