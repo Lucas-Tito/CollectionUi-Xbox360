@@ -736,3 +736,35 @@ erradas minhas. O que resolveu não foi nenhuma delas.
     leitura ou escrita e `[1]` dá o endereço. Com esse par, o crash do `DrawText` teria sido
     fechado comparando o número com o ponteiro devolvido pelo `BeginVertices` — sem desassemblar
     o binário. Uma linha que se paga no próximo crash.
+
+97. **O log de detalhe é ligado no console de desenvolvimento e DESLIGADO nas releases.**
+    O canal vive no `diario` (`DefinirDetalhe`/`Detalhe`), não numa variável de `main.cpp` — a
+    primeira tentativa foi uma guarda local, e ela deixava de fora justamente as duas linhas por
+    capa da thread do **carregador**, que é quem está lendo disco. Guarda em módulo não cobre
+    outro módulo.
+
+    Custo de cada linha: um `WriteFile` mais um `FlushFileBuffers`, ou seja, uma ida síncrona ao
+    disco. Com o detalhe ligado, carregar a biblioteca inteira dá cerca de 240 delas no meio do
+    laço de desenho.
+
+    **As releases ficam seguras por construção, não por disciplina:** o zip leva o `.xex` e a
+    pasta `media/`, e o `collectionui.ini` **não entra no pacote** — ele nasce no console, escrito
+    pelo app quando se escolhe a biblioteca. Sem a linha `logDetalhe=1` escrita à mão, o canal não
+    liga. Quem empacotar uma release a partir de uma pasta que já tenha um `.ini` quebra isso.
+
+98. **O `.ini` preserva as chaves que não são dele.** `GravarBanco` reescrevia o arquivo do zero,
+    então reescolher a biblioteca apagava em silêncio `som=`, `anel=` e `logDetalhe=` postos à
+    mão — enquanto o cabeçalho do `config.h` promete que dá para editá-los por FTP. Agora as
+    outras linhas são lidas antes do truncamento e devolvidas depois.
+
+99. **Valor vazio no `.ini` não liga nada.** O teste era "diferente de `0`", e `logDetalhe=`
+    sozinho passava, porque o caractere seguinte era `\n`.
+
+100. **Apagar coleção pede confirmação, com "Cancelar" em foco.** Era a única ação do app que
+     destruía algo sem volta, e estava a um `A` de distância no menu.
+
+101. **Cada efeito de som tem ganho próprio.** Os arquivos do skin da FreeStyle não vêm nivelados
+     entre si: medido no PCM decodificado, o RMS vai de −12,3 dBFS (`btn_Focus`) a −21,5
+     (`btn_Select`), e o `flyout` do menu estava 6 dB acima do som de confirmar. Nivelados por
+     volta de −19,5 dBFS, com a mão leve no som de foco, que tem 0,09 s — som curto soa mais baixo
+     do que o RMS sugere, e corrigir o valor inteiro o faria sumir.
