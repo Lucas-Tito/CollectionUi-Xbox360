@@ -63,17 +63,17 @@ namespace
                 if (!tem)
                     break;
 
-                // Rastro dos DOIS lados: ate agora so a thread de desenho registrava,
-                // entao um crash aqui dentro deixava o log identico ao de um crash la
-                // fora. "lendo" sem o "lido" correspondente aponta para esta thread.
-                diario::Escrever("lendo %d: %s", p.indice, p.arquivo.c_str());
+                // Rastro dos DOIS lados: so a thread de desenho registrava, entao um
+                // crash aqui dentro deixava o log identico ao de um crash la fora.
+                // "lendo" sem o "lido" correspondente aponta para esta thread.
+                diario::Detalhe("lendo %d: %s", p.indice, p.arquivo.c_str());
 
                 Resultado r;
                 r.indice = p.indice;
                 if (!LerCapa(p, r.bytes))
                     r.bytes.clear();       // indice sem bytes = falhou, e a tela mostra o vazio
 
-                diario::Escrever("lido %d: %u bytes", p.indice, (unsigned)r.bytes.size());
+                diario::Detalhe("lido %d: %u bytes", p.indice, (unsigned)r.bytes.size());
 
                 EnterCriticalSection(&g_trava);
                 g_prontos.push_back(r);

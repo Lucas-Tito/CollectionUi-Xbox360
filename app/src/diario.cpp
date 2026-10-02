@@ -7,6 +7,7 @@
 namespace
 {
     HANDLE           g_arquivo = INVALID_HANDLE_VALUE;
+    bool             g_detalhe = false;
     char             g_caminho[256] = "";
     CRITICAL_SECTION g_trava;
     bool             g_travaPronta = false;
@@ -75,6 +76,31 @@ namespace diario
         // estava aqui lia alem do buffer e o '\n' seguinte escrevia fora dele. Nenhuma
         // linha de hoje chega perto de 1022 bytes, mas era estouro esperando caminho
         // novo -- e um deles seria justamente o filtro de excecao.
+        if (n < 0 || n > (int)sizeof(linha) - 2)
+            n = (int)sizeof(linha) - 2;
+        linha[n++] = '\n';
+
+        EnterCriticalSection(&g_trava);
+        Despejar(linha, n);
+        LeaveCriticalSection(&g_trava);
+    }
+
+    void DefinirDetalhe(bool ligado)
+    {
+        g_detalhe = ligado;
+    }
+
+    void Detalhe(const char *formato, ...)
+    {
+        if (!g_detalhe || g_arquivo == INVALID_HANDLE_VALUE || !g_travaPronta)
+            return;
+
+        char linha[1024];
+        va_list args;
+        va_start(args, formato);
+        int n = _vsnprintf(linha, sizeof(linha) - 2, formato, args);
+        va_end(args);
+
         if (n < 0 || n > (int)sizeof(linha) - 2)
             n = (int)sizeof(linha) - 2;
         linha[n++] = '\n';

@@ -121,7 +121,7 @@ namespace
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
     // anterior do mesmo quadro tivesse mudado de tela, executava o item do outro menu.
-    enum MenuDe { MENU_COLECAO, MENU_JOGO };
+    enum MenuDe { MENU_COLECAO, MENU_JOGO, MENU_APAGAR };
 
     bool   g_menuAberto = false;
     MenuDe g_menuDe = MENU_COLECAO;
@@ -138,12 +138,6 @@ namespace
 
     bool  g_anelMarcado = true;      // ver config::Ligado("anel")
 
-    // O rastro por textura e por marcacao foi o que achou o bug do AtgFont, e fica --
-    // mas DESLIGADO por padrao. Cada linha custa um WriteFile mais um FlushFileBuffers,
-    // que forca a gravacao no disco; no carregamento sao duas linhas por capa, 240 idas
-    // ao disco para a biblioteca inteira, no meio do quadro. Ligue com "logDetalhe=1"
-    // no .ini quando precisar cacar alguma coisa.
-    bool  g_logDetalhe = false;
 
     // ---- texto -----------------------------------------------------------------
     // O SQLite devolve UTF-8. Converter com CP_ACP quebra o que não for ASCII: o
@@ -478,9 +472,8 @@ namespace
         }
 
         D3DTexture *textura = NULL;
-        if (g_logDetalhe)
-            diario::Escrever("criando textura %d (%u bytes, %ux%u)", jogoId,
-                             (unsigned)bytes.size(), (unsigned)largura, (unsigned)altura);
+        diario::Detalhe("criando textura %d (%u bytes, %ux%u)", jogoId,
+                        (unsigned)bytes.size(), (unsigned)largura, (unsigned)altura);
         HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
             ATG::g_pd3dDevice, &bytes[0], (UINT)bytes.size(),
             largura, altura,
@@ -491,13 +484,10 @@ namespace
 
         if (SUCCEEDED(hr) && textura != NULL)
         {
-            if (g_logDetalhe)
-            {
-                MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
-                GlobalMemoryStatus(&mem);
-                diario::Escrever("textura %d (%u bytes, livre %u KB)", jogoId,
-                                 (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
-            }
+            MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
+            GlobalMemoryStatus(&mem);
+            diario::Detalhe("textura %d (%u bytes, livre %u KB)", jogoId,
+                            (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
             Guardar(jogoId, textura);
         }
         else
@@ -1238,12 +1228,11 @@ namespace
         IndiceAlfabetico(L);
 
         static int ultMarcados = -1, ultSemCapa = -1, ultBase = -1;
-        if (g_logDetalhe &&
-            (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase))
+        if (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase)
         {
             ultMarcados = marcadosVisiveis; ultSemCapa = semCapaVisiveis; ultBase = base;
-            diario::Escrever("tela: base=%d visiveis=%d marcados=%d semCapa=%d",
-                             base, qtdNomes, marcadosVisiveis, semCapaVisiveis);
+            diario::Detalhe("tela: base=%d visiveis=%d marcados=%d semCapa=%d",
+                            base, qtdNomes, marcadosVisiveis, semCapaVisiveis);
         }
     }
 
@@ -1292,7 +1281,10 @@ namespace
         som::Tocar(som::SOM_ERRO);
         diario::Escrever("aviso: %s", texto);
 
-        WCHAR largo[192];
+        // ESTATICO, nao da pilha: XNotifyQueueUI ENFILEIRA, e o balao e desenhado
+        // depois. Se o xam nao copiar a string, a pilha ja morreu quando ele ler. Todos
+        // os usos conhecidos passam global ou literal, nunca pilha.
+        static WCHAR largo[192];
         Larga(texto, largo, 192);
         XNotifyQueueUI(XNOTIFY_GENERIC, XUSER_INDEX_ANY, XNOTIFY_PRIORIDADE_ALTA, largo, NULL);
     }
@@ -1564,16 +1556,37 @@ namespace
         som::Tocar(som::SOM_CONFIRMA);
         g_menuAberto = false;
 
-        if (g_menuDe == MENU_COLECAO)
+        if (g_menuDe == MENU_APAGAR)
         {
-            if (g_menuFoco == 0) Renomear();
-            else
+            // Segundo menu, com "Cancelar" em foco. Apagar e a unica acao do app que
+            // destroi algo sem volta, e estava a um A de distancia.
+            if (g_menuFoco == 1)
             {
                 std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
                 if (!L.empty())
                 {
+                    diario::Escrever("apagando colecao: %s", L[g_iCol]->nome.c_str());
                     colecoes::Apagar(L[g_iCol]);
                     if (g_iCol > 0) g_iCol--;
+                }
+            }
+        }
+        else if (g_menuDe == MENU_COLECAO)
+        {
+            if (g_menuFoco == 0) Renomear();
+            else
+            {
+                // Nao apaga aqui: abre a confirmacao.
+                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+                if (!L.empty())
+                {
+                    CopiarTitulo(L[g_iCol]->nome);
+                    g_menuDe = MENU_APAGAR;
+                    g_menuItens[0] = "Cancelar";
+                    g_menuItens[1] = "Apagar esta coleção";
+                    g_menuQtd = 2;
+                    g_menuFoco = 0;          // o seguro em foco
+                    g_menuAberto = true;
                 }
             }
         }
@@ -1663,9 +1676,8 @@ namespace
             // Rastro cercando CADA etapa do ato de marcar. O carregamento ja foi
             // inocentado pelo log (120 de 120 texturas prontas e estaveis); o que resta
             // e isto aqui, e cada linha ausente aponta para a etapa seguinte a ela.
-            if (g_logDetalhe)
-                diario::Escrever("marcar: i=%d id=%d titleId=%08X selecao=%d",
-                                 g_iJogo, L[g_iJogo]->id, titleId, (int)g_selecao.size());
+            diario::Detalhe("marcar: i=%d id=%d titleId=%08X selecao=%d",
+                            g_iJogo, L[g_iJogo]->id, titleId, (int)g_selecao.size());
 
             som::Tocar(som::SOM_CONFIRMA);
 
@@ -1847,9 +1859,11 @@ void __cdecl main()
         diario::Escrever("anel do marcado DESLIGADO pelo .ini");
 
     // Ao contrario das outras chaves, esta e desligada por PADRAO: so liga com
-    // "logDetalhe=1" explicito no .ini.
-    g_logDetalhe = config::LigadoSeDito("logDetalhe");
-    diario::Escrever("log detalhado: %s", g_logDetalhe ? "ligado" : "desligado");
+    // "logDetalhe=1" explicito no .ini. Mora no diario, nao aqui, porque quem mais
+    // escreve detalhe e a thread do carregador, noutro modulo.
+    bool detalhe = config::LigadoSeDito("logDetalhe");
+    diario::DefinirDetalhe(detalhe);
+    diario::Escrever("log detalhado: %s", detalhe ? "ligado" : "desligado");
 
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));

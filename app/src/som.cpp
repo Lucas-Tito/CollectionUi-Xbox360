@@ -20,6 +20,22 @@ namespace
     // e o numero nao da para extrair de lugar nenhum. E ajuste de ouvido mesmo.
     const float VOLUME = 0.32f;
 
+    // Ganho POR EFEITO. Os arquivos do skin nao estao nivelados entre si: medido no PCM
+    // decodificado, o RMS vai de -12,3 dBFS (btn_Focus) a -21,5 (btn_Select) -- quase
+    // 10 dB de diferenca, e o RMS e o que o ouvido percebe como volume. O flyout, que e
+    // o som do menu, estava 6 dB acima do confirmar.
+    //
+    // Nivelado por volta de -19,5 dBFS, com a mao leve no btn_Focus: ele e curtissimo
+    // (0,09 s) e som curto soa mais baixo do que o RMS sugere, entao corrigir o valor
+    // inteiro o faria sumir.
+    const float GANHO[som::SOM_QUANTOS] = {
+        0.60f,   // SOM_FOCO      btn_Focus    RMS -12,3
+        1.20f,   // SOM_CONFIRMA  btn_Select   RMS -21,5
+        0.92f,   // SOM_VOLTA     btn_Back     RMS -18,8
+        0.66f,   // SOM_MENU      flyout       RMS -15,9
+        1.00f    // SOM_ERRO      NotifyPopup  RMS -19,5
+    };
+
     struct Voz
     {
         IXAudio2SourceVoice *voz;
@@ -176,7 +192,7 @@ namespace
             return false;
         }
 
-        voz->SetVolume(VOLUME);
+        voz->SetVolume(VOLUME * GANHO[i]);
 
         g_vozes[i].voz     = voz;
         g_vozes[i].dados   = dados;

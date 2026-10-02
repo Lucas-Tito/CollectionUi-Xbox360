@@ -11,7 +11,9 @@ namespace
         char  caminho[512];
         char  imagem[32];
         int   tipo;
-        DWORD codigo;
+        DWORD codigo;        // da segunda tentativa, ou da unica
+        DWORD codigo1;       // da primeira, no caminho curto
+        bool  tentouLongo;
     };
 
     // Lancar de uma thread separada nao e zelo: a doc do XDK diz que estas funcoes
@@ -25,26 +27,33 @@ namespace
         {
             // Devolve zero no sucesso -- mas no sucesso o console reinicia e ninguem
             // le este retorno. Na pratica so voltamos daqui com erro.
-            p->codigo = XContentLaunchImageFromFile(p->caminho, p->imagem);
+            p->codigo1 = XContentLaunchImageFromFile(p->caminho, p->imagem);
+            p->codigo  = p->codigo1;
             if (p->codigo == 0)
                 return 0;
 
-            // ERROR_FILE_NOT_FOUND com o arquivo existindo (a sondagem achou ele antes)
-            // aponta para o FORMATO do caminho: "Hdd:" e um apelido que NOS criamos com
-            // ObCreateSymbolicLink, e quem resolve o caminho aqui e o xam, noutro
-            // contexto. O FreeStyle monta container passando "\??\Hdd1:\...", o
-            // caminho do namespace de objetos. Tentamos essa forma antes de desistir.
-            if (p->codigo == ERROR_FILE_NOT_FOUND)
+            // Erro de "nao achei o caminho" com o arquivo existindo (a sondagem acha
+            // antes de chegar aqui) aponta para a FORMA do caminho. "Hdd:" e um apelido
+            // curto, e quem o expande depende de QUEM resolve: a XAPI dentro do nosso
+            // titulo prefixa "\??\" sozinha -- por isso o GetFileAttributes acha --,
+            // mas esta chamada atravessa para o xam, que resolve noutro contexto. Um
+            // caminho absoluto do namespace de objetos nao depende de prefixo nenhum.
+            //
+            // E a MESMA forma que o FreeStyle usa para montar container, e o apelido
+            // dele tambem e caseiro: "\??\Hdd1:\...".
+            //
+            // NADA de escrever no log entre as duas chamadas: a doc proibe I/O com o
+            // disco antes de lancar. Os dois codigos vao no Pedido e sao registrados
+            // depois, por quem esperou a thread.
+            if (p->codigo == ERROR_FILE_NOT_FOUND ||
+                p->codigo == ERROR_PATH_NOT_FOUND ||
+                p->codigo == ERROR_INVALID_NAME)
             {
                 char outro[512];
                 _snprintf(outro, sizeof(outro), "\\??\\%s", p->caminho);
                 outro[sizeof(outro) - 1] = '\0';
 
-                diario::Reabrir();
-                diario::Escrever("container: %u no caminho direto; tentando %s",
-                                 (unsigned)p->codigo, outro);
-                diario::Fechar();
-
+                p->tentouLongo = true;
                 p->codigo = XContentLaunchImageFromFile(outro, p->imagem);
             }
             return 0;
@@ -89,6 +98,10 @@ namespace lancador
 
         Pedido p;
         ZeroMemory(&p, sizeof(p));
+
+        // Atributos crus do caminho ANTES de lancar: biblioteca::Existe devolve true
+        // para DIRETORIO tambem, entao "o arquivo existe" nao prova que e arquivo.
+        DWORD atributos = GetFileAttributes(caminho.c_str());
         _snprintf(p.caminho, sizeof(p.caminho), "%s", caminho.c_str());
         p.caminho[sizeof(p.caminho) - 1] = '\0';
         p.tipo   = jogo.tipoArquivo;
@@ -100,8 +113,9 @@ namespace lancador
 
         // O ultimo registro tem de sair ANTES: dando certo, o console reinicia e
         // nenhuma linha escrita depois chega ao arquivo.
-        diario::Escrever("lancando tipo=%d contentType=0x%X: %s (%s)",
-                         jogo.tipoArquivo, jogo.contentType, caminho.c_str(),
+        diario::Escrever("lancando tipo=%d contentType=0x%X attr=0x%08X: %s (%s)",
+                         jogo.tipoArquivo, jogo.contentType, (unsigned)atributos,
+                         caminho.c_str(),
                          (jogo.tipoArquivo == 3) ? p.imagem : "direto");
         diario::Fechar();
 
@@ -125,8 +139,12 @@ namespace lancador
         {
             _snprintf(texto, sizeof(texto), "O jogo nao abriu (erro 0x%08X)",
                       (unsigned)p.codigo);
-            diario::Escrever("FALHOU: XContentLaunchImageFromFile = 0x%08X em %s",
-                             (unsigned)p.codigo, caminho.c_str());
+            if (p.tentouLongo)
+                diario::Escrever("FALHOU container: caminho curto 0x%08X, \\??\\ 0x%08X, em %s",
+                                 (unsigned)p.codigo1, (unsigned)p.codigo, caminho.c_str());
+            else
+                diario::Escrever("FALHOU container: 0x%08X em %s",
+                                 (unsigned)p.codigo, caminho.c_str());
         }
         else
         {

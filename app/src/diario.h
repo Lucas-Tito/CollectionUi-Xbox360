@@ -15,6 +15,17 @@ namespace diario
     void Escrever(const char *formato, ...);
     void Fechar();
 
+    // Canal de DETALHE: rastro por textura, por capa lida, por marcacao. Foi o que
+    // achou o bug de memoria do AtgFont, e fica -- mas desligado por padrao, porque
+    // cada linha custa um WriteFile mais um FlushFileBuffers, ou seja, uma ida ao
+    // disco, e no carregamento sao duas por capa. Ligar so para cacar algo.
+    //
+    // Fica AQUI, e nao numa variavel de main.cpp, porque quem mais escreve detalhe e a
+    // thread do carregador, noutro modulo -- uma guarda local a main.cpp deixava
+    // metade do custo de pe.
+    void DefinirDetalhe(bool ligado);
+    void Detalhe(const char *formato, ...);
+
     // Reabre em modo APPEND o ultimo caminho passado a Abrir. E para o caso do
     // lancamento de jogo, que fecha o arquivo antes de reiniciar o console: se o
     // lancamento falha e voltamos vivos, reabrir com Abrir truncaria justamente o
