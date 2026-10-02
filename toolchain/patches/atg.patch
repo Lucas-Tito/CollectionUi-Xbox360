@@ -1,0 +1,69 @@
+--- a/AtgFont.cpp
++++ b/AtgFont.cpp
+@@ -905,14 +905,29 @@
+         reinterpret_cast<volatile DWORD *>(pVertex)[15] = dwChannelSelector;
+         pVertex+=16;
+ 
++        // CORRIGIDO (nao e do XDK): o "dwNumChars--" estava DEPOIS do break.
++        //
++        // Toda chamada com ATGFONT_TRUNCATED que de fato trunca escrevia um quad a mais
++        // do que reservou no BeginVertices. A conta: reserva-se wcslen+3 quads; a
++        // terceira reticencia escreve o quad dela e sai pelo break SEM descontar do
++        // saldo, e o laco de preenchimento logo abaixo escreve o saldo inteiro. Sobra
++        // exatamente 1 quad = 16 floats = 64 bytes escritos ALEM da regiao reservada.
++        //
++        // Quase sempre inofensivo, porque o ring buffer tem folga. Quando a reserva cai
++        // perto do fim do buffer, vira escrita em memoria que nao e nossa -- e foi o
++        // 0xC0000005 dentro deste DrawText que perseguimos por varias rodadas. Explica
++        // tudo: so acontece em tela com nome truncado (os dois grids usam TRUNCATED), e
++        // e intermitente porque depende de ONDE a reserva caiu.
++        //
++        // Descontando antes, todo quad escrito consome um slot reservado.
++        dwNumChars--;
++
+         // If drawing ellipses, exit when they're all drawn
+         if( dwNumEllipsesToDraw )
+         {
+             if( --dwNumEllipsesToDraw == 0 )
+                 break;
+         }
+-
+-        dwNumChars--;
+     }
+ 
+     // Since we allocated vertex data space based on the string length, we now need to
+--- a/AtgUtil.cpp
++++ b/AtgUtil.cpp
+@@ -9,6 +9,7 @@
+ #include "stdafx.h"
+ #include "AtgDevice.h"
+ #include "AtgUtil.h"
++#include "diario.h"   // nosso: ver FatalError abaixo
+ 
+ namespace ATG
+ {
+@@ -149,6 +150,24 @@
+     DebugSpewV( strFormat, pArgList );
+     va_end( pArgList );
+ 
++    // ACRESCENTADO AO CODIGO DA ATG (nao e do XDK).
++    //
++    // O DebugSpew abaixo so sai pelo XBDM, que exige depurador acoplado -- num console
++    // de varejo ele nao vai a lugar nenhum, e o DebugBreak seguinte vira um fatal crash
++    // MUDO. Existem quatro chamadas de FatalError so no AtgDebugDraw ("Ring buffer out
++    // of memory"), todas em funcoes que a tela de adicionar usa dezenas de vezes por
++    // quadro. Sem esta linha, qualquer uma delas apaga o app sem deixar pista.
++    {
++        char linha[512];
++        va_list p2;
++        va_start( p2, strFormat );
++        _vsnprintf( linha, sizeof(linha) - 1, strFormat, p2 );
++        va_end( p2 );
++        linha[sizeof(linha) - 1] = '\0';
++        diario::Escrever( "ATG FatalError: %s", linha );
++        diario::Fechar();
++    }
++
+     DebugBreak();
+ 
+     exit(0);

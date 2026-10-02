@@ -35,6 +35,31 @@ done
 # execução do script falhar. Devolvemos a permissão de escrita.
 chmod -R u+w "$DESTINO"
 
+# Normaliza CRLF -> LF. Os fontes do XDK vem com fim de linha do Windows, e o patch
+# abaixo e gerado com fim de linha Unix -- sem isto o contexto nao casa e o patch falha.
+# O cl.exe nao se importa com qual dos dois.
+find "$DESTINO" -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.inl' \) \
+     -exec sed -i 's/\r$//' {} +
+
+# As NOSSAS alteracoes na ATG, como patch versionado.
+#
+# O conteudo da ATG nao entra no git (e proprietario), mas o que mudamos nele tem de
+# sobreviver a um clone novo -- senao volta o bug de memoria do AtgFont, que custou
+# oito rodadas de teste no console para ser achado. Por isso: receita no repo, patch
+# no repo, conteudo nao.
+PATCH="$(dirname "$0")/patches/atg.patch"
+if [ -f "$PATCH" ]; then
+    if patch -p1 -d "$DESTINO" --forward --silent < "$PATCH"; then
+        echo "patch da ATG aplicado"
+    else
+        echo "ERRO: o patch da ATG nao aplicou. Nao use este build." >&2
+        exit 1
+    fi
+else
+    echo "ERRO: $PATCH nao existe -- o build sairia com o bug do AtgFont." >&2
+    exit 1
+fi
+
 echo "ATG copiada: $(ls "$DESTINO" | wc -l) arquivos em $DESTINO"
 
 # A fonte. O Arial_16 já vem empacotado (.xpr) no SDK e traz os 16 glifos de botão
