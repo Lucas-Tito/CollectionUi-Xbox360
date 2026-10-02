@@ -26,6 +26,13 @@ namespace lancador
     // Devolve "" se o arquivo nao esta em nenhum dispositivo.
     std::string Resolver(const std::string &caminhoRelativo);
 
+    // Volta para o dashboard (a FreeStyle, com o Dashlaunch configurado).
+    //
+    // XLAUNCH_KEYWORD_DASH e NULL (xbox.h:423). Vale a MESMA disciplina do lancamento de
+    // jogo: nada de I/O pendente, nada de audio tocando, e nao se chama da thread dona
+    // do device D3D. So devolve se falhou.
+    bool VoltarAoDash(std::string &erro);
+
     // So devolve se FALHOU -- no sucesso o console ja reiniciou. Enche 'erro' com algo
     // que da para mostrar na tela.
     //
