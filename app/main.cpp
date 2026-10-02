@@ -108,7 +108,9 @@ namespace
     ATG::Font g_fonte;
 
     // ---- estado ----------------------------------------------------------------
-    enum Tela { TELA_COLECOES, TELA_JOGOS, TELA_ADICIONAR };
+    // TELA_ORIGENS reusa o desenho da grade de coleções, marcando quais entram na
+    // união. Mesma mecânica da tela de adicionar jogos: A marca, ☰ conclui, B cancela.
+    enum Tela { TELA_COLECOES, TELA_JOGOS, TELA_ADICIONAR, TELA_ORIGENS };
 
     std::string                   g_caminhoBanco;
     std::vector<biblioteca::Jogo> g_jogos;
@@ -121,7 +123,7 @@ namespace
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
     // anterior do mesmo quadro tivesse mudado de tela, executava o item do outro menu.
-    enum MenuDe { MENU_COLECAO, MENU_JOGO, MENU_APAGAR };
+    enum MenuDe { MENU_COLECAO, MENU_JOGO, MENU_APAGAR, MENU_TIPO };
 
     bool   g_menuAberto = false;
     MenuDe g_menuDe = MENU_COLECAO;
@@ -135,6 +137,14 @@ namespace
     enum Pedido { PEDIDO_NENHUM, PEDIDO_NOVA, PEDIDO_RENOMEAR };
     Pedido g_pedido = PEDIDO_NENHUM;
     colecoes::Colecao *g_renomeando = NULL;
+
+    // Entre o teclado e a escolha do tipo, o nome fica aqui.
+    char g_nomeNovo[64] = "";
+
+    // Rascunho da união em edição, e a união sendo editada. Mesma ideia do g_selecao
+    // dos jogos: só vira arquivo quando se conclui.
+    std::vector<int>    g_origens;
+    colecoes::Colecao  *g_editandoUniao = NULL;
 
     bool  g_anelMarcado = true;      // ver config::Ligado("anel")
 
@@ -338,14 +348,37 @@ namespace
                 saida[(*quantas)++] = &g_jogos[i];
     }
 
+    // O que a grade de coleções mostra. Escolhendo origens, só entram coleções DE
+    // JOGOS, e nunca a própria união em edição -- é o que impede união dentro de união
+    // sem precisar detectar ciclo.
+    std::vector<colecoes::Colecao *> ListaDeColecoes()
+    {
+        std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
+        if (g_tela != TELA_ORIGENS)
+            return todas;
+
+        std::vector<colecoes::Colecao *> saida;
+        for (size_t i = 0; i < todas.size(); i++)
+            if (!todas[i]->uniao && todas[i] != g_editandoUniao)
+                saida.push_back(todas[i]);
+        return saida;
+    }
+
+    bool OrigemMarcada(int id)
+    {
+        for (size_t i = 0; i < g_origens.size(); i++)
+            if (g_origens[i] == id) return true;
+        return false;
+    }
+
     void PedirOQueFalta()
     {
         // A tela de coleções tambem carrega agora: tres capas por card. Sao as MESMAS
         // texturas que a colecao usa por dentro (a chave do cache e o ContentItemId),
         // entao isto deixa a tela de jogos mais rapida em vez de custar o dobro.
-        if (g_tela == TELA_COLECOES)
+        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS)
         {
-            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+            std::vector<colecoes::Colecao *> L = ListaDeColecoes();
             // Uma linha de folga para CADA lado, como a tela de jogos faz: sem a de
             // cima, rolar para tras mostra card sem capa por um instante.
             int base = (g_primeiraLinhaCol - 1) * COL_POR_LINHA;
@@ -703,6 +736,66 @@ namespace
         return t;
     }
 
+    // Raio, para marcar a coleção que é junção de outras. Gerado como as máscaras de
+    // canto: nenhum arquivo novo. O desenho é um polígono de sete pontos, testado por
+    // cruzamento de borda -- em 24x24 isso sai com serrilha aceitável, e o contorno
+    // escuro por baixo é o que o faz aparecer sobre capa clara.
+    const int RAIO_N = 24;
+    D3DTexture *g_raio = NULL;
+
+    bool DentroDoRaio(float x, float y)
+    {
+        // Sentido horário, em fração do quadrado.
+        static const float px[7] = { 0.58f, 0.22f, 0.46f, 0.34f, 0.80f, 0.52f, 0.72f };
+        static const float py[7] = { 0.04f, 0.56f, 0.56f, 0.96f, 0.42f, 0.42f, 0.04f };
+
+        bool dentro = false;
+        for (int i = 0, j = 6; i < 7; j = i++)
+        {
+            if ((py[i] > y) == (py[j] > y)) continue;
+            float corte = (px[j] - px[i]) * (y - py[i]) / (py[j] - py[i]) + px[i];
+            if (x < corte) dentro = !dentro;
+        }
+        return dentro;
+    }
+
+    void CriarRaio()
+    {
+        if (FAILED(ATG::g_pd3dDevice->CreateTexture(RAIO_N, RAIO_N, 1, 0,
+                                                    D3DFMT_LIN_A8R8G8B8,
+                                                    D3DPOOL_DEFAULT, &g_raio, NULL)))
+        {
+            g_raio = NULL;
+            return;
+        }
+
+        D3DLOCKED_RECT tr;
+        if (FAILED(g_raio->LockRect(0, &tr, NULL, 0)))
+        {
+            g_raio->Release(); g_raio = NULL;
+            return;
+        }
+
+        for (int y = 0; y < RAIO_N; y++)
+        {
+            DWORD *linha = (DWORD *)((BYTE *)tr.pBits + y * tr.Pitch);
+            for (int x = 0; x < RAIO_N; x++)
+            {
+                // Quatro amostras por pixel: sem isso a diagonal do raio fica em
+                // escada, e nesse tamanho a escada e o que mais se ve.
+                int dentro = 0;
+                for (int sy = 0; sy < 2; sy++)
+                    for (int sx = 0; sx < 2; sx++)
+                        if (DentroDoRaio(((float)x + 0.25f + sx * 0.5f) / RAIO_N,
+                                         ((float)y + 0.25f + sy * 0.5f) / RAIO_N))
+                            dentro++;
+
+                linha[x] = ((DWORD)(dentro * 255 / 4) << 24) | 0x00FFFFFF;
+            }
+        }
+        g_raio->UnlockRect(0);
+    }
+
     void CriarCanto()
     {
         g_canto   = GerarCanto(-1.0f);
@@ -713,8 +806,13 @@ namespace
             diario::Escrever("AVISO: sem a mascara de canto, os cards ficam retos");
         if (g_arco[0] == NULL || g_arco[1] == NULL)
             diario::Escrever("AVISO: sem o arco, o contorno do card fica cortado no canto");
+        CriarRaio();
+        if (g_raio == NULL)
+            diario::Escrever("AVISO: sem o raio, a uniao nao se distingue no card");
+
         if (g_canto != NULL)
-            diario::Escrever("texturas de canto %dx%d geradas", CANTO_N, CANTO_N);
+            diario::Escrever("texturas de canto %dx%d e raio %dx%d geradas",
+                             CANTO_N, CANTO_N, RAIO_N, RAIO_N);
     }
 
     // Uma fonte da verdade para o fundo: o gradiente da tela e a cor dos cantos saem
@@ -904,6 +1002,31 @@ namespace
                       D3DCOLOR_ARGB(0, 18, 27, 21), D3DCOLOR_ARGB(240, 18, 27, 21), false);
         }
 
+        // Raio no canto superior direito: marca que esta colecao e juncao de outras.
+        // Vai ANTES do contorno e dos cantos, para ser recortado junto se encostar.
+        if (col != NULL && col->uniao && g_raio != NULL)
+        {
+            const int M = 22, folga = 10;
+            XMFLOAT2 pos[4], uvr[4];
+            const float rx = (float)(x + lado - folga - M), ry = (float)(y + folga);
+            pos[0] = XMFLOAT2(rx,     ry);
+            pos[1] = XMFLOAT2(rx + M, ry);
+            pos[2] = XMFLOAT2(rx + M, ry + M);
+            pos[3] = XMFLOAT2(rx,     ry + M);
+            uvr[0] = XMFLOAT2(0.0f, 0.0f);
+            uvr[1] = XMFLOAT2(1.0f, 0.0f);
+            uvr[2] = XMFLOAT2(1.0f, 1.0f);
+            uvr[3] = XMFLOAT2(0.0f, 1.0f);
+
+            Mistura(true);
+            // Sombra um pixel abaixo, para o raio nao sumir sobre capa clara.
+            XMFLOAT2 sombra[4];
+            for (int c = 0; c < 4; c++) sombra[c] = XMFLOAT2(pos[c].x + 1.0f, pos[c].y + 1.0f);
+            QuadTex(sombra, uvr, g_raio, D3DCOLOR_ARGB(170, 0, 0, 0), true);
+            QuadTex(pos,    uvr, g_raio, COR_ANEL, true);
+            Mistura(false);
+        }
+
         // O contorno sai em QUATRO SEGMENTOS RETOS, parando antes dos cantos -- e a
         // curva vem depois, da textura de arco. Desenhar o retângulo inteiro e deixar a
         // máscara comer os cantos deixava o contorno CORTADO, com falha nas quinas, em
@@ -971,17 +1094,21 @@ namespace
 
     void TelaColecoes()
     {
-        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        std::vector<colecoes::Colecao *> L = ListaDeColecoes();
         WCHAR texto[256];
 
         if (L.empty())
         {
             g_fonte.Begin();
             g_fonte.SetScaleFactors(1.3f, 1.3f);
-            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhuma coleção ainda",
+            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
+                             (g_tela == TELA_ORIGENS)
+                                 ? L"Nenhuma coleção de jogos para juntar"
+                                 : L"Nenhuma coleção ainda",
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(GLYPH_X_BUTTON L" Nova coleção", L"");
+            Rodape((g_tela == TELA_ORIGENS) ? GLYPH_B_BUTTON L" Cancelar"
+                                            : GLYPH_X_BUTTON L" Nova coleção", L"");
             g_fonte.End();
             return;
         }
@@ -999,6 +1126,18 @@ namespace
             int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
             int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
             DesenharCard(x, y, COL_LADO, L[i], i == g_iCol);
+
+            // Escolhendo origens, a não marcada recebe o mesmo véu dos jogos não
+            // marcados, e a marcada ganha o anel verde.
+            if (g_tela == TELA_ORIGENS)
+            {
+                D3DRECT rc;
+                rc.x1 = x; rc.y1 = y; rc.x2 = x + COL_LADO; rc.y2 = y + COL_LADO;
+                if (!OrigemMarcada(L[i]->id))
+                    Preencher(rc, D3DCOLOR_ARGB(150, 6, 9, 8));
+                else
+                    ATG::DebugDraw::DrawScreenSpaceRect(rc, 2.0f, COR_ANEL);
+            }
         }
 
         g_fonte.Begin();
@@ -1042,8 +1181,16 @@ namespace
         }
 
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
-        Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
-               GLYPH_START_BUTTON L" Opções", texto);
+        if (g_tela == TELA_ORIGENS)
+        {
+            WCHAR sub[64];
+            swprintf_s(sub, 64, L"%d escolhidas", (int)g_origens.size());
+            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
+                   GLYPH_START_BUTTON L" Concluir", sub);
+        }
+        else
+            Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
+                   GLYPH_START_BUTTON L" Opções", texto);
         g_fonte.End();
     }
 
@@ -1300,8 +1447,8 @@ namespace
                   D3DCOLOR_XRGB(FUNDO_DE[0],   FUNDO_DE[1],   FUNDO_DE[2]),
                   D3DCOLOR_XRGB(FUNDO_PARA[0], FUNDO_PARA[1], FUNDO_PARA[2]), true);
 
-        if (g_tela == TELA_COLECOES) TelaColecoes();
-        else                          TelaJogos();
+        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS) TelaColecoes();
+        else                                                   TelaJogos();
 
         if (g_menuAberto)
             DesenharMenu();
@@ -1349,7 +1496,7 @@ namespace
     // rodava ao desenhar deixava g_iCol fora de faixa para quem lesse antes.
     void ClampFoco()
     {
-        int nCol = (int)colecoes::Ordenadas().size();
+        int nCol = (int)ListaDeColecoes().size();
         if (g_iCol >= nCol) g_iCol = nCol - 1;
         if (g_iCol < 0)     g_iCol = 0;
         SeguirFocoColecao();
@@ -1382,7 +1529,7 @@ namespace
 
     void MoverColecao(int delta)
     {
-        int total = (int)colecoes::Ordenadas().size();
+        int total = (int)ListaDeColecoes().size();
         if (total == 0) return;
 
         int novo = g_iCol + delta;
@@ -1461,6 +1608,12 @@ namespace
             g_renomeando = NULL;
     }
 
+    void CopiarTitulo(const std::string &origem)
+    {
+        strncpy(g_menuTitulo, origem.c_str(), sizeof(g_menuTitulo) - 1);
+        g_menuTitulo[sizeof(g_menuTitulo) - 1] = '\0';
+    }
+
     void AtenderTeclado()
     {
         bool confirmou = false;
@@ -1478,13 +1631,16 @@ namespace
 
         if (pedido == PEDIDO_NOVA)
         {
-            // Compara por PONTEIRO: dois nomes iguais focariam a coleção errada.
-            colecoes::Colecao *nova = colecoes::Criar(nome);
-            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-            for (size_t i = 0; i < L.size(); i++)
-                if (L[i] == nova) { g_iCol = (int)i; break; }
+            // O nome espera aqui enquanto se escolhe o tipo. Nada é criado ainda: uma
+            // união sem origem seria apagada na próxima leitura.
+            _snprintf(g_nomeNovo, sizeof(g_nomeNovo), "%s", nome.c_str());
+            g_nomeNovo[sizeof(g_nomeNovo) - 1] = '\0';
 
-            diario::Escrever("colecao criada: %s", nova->nome.c_str());
+            CopiarTitulo(g_nomeNovo);
+            g_menuDe = MENU_TIPO;
+            g_menuItens[0] = "Coleção de jogos";
+            g_menuItens[1] = "Junção de coleções";
+            g_menuQtd = 2; g_menuFoco = 0; g_menuAberto = true;
         }
         else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
         {
@@ -1507,11 +1663,6 @@ namespace
         }
     }
 
-    void CopiarTitulo(const std::string &origem)
-    {
-        strncpy(g_menuTitulo, origem.c_str(), sizeof(g_menuTitulo) - 1);
-        g_menuTitulo[sizeof(g_menuTitulo) - 1] = '\0';
-    }
 
     void AbrirMenuColecao()
     {
@@ -1522,14 +1673,35 @@ namespace
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
         g_menuItens[0] = "Renomear";
-        g_menuItens[1] = "Apagar coleção";
-        g_menuQtd = 2; g_menuFoco = 0; g_menuAberto = true;
+
+        // União ganha a opção de trocar as origens; coleção de jogos não tem o que
+        // escolher ali.
+        if (L[g_iCol]->uniao)
+        {
+            g_menuItens[1] = "Escolher coleções";
+            g_menuItens[2] = "Apagar coleção";
+            g_menuQtd = 3;
+        }
+        else
+        {
+            g_menuItens[1] = "Apagar coleção";
+            g_menuQtd = 2;
+        }
+        g_menuFoco = 0; g_menuAberto = true;
     }
 
     void AbrirMenuJogo()
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         if (L.empty()) return;
+        // Numa união o jogo está ali por causa de uma origem; para tirar, tira-se da
+        // origem. Sem "Remover" aqui, então o menu não tem o que oferecer.
+        if (g_atual != NULL && g_atual->uniao)
+        {
+            som::Tocar(som::SOM_VOLTA);   // sem isto o botão parece quebrado
+            return;
+        }
+
         CopiarTitulo(L[g_iJogo]->nome);
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_JOGO;
@@ -1549,6 +1721,66 @@ namespace
         g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
     }
 
+    // Entra na escolha de origens, com o rascunho partindo do que a união já tem.
+    void AbrirOrigens(colecoes::Colecao *uniao)
+    {
+        g_editandoUniao = uniao;
+        g_origens = uniao->origens;
+        g_tela = TELA_ORIGENS;
+        g_iCol = 0;
+        g_primeiraLinhaCol = 0;
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
+
+    void FecharOrigens(bool gravar)
+    {
+        colecoes::Colecao *sobreviveu = NULL;
+
+        if (gravar && g_editandoUniao != NULL)
+        {
+            g_editandoUniao->origens = g_origens;
+
+            if (g_origens.empty())
+            {
+                // União sem origem não é coleção vazia, é coleção sem sentido.
+                diario::Escrever("uniao '%s' concluida sem origem: apagada",
+                                 g_editandoUniao->nome.c_str());
+                colecoes::Apagar(g_editandoUniao);
+            }
+            else
+            {
+                colecoes::Gravar();
+                diario::Escrever("uniao '%s' com %d origens",
+                                 g_editandoUniao->nome.c_str(), (int)g_origens.size());
+                sobreviveu = g_editandoUniao;
+            }
+        }
+        else if (g_editandoUniao != NULL && g_editandoUniao->origens.empty())
+        {
+            // Cancelou a criação: a união nunca chegou a existir de verdade.
+            colecoes::Apagar(g_editandoUniao);
+        }
+
+        g_editandoUniao = NULL;
+        g_origens.clear();
+        g_tela = TELA_COLECOES;
+
+        // O g_iCol que sobrou e indice da lista FILTRADA da escolha de origens (so
+        // coleções de jogos); na grade completa ele cai em outra coleção. Reacha a
+        // união por PONTEIRO, como o Renomear faz -- dois nomes iguais focariam errado.
+        g_iCol = 0;
+        if (sobreviveu != NULL)
+        {
+            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+            for (size_t i = 0; i < L.size(); i++)
+                if (L[i] == sobreviveu) { g_iCol = (int)i; break; }
+        }
+
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
+
     void EscolherNoMenu()
     {
         // Apagar coleção e remover jogo são as duas ações mais consequentes do app.
@@ -1556,7 +1788,23 @@ namespace
         som::Tocar(som::SOM_CONFIRMA);
         g_menuAberto = false;
 
-        if (g_menuDe == MENU_APAGAR)
+        if (g_menuDe == MENU_TIPO)
+        {
+            if (g_menuFoco == 0)
+            {
+                // Compara por PONTEIRO: dois nomes iguais focariam a coleção errada.
+                colecoes::Colecao *nova = colecoes::Criar(g_nomeNovo);
+                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+                for (size_t i = 0; i < L.size(); i++)
+                    if (L[i] == nova) { g_iCol = (int)i; break; }
+                diario::Escrever("colecao criada: %s", nova->nome.c_str());
+            }
+            else
+            {
+                AbrirOrigens(colecoes::CriarUniao(g_nomeNovo));
+            }
+        }
+        else if (g_menuDe == MENU_APAGAR)
         {
             // Segundo menu, com "Cancelar" em foco. Apagar e a unica acao do app que
             // destroi algo sem volta, e estava a um A de distancia.
@@ -1573,7 +1821,14 @@ namespace
         }
         else if (g_menuDe == MENU_COLECAO)
         {
+            std::vector<colecoes::Colecao *> Lc = colecoes::Ordenadas();
+            bool ehUniao = !Lc.empty() && Lc[g_iCol]->uniao;
+
             if (g_menuFoco == 0) Renomear();
+            else if (ehUniao && g_menuFoco == 1)
+            {
+                AbrirOrigens(Lc[g_iCol]);
+            }
             else
             {
                 // Nao apaga aqui: abre a confirmacao.
@@ -1971,6 +2226,32 @@ void __cdecl main()
                 g_menuAberto = false;
             }
         }
+        else if (g_tela == TELA_ORIGENS)
+        {
+            if (dx) MoverColecao(dx);
+            if (dy) MoverColecao(dy * COL_POR_LINHA);
+
+            if (novos & XINPUT_GAMEPAD_A)
+            {
+                std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+                if (!L.empty() && g_iCol < (int)L.size())
+                {
+                    som::Tocar(som::SOM_CONFIRMA);
+                    int id = L[g_iCol]->id;
+                    bool tirou = false;
+                    for (size_t i = 0; i < g_origens.size(); i++)
+                        if (g_origens[i] == id)
+                        {
+                            g_origens.erase(g_origens.begin() + i);
+                            tirou = true;
+                            break;
+                        }
+                    if (!tirou) g_origens.push_back(id);
+                }
+            }
+            else if (novos & XINPUT_GAMEPAD_B)     { som::Tocar(som::SOM_VOLTA); FecharOrigens(false); }
+            else if (novos & XINPUT_GAMEPAD_START) { som::Tocar(som::SOM_CONFIRMA); FecharOrigens(true); }
+        }
         else if (g_tela == TELA_COLECOES)
         {
             if (dx) MoverColecao(dx);
@@ -1991,7 +2272,12 @@ void __cdecl main()
             if      (salto) SaltoLetra(salto);
             else if (novos & XINPUT_GAMEPAD_A) Confirmar();
             else if (novos & XINPUT_GAMEPAD_B) Voltar();
-            else if (novos & XINPUT_GAMEPAD_X) { if (g_tela == TELA_JOGOS) AbrirAdicionar(); }
+            else if (novos & XINPUT_GAMEPAD_X)
+            {
+                // União não guarda jogos próprios: não há o que acrescentar nela.
+                if (g_tela == TELA_JOGOS && g_atual != NULL && !g_atual->uniao)
+                    AbrirAdicionar();
+            }
             else if (novos & XINPUT_GAMEPAD_START)
             {
                 if (g_tela == TELA_ADICIONAR)
