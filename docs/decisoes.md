@@ -532,3 +532,24 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
     o que levantaria a dúvida de dado sujo na L2 sendo lido por hardware. O white paper *Xbox 360
     CPU Caches* responde: o South Bridge — onde vive o decodificador XMA — **faz snoop da L2**.
     Quem não faz é a GPU.
+
+71. **A thread do carregador saiu da thread de hardware 4 — o XAudio2 mora lá.**
+    `XAUDIO2_DEFAULT_PROCESSOR` é `(XboxThread4|XboxThread5)` (`xaudio2.h:181`), e o carregador
+    estava fixado justamente na 4. O sintoma enganava: o app rodava centenas de quadros na tela
+    de coleções e só quebrava **ao entrar numa coleção** — que é exatamente quando a thread de
+    leitura de `.assets` acorda e passa a disputar o núcleo com o motor de áudio em tempo real.
+    Agora o carregador vai para a thread 2 (o desenho roda na 0; 0-1, 2-3 e 4-5 são os três
+    núcleos), e o XAudio2 fica com o padrão que o XDK testa.
+
+72. **Volume dos efeitos a 0,65.** Os `.xma` do skin da FreeStyle não têm folga: medido no PCM
+    decodificado, `btn_Back` bate em **32768** — o teto absoluto — e `btn_Focus` em 32715.
+    Tocados a 1,0 num motor que ainda reamostra de 44,1 kHz para os 48 kHz da mastering voice,
+    o pico **entre amostras** passa do teto e corta: o som sai estourado. Na FreeStyle quem
+    atenua é o XUI, que não temos. É valor de ouvido, ajustável na constante `VOLUME`.
+
+73. **Subir `.xex` por FTP usa nome temporário.** O servidor da FreeStyle não tem retomada
+    (`REST`), então um envio interrompido deixa o arquivo pela metade — e se o nome for o
+    definitivo, o app fica inutilizável. Sobe-se com outro nome, confere-se o tamanho, e só
+    então `DELE` + `RNFR`/`RNTO`. Confirmação final por md5, baixando de volta. Um envio
+    abortado também **tranca** o arquivo temporário até a sessão cair: nem `STOR` nem `DELE`
+    funcionam nele, e a saída é outro nome ou reiniciar o console.
