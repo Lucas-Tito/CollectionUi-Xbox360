@@ -1,2 +1,5 @@
 # SDK da Microsoft: 6,6 GB, proprietário, nunca versionado
 /sdk/
+
+# Cópias do colecoes.txt tiradas do console. Dados do usuário, não do projeto.
+backups/
