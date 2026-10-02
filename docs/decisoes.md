@@ -768,3 +768,35 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      (`btn_Select`), e o `flyout` do menu estava 6 dB acima do som de confirmar. Nivelados por
      volta de −19,5 dBFS, com a mão leve no som de foco, que tem 0,09 s — som curto soa mais baixo
      do que o RMS sugere, e corrigir o valor inteiro o faria sumir.
+
+102. **Como a versão sobe.** Três dígitos, `MAIOR.MENOR.CORREÇÃO`, decididos pelo que muda **para
+     quem usa**, não pelo tamanho do diff:
+
+     - **MAIOR** (`2.0.0`): quebra de compatibilidade de dados ou mudança de propósito. O caso
+       típico seria um `colecoes.txt` que a versão anterior não consegue ler. Até hoje não houve.
+     - **MENOR** (`1.1.0`): o usuário passa a conseguir fazer algo que não conseguia. Vale tanto
+       para funcionalidade nova quanto para algo que existia e **não funcionava** passar a
+       funcionar — foi o caso dos containers STFS/GOD, que destravaram 55 dos 120 jogos.
+     - **CORREÇÃO** (`1.1.1`): defeito resolvido, ajuste de interface, desempenho. Nada que o
+       usuário não pudesse fazer antes.
+
+     A régua prática: **se a lista do que o app faz muda, é MENOR; se só muda a qualidade com que
+     ele faz, é CORREÇÃO.**
+
+     Erro já cometido, registrado para não repetir: a correção dos containers saiu como `1.0.2`
+     porque eu a tratei como "mais uma correção". Ela destravou quase metade da biblioteca, e
+     pela régua acima era `1.1.0`. A release errada foi removida e republicada.
+
+103. **Nota de release não afirma resultado de teste que não foi verificado.** As notas da `1.0.2`
+     diziam "containers seguem sem abrir" porque eu interpretei um "tudo ok" do usuário como
+     sendo só da parte visual, sem perguntar e sem conferir. O log não serve de prova aqui: ele é
+     truncado a cada execução, então o registro do teste já tinha sido sobrescrito.
+
+104. **Coleção dinâmica: decisões fechadas.** União de outras coleções, referenciadas por **id** e
+     não por nome, para renomear não quebrar. Sem aninhamento: dinâmica não contém dinâmica, o que
+     elimina ciclo por construção. Não guarda jogos próprios — ou é junção, ou é lista. Não se
+     remove jogo de dentro dela; tira-se da origem. Apagar **uma** origem não apaga a dinâmica, o
+     id só some da união; apagar **todas** apaga, porque união sem origem perdeu o sentido.
+
+     No card, a dinâmica se distingue por um **símbolo de raio** no canto, gerado no arranque como
+     a máscara de canto arredondado — sem arquivo novo.
