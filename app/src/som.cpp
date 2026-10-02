@@ -7,6 +7,14 @@
 
 namespace
 {
+    // Estes .xma nao tem folga nenhuma: medido, o btn_Back bate em 32768, o teto
+    // absoluto, e o btn_Focus em 32715. Tocados a 1.0 num motor que ainda reamostra de
+    // 44,1 kHz para os 48 kHz da mastering voice, o pico ENTRE amostras passa do teto e
+    // corta -- o som sai estourado. Na FreeStyle quem atenua e o XUI, que nos nao temos.
+    // Abaixar aqui e o equivalente, e de quebra som de interface nao deve competir com
+    // o jogo em volume.
+    const float VOLUME = 0.65f;
+
     struct Voz
     {
         IXAudio2SourceVoice *voz;
@@ -155,6 +163,8 @@ namespace
             return false;
         }
 
+        voz->SetVolume(VOLUME);
+
         g_vozes[i].voz     = voz;
         g_vozes[i].dados   = dados;
         g_vozes[i].tamanho = dadosTam;
@@ -174,6 +184,9 @@ namespace som
 
         ZeroMemory(g_vozes, sizeof(g_vozes));
 
+        // Sem o terceiro argumento, vale XAUDIO2_DEFAULT_PROCESSOR = threads 4 e 5
+        // (xaudio2.h:181). Deixamos assim de proposito -- e a configuracao que o XDK
+        // testa --, e quem saiu da frente foi a thread do carregador, que estava na 4.
         HRESULT hr = XAudio2Create(&g_motor, 0);
         if (FAILED(hr))
         {

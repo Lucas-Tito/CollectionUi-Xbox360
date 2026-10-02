@@ -102,9 +102,15 @@ namespace carregador
         }
 
         // O ponto que faz a diferenca: sem fixar, a thread disputa o mesmo nucleo do
-        // laco de desenho e o engasgo continua. O Xenon tem 3 nucleos de 2 threads;
-        // 4 e a primeira thread do terceiro nucleo, longe da nossa.
-        XSetThreadProcessor(g_thread, 4);
+        // laco de desenho e o engasgo continua. O Xenon tem 3 nucleos de 2 threads:
+        // 0-1, 2-3, 4-5. O desenho roda na 0, entao a 2 e outro nucleo.
+        //
+        // ERA 4, e isso derrubava o app. O XAudio2 roda em XAUDIO2_DEFAULT_PROCESSOR,
+        // que em xaudio2.h:181 e (XboxThread4|XboxThread5) -- a MESMA thread. Enquanto
+        // ficavamos nas colecoes nada acontecia, porque aqui a thread dorme; entrar
+        // numa colecao solta a leitura de .assets justo em cima do motor de audio, e
+        // era ali, e so ali, que vinha o crash e o som estourado.
+        XSetThreadProcessor(g_thread, 2);
         ResumeThread(g_thread);
 
         diario::Escrever("thread de carregamento no processador 4");
