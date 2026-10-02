@@ -374,29 +374,61 @@ namespace
             return;
         }
 
+        // LIN_DXT, não DXT. No Xbox 360 a textura normal é LADRILHADA, e o DDS que vem
+        // no .assets é LINEAR, como todo DDS de PC. Pedindo D3DFMT_DXT5 o D3DX tem de
+        // converter o layout de cada capa; pedindo D3DFMT_LIN_DXT5 ele usa os bytes como
+        // estão. É o que o FreeStyle faz (TextureCache.cpp:91), no mesmo console e com os
+        // mesmos arquivos -- e era a única diferença entre a chamada dele e a nossa.
         D3DFORMAT formato = D3DFMT_UNKNOWN;
         if (bytes.size() > 88)
         {
-            if (memcmp(&bytes[84], "DXT5", 4) == 0)      formato = D3DFMT_DXT5;
-            else if (memcmp(&bytes[84], "DXT1", 4) == 0) formato = D3DFMT_DXT1;
+            if (memcmp(&bytes[84], "DXT5", 4) == 0)      formato = D3DFMT_LIN_DXT5;
+            else if (memcmp(&bytes[84], "DXT1", 4) == 0) formato = D3DFMT_LIN_DXT1;
         }
 
-        // A versão Ex com estes parâmetros é o que o FreeStyle faz. A versão sem Ex usa
-        // D3DX_DEFAULT em tudo: redimensiona para potência de 2 com filtragem e gera a
-        // cadeia inteira de mipmaps. Era o que travava a cada linha nova.
+        // Largura e altura explícitas, lidas do cabeçalho DDS -- que é little-endian,
+        // ao contrário do container FSDA em volta. Com D3DX_DEFAULT_NONPOW2 o D3DX
+        // decidia sozinho; dizendo o tamanho exato não há redimensionamento nenhum.
+        UINT largura = 0, altura = 0;
+        if (bytes.size() > 20)
+        {
+            altura  = (UINT)bytes[12] | ((UINT)bytes[13] << 8) |
+                      ((UINT)bytes[14] << 16) | ((UINT)bytes[15] << 24);
+            largura = (UINT)bytes[16] | ((UINT)bytes[17] << 8) |
+                      ((UINT)bytes[18] << 16) | ((UINT)bytes[19] << 24);
+        }
+        if (largura == 0 || largura > 4096 || altura == 0 || altura > 4096)
+        {
+            largura = D3DX_DEFAULT_NONPOW2;
+            altura  = D3DX_DEFAULT_NONPOW2;
+        }
+
         D3DTexture *textura = NULL;
+        diario::Escrever("criando textura %d (%u bytes, %ux%u)", jogoId,
+                         (unsigned)bytes.size(), (unsigned)largura, (unsigned)altura);
         HRESULT hr = D3DXCreateTextureFromFileInMemoryEx(
             ATG::g_pd3dDevice, &bytes[0], (UINT)bytes.size(),
-            D3DX_DEFAULT_NONPOW2, D3DX_DEFAULT_NONPOW2,
+            largura, altura,
             1,                               // um mipmap só
             D3DUSAGE_CPU_CACHED_MEMORY, formato, D3DPOOL_DEFAULT,
-            D3DX_FILTER_NONE, D3DX_FILTER_NONE,
+            D3DX_FILTER_BOX, D3DX_FILTER_BOX,
             0, NULL, NULL, &textura);
 
         if (SUCCEEDED(hr) && textura != NULL)
+        {
+            // Rastro por textura. São ~120 linhas no pior caso, e é o que diz EM QUE
+            // PONTO o app morreu quando ele morre sem avisar.
+            MEMORYSTATUS mem; mem.dwLength = sizeof(mem);
+            GlobalMemoryStatus(&mem);
+            diario::Escrever("textura %d (%u bytes, livre %u KB)", jogoId,
+                             (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
             Guardar(jogoId, textura);
+        }
         else
+        {
+            diario::Escrever("textura %d FALHOU: hr=0x%08X", jogoId, hr);
             g_falhou.push_back(jogoId);
+        }
     }
 
     // ---- desenho ---------------------------------------------------------------
@@ -1209,9 +1241,26 @@ void __cdecl main()
 
     for (;;)
     {
+        // As QUATRO portas, somadas. Lia só a 0, e quem estivesse com o segundo
+        // controle não conseguia navegar -- não havia motivo para isso, é um launcher
+        // de sofá. Botões entram por OU; no analógico vale o que estiver mais longe do
+        // centro, então um controle parado não anula o que está sendo usado.
         XINPUT_STATE agora;
         ZeroMemory(&agora, sizeof(agora));
-        XInputGetState(0, &agora);
+
+        for (DWORD porta = 0; porta < 4; porta++)
+        {
+            XINPUT_STATE e;
+            ZeroMemory(&e, sizeof(e));
+            if (XInputGetState(porta, &e) != ERROR_SUCCESS)
+                continue;
+
+            agora.Gamepad.wButtons |= e.Gamepad.wButtons;
+            if (abs(e.Gamepad.sThumbLX) > abs(agora.Gamepad.sThumbLX))
+                agora.Gamepad.sThumbLX = e.Gamepad.sThumbLX;
+            if (abs(e.Gamepad.sThumbLY) > abs(agora.Gamepad.sThumbLY))
+                agora.Gamepad.sThumbLY = e.Gamepad.sThumbLY;
+        }
 
         WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
         anterior = agora;
