@@ -716,3 +716,23 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
     Regra que fica: **o que é do XDK, o script resolve; o que é público e pequeno, o git guarda.**
     Pendência registrada, não resolvida.
+
+94. **A correção do `AtgFont` está confirmada no console.** Sessão completa na configuração mais
+    hostil (`som=1`, `anel=1`, marcando durante o carregamento): 120 texturas, 9 marcações, zero
+    linhas de `CRASH`, e volta limpa para a tela de coleções. Antes, nessa mesma configuração, a
+    taxa era de uma queda a cada 5 a 7 marcações.
+
+    Sendo honesto com o peso: aguentar 9 marcações tem ~19% de probabilidade sob a taxa antiga,
+    então é evidência boa, não prova. O que sustenta a conclusão é a soma — aritmética conferida
+    em todos os caminhos, desassembly mostrando o endereço do crash dentro do laço de
+    preenchimento, e agora o console.
+
+95. **Sem fonte o app não roda.** Era um `AVISO` no log seguido de nada — e o comentário dizia
+    "roda sem texto", o que **nunca foi verdade**: o primeiro `DrawText` morria desreferenciando
+    `m_TranslatorTable` nulo (`AtgFont.cpp:710`, sem checagem). Agora sai dizendo o que falta.
+    Também não faria sentido rodar: a interface inteira é texto sobre capa.
+
+96. **O filtro de exceção registra o endereço acessado.** `ExceptionInformation[0]` diz
+    leitura ou escrita e `[1]` dá o endereço. Com esse par, o crash do `DrawText` teria sido
+    fechado comparando o número com o ponteiro devolvido pelo `BeginVertices` — sem desassemblar
+    o binário. Uma linha que se paga no próximo crash.
