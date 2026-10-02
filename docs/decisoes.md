@@ -688,3 +688,23 @@ erradas minhas. O que resolveu não foi nenhuma delas.
     ele faz `DestroyVoice`/`Release`, que alocam e esperam, coisas que não se faz num contexto já
     faltoso. O filtro devolve `EXCEPTION_CONTINUE_SEARCH` porque a doc avisa que
     `EXCEPTION_EXECUTE_HANDLER` *"usually results in the game console freezing"*.
+
+92. **O que mudamos na ATG vira patch versionado.** O conteúdo da ATG não entra no git — é
+    código proprietário de amostra, e o `vendor-atg.sh` guarda a receita, não o conteúdo
+    (`app/.gitignore` ignora `vendor/atg/`). Mas isso significava que **a correção do `AtgFont`
+    não estava no repositório**: o commit `7c00ecb` descrevia uma mudança num arquivo que o git
+    não tinha, e um clone novo traria o bug de volta — o mesmo que custou oito rodadas de teste.
+
+    Agora as nossas duas alterações (a contabilidade de vértices do `AtgFont` e o `FatalError`
+    que registra no nosso log) vivem em `toolchain/patches/atg.patch`, aplicado pelo
+    `vendor-atg.sh` logo depois da cópia. Falhando o patch, o script **aborta** em vez de deixar
+    passar um build com o bug. Os fontes do XDK vêm com CRLF e o patch é LF, então o script
+    normaliza antes de aplicar.
+
+    Verificado: cópia limpa do XDK + patch reproduz byte a byte o que estamos compilando.
+
+93. **`app/media/` também não está versionada**, e ninguém tinha notado. São o `SimpleShaders.fxobj`
+    e o `Arial_16.xpr` (do XDK, proprietários) e os cinco `.xma` (do skin da FreeStyle, GPLv3).
+    Ficar de fora é defensável pelo mesmo critério da ATG, mas então **o README precisa dizer de
+    onde vem cada um** — hoje não diz, e "compilar do fonte" não produz um app que funciona.
+    Pendência registrada, não resolvida.
