@@ -611,3 +611,25 @@ dia o app for gravar data de "jogado pela última vez", não dá para confiar no
 
     Junto, cada textura deixa duas linhas no log: uma antes da criação e outra depois. Foi o par
     que mostrou que todas as 45 criações completavam — e que o problema estava depois delas.
+
+82. **O log grava com `WriteFile` + `FlushFileBuffers`, não com `FILE*`/`fflush`.** O `fflush`
+    entrega ao sistema; o que fica no cache do sistema de arquivos **se perde** num crash de
+    verdade — e a linha que mais importa é sempre a última. Três rodadas de diagnóstico foram
+    construídas sobre um fim de log que não era o fim da execução: o log parava sempre na mesma
+    textura, e a conclusão de que o problema estava ali **estava errada**. Quem desfez isso foi
+    uma observação do usuário ("apareceu normal, crashou um tempo depois"), não o código.
+
+83. **O log tem trava.** A thread do carregador passou a escrever nele junto com a de desenho, e
+    duas threads no mesmo `FILE*` sem sincronização é corrupção esperando acontecer — bug
+    introduzido por mim no próprio instrumento de diagnóstico.
+
+84. **O app tem saída: `B` na tela de coleções volta ao dashboard.** Antes não havia nenhuma — o
+    único jeito de sair era lançar um jogo. Pedindo o dashboard pela Guide, o sistema encerrava o
+    título com a thread do carregador viva, o áudio tocando e 120 texturas alocadas, e o
+    resultado era **tela preta**. Agora passa pela mesma desmontagem do lançamento de jogo
+    (decisão 41) e então `XLaunchNewImage(NULL, 0)` — `NULL` é `XLAUNCH_KEYWORD_DASH`
+    (`xbox.h:423`) — de uma thread separada.
+
+85. **O `NORETURN` pegou de novo.** O `cl.exe` recusou com `C4702` o `return` depois do
+    `XLaunchNewImage` da saída, exatamente como já recusara no lançamento de jogo (decisão 36).
+    Segunda vez: **nada vai depois de um `XLaunchNewImage`.**

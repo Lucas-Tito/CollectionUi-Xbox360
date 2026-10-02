@@ -495,7 +495,7 @@ namespace
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, L"Nenhuma coleção ainda",
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(GLYPH_X_BUTTON L" Nova coleção", L"");
+            Rodape(GLYPH_X_BUTTON L" Nova coleção     " GLYPH_B_BUTTON L" Sair", L"");
             g_fonte.End();
             return;
         }
@@ -548,7 +548,7 @@ namespace
 
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
         Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
-               GLYPH_START_BUTTON L" Opções", texto);
+               GLYPH_START_BUTTON L" Opções     " GLYPH_B_BUTTON L" Sair", texto);
         g_fonte.End();
     }
 
@@ -1131,24 +1131,58 @@ namespace
                 return;
             }
 
+            // Rastro cercando CADA etapa do ato de marcar. O carregamento ja foi
+            // inocentado pelo log (120 de 120 texturas prontas e estaveis); o que resta
+            // e isto aqui, e cada linha ausente aponta para a etapa seguinte a ela.
+            diario::Escrever("marcar: i=%d id=%d titleId=%08X selecao=%d",
+                             g_iJogo, L[g_iJogo]->id, titleId, (int)g_selecao.size());
+
             som::Tocar(som::SOM_CONFIRMA);
+            diario::Escrever("marcar: som ok");
 
             for (size_t i = 0; i < g_selecao.size(); i++)
             {
                 if (g_selecao[i] == titleId)
                 {
                     g_selecao.erase(g_selecao.begin() + i);
+                    diario::Escrever("marcar: desmarcado, selecao=%d", (int)g_selecao.size());
                     return;
                 }
             }
             g_selecao.push_back(titleId);
+            diario::Escrever("marcar: marcado, selecao=%d", (int)g_selecao.size());
         }
         else Jogar();
     }
 
+    // Sair de verdade, em vez de deixar o sistema nos matar à força.
+    //
+    // O app não tinha saída nenhuma: o único jeito de sair era lançar um jogo. Pedindo
+    // o dashboard pela Guide, o título era encerrado com a thread do carregador viva, o
+    // motor de áudio tocando e 120 texturas alocadas -- e o resultado era tela preta.
+    void SairParaDash()
+    {
+        som::Tocar(som::SOM_VOLTA);
+        SoltarTudo();
+
+        std::string erro;
+        if (lancador::VoltarAoDash(erro))
+            return;                 // nunca acontece: sucesso não devolve
+
+        carregador::Iniciar();
+        som::Iniciar();
+        Avisar(erro.c_str());
+    }
+
     void Voltar()
     {
-        if (g_tela != TELA_COLECOES) som::Tocar(som::SOM_VOLTA);
+        if (g_tela == TELA_COLECOES)
+        {
+            SairParaDash();
+            return;
+        }
+
+        som::Tocar(som::SOM_VOLTA);
         if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
         else if (g_tela == TELA_JOGOS)
         {

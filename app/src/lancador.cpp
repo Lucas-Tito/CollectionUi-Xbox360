@@ -37,8 +37,41 @@ namespace
     }
 }
 
+namespace
+{
+    DWORD WINAPI DispararDash(LPVOID)
+    {
+        // NULL e XLAUNCH_KEYWORD_DASH (xbox.h:423). Sem "return" depois: a funcao e
+        // DECLSPEC_NORETURN e o proprio cl.exe recusa com C4702, como ja recusou no
+        // lancamento de jogo.
+        XLaunchNewImage(NULL, 0);
+    }
+}
+
 namespace lancador
 {
+    bool VoltarAoDash(std::string &erro)
+    {
+        diario::Escrever("voltando ao dash");
+        diario::Fechar();
+
+        HANDLE h = CreateThread(NULL, 0, DispararDash, NULL, 0, NULL);
+        if (h == NULL)
+        {
+            diario::Reabrir();
+            erro = "Nao consegui criar a thread de saida";
+            return false;
+        }
+
+        WaitForSingleObject(h, INFINITE);   // dando certo, nunca termina
+        CloseHandle(h);
+
+        diario::Reabrir();
+        diario::Escrever("FALHOU: XLaunchNewImage(dash) voltou, o que nao deveria");
+        erro = "Nao consegui voltar ao dashboard";
+        return false;
+    }
+
     std::string Resolver(const std::string &caminhoRelativo)
     {
         int quantos = 0;

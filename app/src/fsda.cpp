@@ -1,4 +1,5 @@
 #include "fsda.h"
+#include "diario.h"
 #include <xtl.h>
 #include <string.h>
 #include <stdio.h>
@@ -44,6 +45,16 @@ namespace fsda
                               NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
         if (h == INVALID_HANDLE_VALUE)
             return false;
+
+        // O tamanho do arquivo e a unica referencia confiavel para validar offsets:
+        // ate aqui, offset e tamanho vinham do proprio arquivo e ninguem conferia se
+        // apontavam para dentro dele.
+        DWORD tamanhoArquivo = GetFileSize(h, NULL);
+        if (tamanhoArquivo == 0xFFFFFFFF)
+        {
+            CloseHandle(h);
+            return false;
+        }
 
         unsigned char cabecalho[24];
         if (!LerDe(h, 0, cabecalho, sizeof(cabecalho)) || memcmp(cabecalho, "FSDA", 4) != 0)
@@ -100,6 +111,16 @@ namespace fsda
             // real tem uns 540 KB.
             if (img.tamanho > 8u * 1024u * 1024u)
                 continue;
+
+            // E tem de caber no arquivo. Testado por SUBTRACAO, para a soma nao dar a
+            // volta em 32 bits com um offset absurdo.
+            if (img.offset >= tamanhoArquivo || img.tamanho > tamanhoArquivo - img.offset)
+            {
+                diario::Escrever("fsda: %s tipo %u fora do arquivo (off=%u tam=%u de %u)",
+                                 caminho, img.tipo, img.offset, img.tamanho,
+                                 (unsigned)tamanhoArquivo);
+                continue;
+            }
 
             saida.push_back(img);
         }
