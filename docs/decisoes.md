@@ -1001,3 +1001,29 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      número de ROMs, com cada troca copiando um `Jogo` de nove `std::string`. Com um romset de
      arcade de alguns milhares de zips, isso é tela preta por dezenas de segundos, com cara de
      console travado. `Juntar` ordena só a cauda e intercala numa passada.
+
+124. **Um nível de subpasta na varredura de ROM.** O `roms/` do FBANext não tem ROM nenhuma: tem
+     subpasta por sistema (`Arcade`, `megadrive`, `neocdz`, `pce`). Sem descer, o emulador de
+     arcade aparecia sem um único jogo.
+
+     Um nível só, de propósito: varrer fundo custa tempo de arranque e entra em pasta de save,
+     de arte e de configuração. O nome da subpasta entra no id sintético — senão
+     `Arcade\sonic.zip` e `megadrive\sonic.zip` receberiam o mesmo id. Na raiz o rótulo é vazio,
+     então **as ROMs que já estão em coleção não mudam de id**.
+
+125. **Capa deitada é girada; o critério é a proporção, não o sistema.** A caixa americana do SNES
+     é deitada (1,41) e o slot é em pé (1,425) — girada, a capa ocupa **99% do card em vez de
+     49%**, sem recortar nada. Gira no sentido anti-horário, com o título lendo de baixo para cima.
+
+     Decidir pela proporção da imagem, e não por uma tabela de sistema, não foi só economia: das
+     23 capas, 18 giraram e 5 ficaram em pé — as três de PS1 (jewel case quadrado, 1,01) e
+     **Great Battle IV e V, que são japonesas, e a caixa japonesa de SNES é em pé** (240×432). Uma
+     tabela "SNES gira" teria deitado essas duas.
+
+     O limite é 1,15: deixa de fora o quadrado do PS1 e o flyer de arcade, que já nasce em pé.
+
+126. **A migração do `colecoes.txt` foi conferida no console, não presumida.** Primeiro arranque
+     com o formato novo: as sete coleções saíram intactas, com id 1 a 7, nomes preservados
+     inclusive o acentuado ("não zerados") e os mesmos TitleIds. E a "versus 4 players" já traz um
+     id sintético de ROM gravado — prova de que a cadeia inteira (varredura, id, persistência)
+     fecha ponta a ponta.

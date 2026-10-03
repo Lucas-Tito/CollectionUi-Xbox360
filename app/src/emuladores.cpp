@@ -1,4 +1,4 @@
-#include "emuladores.h"
+﻿#include "emuladores.h"
 #include "diario.h"
 #include "lancador.h"
 #include <xtl.h>
@@ -119,6 +119,81 @@ namespace emuladores
         return h;
     }
 
+    // Uma pasta, sem descer. "rotulo" e o caminho dela dentro da pasta de ROMs
+    // ("Arcade\\") ou vazio na raiz -- ele entra no id sintetico para que duas ROMs
+    // de mesmo nome em sistemas diferentes nao recebam o mesmo id. Na raiz o rotulo e
+    // vazio, entao as ROMs que ja estao em colecao nao mudam de id.
+    void Varrer(const biblioteca::Jogo &emu, const std::string &raiz,
+                const std::string &rotulo, const std::string &pastaDoApp,
+                std::vector<biblioteca::Jogo> &saida)
+    {
+        std::vector<std::string> nomes;
+        WIN32_FIND_DATA achado;
+        HANDLE busca = FindFirstFile((raiz + "\\*").c_str(), &achado);
+        if (busca == INVALID_HANDLE_VALUE)
+            return;
+
+        do
+        {
+            if (achado.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                continue;
+            if (Casa(achado.cFileName, EXTENSOES, QUANTAS_EXTENSOES))
+                nomes.push_back(achado.cFileName);
+        }
+        while (FindNextFile(busca, &achado));
+        FindClose(busca);
+
+        std::vector<std::string> comDescritor;
+        for (size_t i = 0; i < nomes.size(); i++)
+            if (Casa(nomes[i].c_str(), DESCRITORES, 3))
+                comDescritor.push_back(Minusculas(SemExtensao(nomes[i])));
+
+        int quantas = 0;
+        for (size_t i = 0; i < nomes.size(); i++)
+        {
+            const std::string &nome = nomes[i];
+
+            if (Casa(nome.c_str(), DADOS, 2) &&
+                EstaNaLista(comDescritor, Minusculas(SemExtensao(nome))))
+                continue;
+
+            biblioteca::Jogo r;
+            // Negativo de proposito: o id e a chave do cache de texturas, e
+            // ContentItemId e sempre positivo. Assim uma ROM nunca disputa a entrada
+            // de cache de um jogo da FreeStyle.
+            r.id             = -(int)(saida.size() + 1);
+            r.titleId        = emuladores::IdDaRom(emu.titleId, rotulo + nome);
+            r.nome           = SemExtensao(nome);
+            r.genero         = emu.nome;        // "Snes360" vira o rotulo
+            r.desenvolvedora = "";
+            r.publicadora    = "";
+            r.nota           = "";
+            r.lancamento     = "";
+            // Caminho e tipo do EMULADOR: abrir a ROM abre o emulador, e isso
+            // reaproveita o lancador inteiro sem uma linha de excecao.
+            r.caminho        = emu.caminho;
+            r.tipoArquivo    = emu.tipoArquivo;
+            r.contentType    = emu.contentType;
+            r.discos         = 1;
+
+            // A arte e um arquivo solto com o nome da ROM. Nada de casamento
+            // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.
+            if (!pastaDoApp.empty())
+            {
+                std::string base = pastaDoApp + "\\capas\\" + r.nome;
+                if (Existe(base + ".jpg"))      r.capa = base + ".jpg";
+                else if (Existe(base + ".png")) r.capa = base + ".png";
+            }
+
+            saida.push_back(r);
+            quantas++;
+        }
+
+        if (quantas > 0)
+            diario::Escrever("emulador '%s': %d ROMs em %s",
+                             emu.nome.c_str(), quantas, raiz.c_str());
+    }
+
     void Ler(const std::vector<biblioteca::Jogo> &jogos,
              const std::string &pastaDoApp,
              std::vector<biblioteca::Jogo> &saida)
@@ -150,72 +225,35 @@ namespace emuladores
                 if (!Existe(raiz))
                     continue;
 
-                // Primeira passada: so recolhe os nomes. O descarte do .bin ao lado do
-                // .cue precisa conhecer a pasta inteira antes de decidir.
-                std::vector<std::string> nomes;
-                WIN32_FIND_DATA achado;
-                HANDLE busca = FindFirstFile((raiz + "\\*").c_str(), &achado);
-                if (busca == INVALID_HANDLE_VALUE)
-                    continue;
+                // A pasta de ROM e, depois, UM nivel de subpasta. O FBANext guarda
+                // tudo em subpasta por sistema (Arcade, megadrive, neocdz, pce) e sem
+                // isto nenhuma ROM dele aparecia. Um nivel so, de proposito: varrer
+                // fundo custa tempo de arranque e entra em pasta de save e de arte.
+                std::vector<std::string> ondeVarrer, rotulos;
+                ondeVarrer.push_back(raiz);
+                rotulos.push_back("");
 
-                do
+                WIN32_FIND_DATA sub;
+                HANDLE bsub = FindFirstFile((raiz + "\\*").c_str(), &sub);
+                if (bsub != INVALID_HANDLE_VALUE)
                 {
-                    if (achado.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-                        continue;
-                    if (Casa(achado.cFileName, EXTENSOES, QUANTAS_EXTENSOES))
-                        nomes.push_back(achado.cFileName);
-                }
-                while (FindNextFile(busca, &achado));
-                FindClose(busca);
-
-                std::vector<std::string> comDescritor;
-                for (size_t i = 0; i < nomes.size(); i++)
-                    if (Casa(nomes[i].c_str(), DESCRITORES, 3))
-                        comDescritor.push_back(Minusculas(SemExtensao(nomes[i])));
-
-                int quantas = 0;
-                for (size_t i = 0; i < nomes.size(); i++)
-                {
-                    const std::string &nome = nomes[i];
-
-                    if (Casa(nome.c_str(), DADOS, 2) &&
-                        EstaNaLista(comDescritor, Minusculas(SemExtensao(nome))))
-                        continue;
-
-                    biblioteca::Jogo r;
-                    // Negativo de proposito: o id e a chave do cache de texturas, e
-                    // ContentItemId e sempre positivo. Assim uma ROM nunca disputa a
-                    // entrada de cache de um jogo da FreeStyle.
-                    r.id             = -(int)(saida.size() + 1);
-                    r.titleId        = IdDaRom(emu.titleId, nome);
-                    r.nome           = SemExtensao(nome);
-                    r.genero         = emu.nome;        // "Snes360" vira o rotulo
-                    r.desenvolvedora = "";
-                    r.publicadora    = "";
-                    r.nota           = "";
-                    r.lancamento     = "";
-                    // Caminho e tipo do EMULADOR: abrir a ROM abre o emulador, e isso
-                    // reaproveita o lancador inteiro sem uma linha de excecao.
-                    r.caminho        = emu.caminho;
-                    r.tipoArquivo    = emu.tipoArquivo;
-                    r.contentType    = emu.contentType;
-                    r.discos         = 1;
-
-                    // A arte e um arquivo solto com o nome da ROM. Nada de casamento
-                    // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.
-                    if (!pastaDoApp.empty())
+                    do
                     {
-                        std::string base = pastaDoApp + "\\capas\\" + r.nome;
-                        if (Existe(base + ".jpg"))      r.capa = base + ".jpg";
-                        else if (Existe(base + ".png")) r.capa = base + ".png";
-                    }
+                        if (!(sub.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                            continue;
+                        if (strcmp(sub.cFileName, ".") == 0 ||
+                            strcmp(sub.cFileName, "..") == 0)
+                            continue;
 
-                    saida.push_back(r);
-                    quantas++;
+                        ondeVarrer.push_back(raiz + "\\" + sub.cFileName);
+                        rotulos.push_back(std::string(sub.cFileName) + "\\");
+                    }
+                    while (FindNextFile(bsub, &sub));
+                    FindClose(bsub);
                 }
 
-                diario::Escrever("emulador '%s': %d ROMs em %s",
-                                 emu.nome.c_str(), quantas, raiz.c_str());
+                for (size_t d = 0; d < ondeVarrer.size(); d++)
+                    Varrer(emu, ondeVarrer[d], rotulos[d], pastaDoApp, saida);
             }
         }
 
