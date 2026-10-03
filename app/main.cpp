@@ -869,10 +869,32 @@ namespace
     // cortada por nos, nao com ATGFONT_CENTER_X|ATGFONT_TRUNCATED juntos -- essa
     // combinacao tem um defeito conhecido: o teste de largura nao considera que o
     // cursor comeca deslocado meia largura, e o texto transborda em vez de cortar.
+    // Maiuscula sem depender de locale: towupper/_wcsupr so sobem o ASCII enquanto a
+    // localidade for a "C", e aqui ela e. A faixa 0xE0-0xFE do Latin-1 sobe subtraindo
+    // 0x20 (a com til vira A com til), pulando o 0xF7 que e o sinal de divisao e nao
+    // tem par maiusculo. E a mesma faixa que o Larga() ja usa de reserva, entao o que
+    // entra aqui nunca passa disso.
+    void ParaMaiusculas(WCHAR *t)
+    {
+        for (; *t != L'\0'; t++)
+        {
+            if (*t >= L'a' && *t <= L'z')          *t = (WCHAR)(*t - 0x20);
+            else if (*t >= 0x00E0 && *t <= 0x00FE && *t != 0x00F7)
+                                                   *t = (WCHAR)(*t - 0x20);
+        }
+    }
+
+    // So os cards de colecao passam por aqui -- e por isso que o caixa alta fica so
+    // neles, e a grade de jogos continua com o nome como ele e.
     int QuebrarNome(const std::string &nome, float maxLargura, WCHAR l1[96], WCHAR l2[96])
     {
         WCHAR largo[256];
         Larga(nome, largo, 256);
+
+        // ANTES de medir: maiuscula e mais larga, e medir o original deixaria a quebra
+        // de linha errada por alguns pixels.
+        ParaMaiusculas(largo);
+
         l1[0] = l2[0] = L'\0';
 
         FLOAT w = 0.0f, h = 0.0f;

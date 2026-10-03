@@ -878,3 +878,56 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
      De onde vem essa arte continua em aberto — nem o `Preview` do Snes360 nem a `covers/` do Ps1
      têm imagem dos jogos que ele tem.
+
+112. **Maiúsculas só nos cards.** O caixa alta entra dentro do `QuebrarNome`, que é usada em um
+     único lugar — o nome do card de coleção. A grade de jogos mostra o nome como ele é.
+
+     Dois cuidados: a conversão acontece **antes** de medir o texto, porque maiúscula é mais larga
+     e medir o original erraria a quebra de linha por alguns pixels; e ela não usa `towupper` nem
+     `_wcsupr`, que só levantam ASCII enquanto a localidade for a "C" — a faixa 0x00E0–0x00FE do
+     Latin-1 sobe subtraindo 0x20, pulando o 0x00F7, que é o sinal de divisão e não tem par.
+
+113. **Lançar a ROM direto: não dá com estes emuladores, e o "de graça" que eu disse estava
+     errado.** Lido o fonte dos três: Snes360 e FBANext não chamam `XGetLaunchData` em canto
+     nenhum, não leem linha de comando (o `GetCommandLine()` do FBANext é código morto) e não têm
+     chave de autoload. O `szPrevGames` do FBANext é lista de recentes consumida só pelo menu da
+     versão Windows, que não é compilada no 360 — escrever o ini não faz nada.
+
+     Existe formato de facto na cena: a struct do Aurora, `'AUOA'`/`'ROMS'`, 656 bytes
+     (device NT + caminho relativo + nome do arquivo). Lê quem: **pcsxr-360 2.1.1a** — na 2.1.0
+     desta casa o bloco está comentado como WIP — e o RetroArch até a v1.7.0. O RetroArch de hoje
+     usa outra coisa: string ASCII crua terminada em NUL, e o core se escolhe por **qual .xex se
+     lança**, porque é um xex por core, estático.
+
+     Correção da decisão 110: os dois formatos **são mutuamente exclusivos**. A struct do Aurora
+     mandada ao RetroArch de hoje vira um caminho chamado `AUOAROMS…`. Continua barato, mas é por
+     alvo, não universal — e para os três emuladores de hoje não há o que mandar.
+
+114. **A capa da ROM vem do xbox-vault, composta no PC.** O `Documentos/xbx` tem `data/emu.json`
+     com 9.830 jogos de emulador (`system`, `title`, id em slug) e 15.791 capas já baixadas. Ganha
+     do `libretro-thumbnails` por três motivos: já está no disco, não precisa de conta nem rede, e
+     é a curadoria do próprio usuário.
+
+     **A proporção é o problema de verdade, e é físico.** A caixa do SNES americano é de papelão
+     deitada e o PS1 é jewel case de CD, cujo encarte é quadrado — nenhum acervo do mundo tem isso
+     em retrato, porque a capa não é retrato. Num slot 1:1,425, recortar para preencher come o
+     logo ("DONKEY KONG COUNTRY" vira "EY KONG NTRY") e encaixar inteiro deixa metade do card
+     vazio.
+
+     A saída: **caber inteira sobre um fundo borrado tirado da própria capa**, e fazer isso **no
+     PC**, gravando o arquivo já em 146×208. O app não ganha nenhuma lógica de letterbox, nenhum
+     custo de memória, e o cache de 160 texturas não sente. As 16 ROMs desta casa deram 164 KB.
+
+115. **O app acha a capa da ROM por nome de arquivo, e só.** Procura
+     `<pasta de arte>\<nome da ROM sem extensão>.jpg`, depois `.png`, senão cai no espaço vazio.
+     Uma função, sem normalização, sem casamento aproximado, sem banco.
+
+     O casamento título↔acervo fica **fora** do app, numa tabela escrita à mão. Medido contra as
+     ROMs reais: 13 de 16 casam sozinhas, mas uma delas casa **errado e em silêncio** —
+     `Super Mario World 2.smc` tem 0,94 de similaridade com "Super Mario World" e é, na verdade,
+     o Yoshi's Island. Capa errada sem aviso é pior que capa faltando, e as três que falham
+     (`Contra Spirits`, `TMNT IV`, `Dixie Kong's Double Trouble`) são justamente as que o usuário
+     renomeou. Automatizar custaria mais que escrever dezesseis linhas.
+
+     O ganho de fora: para corrigir qualquer capa, basta largar um arquivo com o nome da ROM na
+     pasta. Sem config, sem reiniciar nada.
