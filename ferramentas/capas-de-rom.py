@@ -33,6 +33,10 @@ except ImportError:
 LARGURA, ALTURA = 146, 208
 
 # nome do arquivo da ROM  ->  id do jogo no xbox-vault
+#
+# Esta tabela tem de cobrir a pasta de ROMs INTEIRA. A primeira versao cobria 16 de 23
+# porque foi montada a partir de uma listagem FTP truncada -- sete jogos apareceram no
+# console sem capa. Confira contra a pasta antes de rodar.
 TABELA = [
     ("Contra III - The Alien Wars.smc",     "emu-snes-contra-iii-the-alien-wars"),
     # Nome japones do Contra III: o mesmo jogo, e de proposito a mesma capa.
@@ -49,15 +53,37 @@ TABELA = [
     ("TMNT IV - Turtles in Time.smc",       "emu-snes-teenage-mutant-ninja-turtles-iv-turtles-in-time"),
     ("Super Bomberman 3 (E).fig",           "emu-snes-super-bomberman-3"),
     ("Saturday Night Slam Masters (U).smc", "emu-snes-saturday-night-slam-masters"),
+    ("Donkey Kong Country 2.smc",            "emu-snes-donkey-kong-country-2-diddy-s-kong-quest"),
+    ("Final Fight (U).smc",                  "emu-snes-final-fight"),
+    ("Kirby Super Star (U) [!].smc",         "emu-snes-kirby-super-star"),
+    ("Lost Vikings.sfc",                     "emu-snes-the-lost-vikings"),
+    # "Goof Troop" tambem casa com tres hacks no catalogo (Space Treasure, Le Goof
+    # Troop, VP of Goof Troop). O jogo e o da Disney.
+    ("Goof Troop (U) [!].smc",               "emu-snes-disney-s-goof-troop"),
+    ("Great Battle IV.smc",                  "emu-snes-the-great-battle-iv"),
+    ("Great Battle V.smc",                   "emu-snes-the-great-battle-v"),
     ("Crash Team Racing.bin",               "emu-ps1-ctr-crash-team-racing"),
     ("Micro Machines V3.img",               "emu-ps1-micro-machines-v3"),
     ("twisted_metal_4.bin",                 "emu-ps1-twisted-metal-4"),
 ]
 
 
+# Acima disto a imagem conta como deitada e e girada para caber em pe. 1,15 deixa de
+# fora o quadrado do jewel case de PS1 (1,01), que girado nao ganharia nada, e o flyer
+# de arcade, que ja nasce em pe.
+DEITADA = 1.15
+
+
 def compor(origem):
     """Capa inteira, centralizada, sobre um borrao escurecido dela mesma."""
     im = Image.open(origem).convert("RGB")
+
+    # A caixa do SNES e deitada (1,41) e o slot e em pe (1,425): girada, a capa ocupa
+    # 99% do card em vez de 49%, sem recortar nada. O criterio e a PROPORCAO da imagem,
+    # nao o sistema -- assim PS1 e arcade ficam de fora sozinhos, e um sistema novo se
+    # resolve sem tabela. Sentido anti-horario: o titulo le de baixo para cima.
+    if im.width > im.height * DEITADA:
+        im = im.rotate(90, expand=True)
 
     razao = max(LARGURA / im.width, ALTURA / im.height)
     cheia = im.resize((max(1, int(im.width * razao)), max(1, int(im.height * razao))),
