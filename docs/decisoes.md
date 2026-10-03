@@ -1027,3 +1027,37 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      inclusive o acentuado ("não zerados") e os mesmos TitleIds. E a "versus 4 players" já traz um
      id sintético de ROM gravado — prova de que a cadeia inteira (varredura, id, persistência)
      fecha ponta a ponta.
+
+127. **Renomear o zip de arcade quebra o romset — verificado no fonte.** A dúvida era legítima: se
+     dá para renomear `mslug3.zip` para `Metal Slug 3.zip`, o `nomes.txt` abaixo não precisaria
+     existir. Não dá, e está em `src/burner/xbox/bzip.cpp:374-388` do FBANext:
+
+     ```c
+     if (BurnDrvGetZipName(&szName, y)) break;   // szName vem do DRIVER: "mslug3.zip"
+     _stprintf(szFullName, _T("%s%hs"), szAppRomPaths[d], szName);
+     if (ZipOpen(...) == 0) { ... }              // abre EXATAMENTE aquele nome
+     ```
+
+     Ele não procura um zip que contenha o jogo: pergunta ao driver qual arquivo abrir. O `*.zip`
+     do `main.cpp:474` é só pré-aquecimento de cache de disco, não é a busca. O nome do arquivo
+     **é** o identificador do romset, como no MAME.
+
+128. **O nome de exibição vem de `capas\nomes.txt`; o nome do arquivo continua sendo a chave.** O
+     arquivo é `arquivo da ROM|Nome a mostrar` por linha. Trocar um rótulo **não** tira a ROM das
+     coleções nem invalida a capa, porque o id sintético e a busca da arte saem do nome do
+     arquivo, não do rótulo. Serve para qualquer ROM, não só arcade.
+
+129. **Capa de arcade vem do libretro, não do xbox-vault.** O vault cobre PS1, SNES e GBA — não
+     tem arcade. O acervo `FBNeo - Arcade Games` do libretro nomeia pela descrição da DAT do
+     FBNeo, não pelo nome do MAME, e os dois diferem: o `Mame.xml` do LaunchBox resolve zip →
+     título, mas o título ainda precisa ser casado contra o índice do libretro.
+
+     Dos 17 zips, 13 casaram exato e **os 4 aproximados erraram todos**: "Killer Instinct" virou
+     *Power Instinct*, "KOF '98" virou *KOF '97 Plus (bootleg)*, "Killer Instinct 2" virou *Power
+     Instinct 2*. Terceira vez que o casamento por similaridade erra em silêncio neste projeto —
+     a tabela à mão continua sendo a decisão certa.
+
+     O que a arte de arcade tem de bom: é **flyer promocional**, que nasce em pé (1:1,40) e cai
+     quase exato no slot. A regra de giro da decisão 125 os deixa quietos sozinha, sem exceção
+     escrita. O Marvel vs. Capcom 2 fica sem capa — é Naomi, não existe no acervo de arcade —
+     com o nome certo, que é melhor que capa errada.
