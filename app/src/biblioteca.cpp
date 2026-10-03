@@ -48,9 +48,6 @@ namespace
 
 namespace biblioteca
 {
-    // Definidas mais abaixo; usadas pelo Ler, que vem antes delas.
-    void        Ordenar(std::vector<Jogo> &lista);
-
     bool Existe(const std::string &caminho)
     {
         return ::GetFileAttributes(caminho.c_str()) != 0xFFFFFFFF;
@@ -102,9 +99,6 @@ namespace biblioteca
 
     bool Ler(const char *caminhoBanco, std::vector<Jogo> &saida)
     {
-        // Definida mais abaixo neste mesmo arquivo.
-        std::string PastaArte(const std::string &caminhoBanco, int id);
-
         saida.clear();
 
         sqlite3 *bd = NULL;
@@ -182,6 +176,30 @@ namespace biblioteca
             }
             lista[k] = atual;
         }
+    }
+
+    // Intercala uma lista JA ORDENADA na outra, numa passada. A alternativa --
+    // acrescentar no fim e reordenar tudo -- e insercao simples sobre uma cauda
+    // desordenada, isto e, quadratica no numero de ROMs. E cada troca copia um Jogo,
+    // que tem nove std::string dentro. Com um romset de arcade de uns milhares de zips
+    // isso vira dezenas de segundos de tela preta, parecendo console travado.
+    void Juntar(std::vector<Jogo> &destino, std::vector<Jogo> &extras)
+    {
+        Ordenar(extras);
+
+        std::vector<Jogo> saida;
+        saida.reserve(destino.size() + extras.size());
+
+        size_t a = 0, b = 0;
+        while (a < destino.size() && b < extras.size())
+        {
+            if (AntesDe(extras[b], destino[a])) saida.push_back(extras[b++]);
+            else                                saida.push_back(destino[a++]);
+        }
+        while (a < destino.size()) saida.push_back(destino[a++]);
+        while (b < extras.size())  saida.push_back(extras[b++]);
+
+        destino.swap(saida);
     }
 
     std::string PastaArte(const std::string &caminhoBanco, int id)
