@@ -58,6 +58,9 @@ namespace biblioteca
     // porque as ROMs de emulador entram depois e a lista tem de voltar a ficar em
     // ordem antes de a tela usa-la.
     void Ordenar(std::vector<Jogo> &lista);
+
+    // Intercala "extras" em "destino", mantendo a ordem. Ordena "extras" no caminho.
+    void Juntar(std::vector<Jogo> &destino, std::vector<Jogo> &extras);
 }
 
 #endif

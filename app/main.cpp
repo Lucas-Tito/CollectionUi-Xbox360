@@ -473,8 +473,14 @@ namespace
         // converter o layout de cada capa; pedindo D3DFMT_LIN_DXT5 ele usa os bytes como
         // estão. É o que o FreeStyle faz (TextureCache.cpp:91), no mesmo console e com os
         // mesmos arquivos -- e era a única diferença entre a chamada dele e a nossa.
+        // So faz sentido num DDS. Desde que a capa de ROM entrou, aqui tambem chega
+        // JPG e PNG cru -- e ler o cabecalho DDS de um JPEG devolve lixo. Hoje o lixo
+        // cai fora da faixa 1..4096 e e descartado, mas isso e sorte da codificacao, e
+        // a decisao 115 convida o usuario a largar qualquer imagem na pasta.
+        const bool ehDds = (bytes.size() > 88 && memcmp(&bytes[0], "DDS ", 4) == 0);
+
         D3DFORMAT formato = D3DFMT_UNKNOWN;
-        if (bytes.size() > 88)
+        if (ehDds)
         {
             if (memcmp(&bytes[84], "DXT5", 4) == 0)      formato = D3DFMT_LIN_DXT5;
             else if (memcmp(&bytes[84], "DXT1", 4) == 0) formato = D3DFMT_LIN_DXT1;
@@ -484,7 +490,7 @@ namespace
         // ao contrário do container FSDA em volta. Com D3DX_DEFAULT_NONPOW2 o D3DX
         // decidia sozinho; dizendo o tamanho exato não há redimensionamento nenhum.
         UINT largura = 0, altura = 0;
-        if (bytes.size() > 20)
+        if (ehDds)
         {
             altura  = (UINT)bytes[12] | ((UINT)bytes[13] << 8) |
                       ((UINT)bytes[14] << 16) | ((UINT)bytes[15] << 24);
@@ -2122,8 +2128,7 @@ void __cdecl main()
         emuladores::Ler(g_jogos, "game:", roms);
         if (!roms.empty())
         {
-            g_jogos.insert(g_jogos.end(), roms.begin(), roms.end());
-            biblioteca::Ordenar(g_jogos);
+            biblioteca::Juntar(g_jogos, roms);
             diario::Escrever("biblioteca com ROMs: %d itens", (int)g_jogos.size());
         }
     }

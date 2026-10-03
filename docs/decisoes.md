@@ -960,3 +960,44 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 118. **`biblioteca::Ordenar` existe solta.** As ROMs entram depois do `Ler`, e a tela conta com a
      lista ordenada — é dela que saem o índice alfabético e o salto por letra. Sem reordenar, as
      ROMs ficariam todas no fim e o salto por letra mentiria.
+
+119. **Uma grafia por pasta de ROM — o `FindFirstFile` também não distingue caixa.** A primeira
+     versão listava `Roms`, `roms` e `ROMS` "porque o sistema de arquivos não distingue, mas o
+     `FindFirstFile` é alimentado com o nome exato". A segunda metade da frase é falsa: a XAPI
+     desce para `NtCreateFile` com `OBJ_CASE_INSENSITIVE`, igual ao Windows de PC. As três abriam
+     **o mesmo diretório**, e cada ROM entrava **três vezes** — três cards iguais, três cópias da
+     mesma capa no cache de 160, a contagem do card triplicada, e o custo da ordenação
+     multiplicado por nove, porque é quadrático no número de ROMs.
+
+     Regra que fica: no console, uma grafia por nome de arquivo. Repetir caixa não é redundância
+     inofensiva, é duplicata.
+
+120. **`.cue` e `.bin` do mesmo jogo são um item só.** Um rip de PS1 é um descritor ao lado dos
+     dados, e os dois estão na lista de extensões. Sem descarte, o mesmo jogo entrava duas vezes
+     — e com ids sintéticos **diferentes**, porque o hash é sobre o nome com extensão. O usuário
+     marcaria um, veria o outro desmarcado, e o sintoma seria indistinguível de bug de
+     persistência.
+
+     A varredura passou a ser em duas passadas: recolhe os nomes da pasta, anota quais bases têm
+     descritor (`.cue`/`.pbp`/`.iso`) e, na segunda, recusa o `.bin`/`.img` de base já coberta.
+
+121. **O id sintético normaliza caixa também em Latin-1.** A primeira versão só baixava A–Z, e o
+     comentário dela já declarava o invariante que ela não cumpria. `Pokémon.smc` renomeado para
+     `POKÉMON.smc` dava **outro hash** — e como esse número está no `colecoes.txt`, a ROM sumiria
+     de todas as coleções em que estava, em silêncio, sem o arquivo ter mudado de conteúdo.
+
+     A armadilha que explica o descuido: **`char` é signed no cl.exe do XDK**, então `c >= 0xC0`
+     sem converter para `unsigned char` é sempre falso. A faixa não foi esquecida — ela foi
+     escrita de um jeito que nunca executa.
+
+122. **Só se lê cabeçalho DDS depois de confirmar que é DDS.** A largura e a altura saíam dos
+     bytes 12–19 de tudo que chegasse ao criador de textura. Isso valia enquanto tudo vinha de um
+     container FSDA; com a capa de ROM, chega JPG e PNG cru, e aqueles bytes são lixo. O lixo
+     hoje cai fora da faixa 1..4096 e é descartado — mas isso é sorte da codificação, e a
+     decisão 115 convida o usuário a largar qualquer imagem na pasta.
+
+123. **Lista nova entra por intercalação, não por "acrescenta e reordena".** A ordenação é
+     inserção simples, e acrescentar as ROMs no fim deixava uma cauda desordenada — quadrático no
+     número de ROMs, com cada troca copiando um `Jogo` de nove `std::string`. Com um romset de
+     arcade de alguns milhares de zips, isso é tela preta por dezenas de segundos, com cara de
+     console travado. `Juntar` ordena só a cauda e intercala numa passada.

@@ -1,4 +1,4 @@
-﻿#include "emuladores.h"
+#include "emuladores.h"
 #include "diario.h"
 #include "lancador.h"
 #include <xtl.h>
@@ -7,25 +7,32 @@
 
 namespace
 {
-    // As pastas em que emulador de 360 costuma guardar ROM. Minusculas e maiusculas
-    // entram as duas porque o sistema de arquivos do console nao distingue, mas o
-    // FindFirstFile e alimentado com o nome exato -- e o Snes360 usa "Roms" enquanto
-    // o pcsxr e o FBANext usam "roms".
-    const char *PASTAS[] = { "Roms", "roms", "ROMS", "games", "Games" };
+    // UMA grafia por pasta. O sistema de arquivos do console nao distingue caixa E o
+    // FindFirstFile tambem nao -- ele desce para o NtCreateFile com OBJ_CASE_INSENSITIVE,
+    // igual ao Windows de PC. Por isso "Roms", "roms" e "ROMS" abrem o MESMO diretorio,
+    // e listar as tres fazia cada ROM entrar tres vezes na biblioteca.
+    const char *PASTAS[] = { "Roms", "games" };
     const int   QUANTAS_PASTAS = sizeof(PASTAS) / sizeof(PASTAS[0]);
 
-    // Lista generosa de proposito: nao ha tabela por emulador aqui, e nao deve haver.
-    // Amarrar extensao a titleId quebraria na proxima versao do emulador; amarrar a
-    // pasta "roms" vale para qualquer um que apareca depois.
+    // Generosa de proposito: nao ha tabela por emulador aqui, e nao deve haver. Amarrar
+    // extensao a titleId quebraria na proxima versao do emulador; amarrar a pasta vale
+    // para qualquer um que apareca depois.
     const char *EXTENSOES[] = {
         ".smc", ".sfc", ".fig",                      // SNES
         ".bin", ".img", ".iso", ".cue", ".pbp",      // PS1
         ".zip",                                      // arcade
         ".nes", ".gba", ".gbc", ".gb",               // Nintendo portateis e 8 bits
-        ".md", ".smd", ".gen", ".32x",               // Mega Drive
+        ".smd", ".gen", ".32x",                      // Mega Drive
         ".pce", ".n64", ".z64", ".v64"
     };
     const int QUANTAS_EXTENSOES = sizeof(EXTENSOES) / sizeof(EXTENSOES[0]);
+
+    // Um rip de PS1 e um descritor ao lado dos dados. Os dois estao na lista acima, e
+    // sem isto o mesmo jogo entra duas vezes -- com ids sinteticos DIFERENTES, porque o
+    // hash e sobre o nome com extensao. O usuario marcaria um, veria o outro desmarcado
+    // e acharia que o app perdeu a marcacao.
+    const char *DESCRITORES[] = { ".cue", ".pbp", ".iso" };
+    const char *DADOS[]       = { ".bin", ".img" };
 
     bool TerminaEm(const char *nome, const char *sufixo)
     {
@@ -33,10 +40,10 @@ namespace
         return n > s && _stricmp(nome + n - s, sufixo) == 0;
     }
 
-    bool EhRom(const char *nome)
+    bool Casa(const char *nome, const char *const *lista, int quantas)
     {
-        for (int i = 0; i < QUANTAS_EXTENSOES; i++)
-            if (TerminaEm(nome, EXTENSOES[i]))
+        for (int i = 0; i < quantas; i++)
+            if (TerminaEm(nome, lista[i]))
                 return true;
         return false;
     }
@@ -47,8 +54,34 @@ namespace
         return (ponto == std::string::npos) ? nome : nome.substr(0, ponto);
     }
 
-    // A pasta que contem o executavel do emulador, dentro do caminho que o content.db
-    // guarda -- que e relativo ao dispositivo e comeca com barra.
+    // Minuscula em ASCII e em Latin-1. O char do cl.exe e SIGNED, entao comparar com
+    // 0xC0 sem o cast da sempre falso -- foi assim que a faixa acentuada ficou de fora
+    // na primeira versao. O 0xD7 e o sinal de multiplicacao e nao tem par.
+    char Minuscula(char c)
+    {
+        unsigned char u = (unsigned char)c;
+        if (u >= 'A' && u <= 'Z')                 return (char)(u + 32);
+        if (u >= 0xC0 && u <= 0xDE && u != 0xD7)  return (char)(u + 32);
+        return c;
+    }
+
+    std::string Minusculas(const std::string &s)
+    {
+        std::string saida = s;
+        for (size_t i = 0; i < saida.size(); i++)
+            saida[i] = Minuscula(saida[i]);
+        return saida;
+    }
+
+    bool EstaNaLista(const std::vector<std::string> &lista, const std::string &q)
+    {
+        for (size_t i = 0; i < lista.size(); i++)
+            if (lista[i] == q)
+                return true;
+        return false;
+    }
+
+    // A pasta que contem o executavel do emulador.
     std::string PastaDo(const std::string &caminhoDoXex)
     {
         size_t barra = caminhoDoXex.rfind('\\');
@@ -67,7 +100,7 @@ namespace emuladores
     unsigned int IdDaRom(unsigned int titleIdEmulador, const std::string &arquivo)
     {
         // FNV-1a de 32 bits, semeado com o titleId do emulador. Escolhido por caber em
-        // oito linhas e nao precisar de tabela: o que importa aqui e ser ESTAVEL entre
+        // oito linhas e nao precisar de tabela: o que importa e ser ESTAVEL entre
         // execucoes, porque este numero vai para o colecoes.txt. Enquanto o nome do
         // arquivo nao mudar, o id nao muda.
         //
@@ -77,12 +110,10 @@ namespace emuladores
         unsigned int h = 2166136261u ^ titleIdEmulador;
         for (size_t i = 0; i < arquivo.size(); i++)
         {
-            // Minusculas: o console nao distingue caixa em nome de arquivo, e um
-            // mesmo arquivo nao pode render dois ids conforme quem o leu.
-            char c = arquivo[i];
-            if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
-
-            h ^= (unsigned char)c;
+            // O console nao distingue caixa em nome de arquivo, e um mesmo arquivo nao
+            // pode render dois ids conforme quem o leu -- senao a ROM sumiria das
+            // colecoes em que estava, em silencio, so por ter sido renomeada.
+            h ^= (unsigned char)Minuscula(arquivo[i]);
             h *= 16777619u;
         }
         return h;
@@ -98,13 +129,13 @@ namespace emuladores
         {
             const biblioteca::Jogo &emu = jogos[e];
 
-            // So XEX solto: um emulador empacotado em container nao tem pasta de ROM
-            // ao lado para varrer.
+            // So XEX solto: um emulador empacotado em container nao tem pasta de ROM ao
+            // lado para varrer.
             if (emu.tipoArquivo != 1)
                 continue;
 
-            // Pelo dispositivo de verdade, nao supondo Hdd: -- o emulador pode estar
-            // num pendrive, e e o lancador que ja sabe sondar os apelidos.
+            // Pelo dispositivo de verdade, nao supondo Hdd: -- o emulador pode estar num
+            // pendrive, e e o lancador que ja sabe sondar os apelidos.
             std::string xex = lancador::Resolver(emu.caminho);
             if (xex.empty())
                 continue;
@@ -119,17 +150,36 @@ namespace emuladores
                 if (!Existe(raiz))
                     continue;
 
+                // Primeira passada: so recolhe os nomes. O descarte do .bin ao lado do
+                // .cue precisa conhecer a pasta inteira antes de decidir.
+                std::vector<std::string> nomes;
                 WIN32_FIND_DATA achado;
                 HANDLE busca = FindFirstFile((raiz + "\\*").c_str(), &achado);
                 if (busca == INVALID_HANDLE_VALUE)
                     continue;
 
-                int quantas = 0;
                 do
                 {
                     if (achado.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
                         continue;
-                    if (!EhRom(achado.cFileName))
+                    if (Casa(achado.cFileName, EXTENSOES, QUANTAS_EXTENSOES))
+                        nomes.push_back(achado.cFileName);
+                }
+                while (FindNextFile(busca, &achado));
+                FindClose(busca);
+
+                std::vector<std::string> comDescritor;
+                for (size_t i = 0; i < nomes.size(); i++)
+                    if (Casa(nomes[i].c_str(), DESCRITORES, 3))
+                        comDescritor.push_back(Minusculas(SemExtensao(nomes[i])));
+
+                int quantas = 0;
+                for (size_t i = 0; i < nomes.size(); i++)
+                {
+                    const std::string &nome = nomes[i];
+
+                    if (Casa(nome.c_str(), DADOS, 2) &&
+                        EstaNaLista(comDescritor, Minusculas(SemExtensao(nome))))
                         continue;
 
                     biblioteca::Jogo r;
@@ -137,8 +187,8 @@ namespace emuladores
                     // ContentItemId e sempre positivo. Assim uma ROM nunca disputa a
                     // entrada de cache de um jogo da FreeStyle.
                     r.id             = -(int)(saida.size() + 1);
-                    r.titleId        = IdDaRom(emu.titleId, achado.cFileName);
-                    r.nome           = SemExtensao(achado.cFileName);
+                    r.titleId        = IdDaRom(emu.titleId, nome);
+                    r.nome           = SemExtensao(nome);
                     r.genero         = emu.nome;        // "Snes360" vira o rotulo
                     r.desenvolvedora = "";
                     r.publicadora    = "";
@@ -163,9 +213,7 @@ namespace emuladores
                     saida.push_back(r);
                     quantas++;
                 }
-                while (FindNextFile(busca, &achado));
 
-                FindClose(busca);
                 diario::Escrever("emulador '%s': %d ROMs em %s",
                                  emu.nome.c_str(), quantas, raiz.c_str());
             }
