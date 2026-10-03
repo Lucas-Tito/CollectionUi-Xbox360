@@ -1,4 +1,4 @@
-// Leitura da biblioteca do FreeStyle: o banco content.db e os caminhos da arte.
+﻿// Leitura da biblioteca do FreeStyle: o banco content.db e os caminhos da arte.
 #ifndef BIBLIOTECA_H
 #define BIBLIOTECA_H
 
@@ -18,6 +18,10 @@ namespace biblioteca
         std::string  nota;          // do Marketplace, ex. "4.25"
         std::string  lancamento;
         std::string  caminho;       // relativo ao dispositivo
+        // Arquivo que guarda a capa, caminho completo. Para jogo da FreeStyle e o
+        // container .assets; para ROM de emulador e um .jpg solto. Quem le decide
+        // pelo conteudo, nao pela extensao. Vazio = sem capa, nem tenta.
+        std::string  capa;
         // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
         // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
         // pela MESMA chamada do 1.
@@ -49,6 +53,11 @@ namespace biblioteca
 
     // Pasta de arte de um jogo, a partir da pasta do banco: <raiz>\Data\GameData\<ID em hex>
     std::string PastaArte(const std::string &caminhoBanco, int id);
+
+    // Ordem alfabetica, ignorando o artigo inicial. O Ler ja a aplica; existe solta
+    // porque as ROMs de emulador entram depois e a lista tem de voltar a ficar em
+    // ordem antes de a tela usa-la.
+    void Ordenar(std::vector<Jogo> &lista);
 }
 
 #endif

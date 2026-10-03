@@ -931,3 +931,32 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
      O ganho de fora: para corrigir qualquer capa, basta largar um arquivo com o nome da ROM na
      pasta. Sem config, sem reiniciar nada.
+
+116. **O caminho da capa mora no `Jogo`, não no `main.cpp`.** Ele era montado em dois pontos da
+     tela (`PastaArte` + `%08X.assets`), e agora é preenchido na leitura: jogo da FreeStyle ganha
+     o `.assets`, ROM ganha o `.jpg`. A tela só faz `carregador::Pedir(id, j->capa)` e pula se
+     estiver vazio.
+
+     O `carregador` passa a decidir **pelo conteúdo**: o que abre com `FSDA` vai pelo container,
+     o resto é imagem solta lida inteira. Um `.assets` renomeado continua funcionando e um `.jpg`
+     com nome errado não é interpretado como container. A leitura crua tem teto de 8 MB — folga
+     enorme para uma capa, e existe porque um caminho errado pode cair num `.bin` de ROM de
+     600 MB, e aí o console morre na alocação em vez de numa linha de log.
+
+117. **A ROM reaproveita o lançador inteiro.** O item de ROM sai com o `caminho` e o
+     `tipoArquivo` do **próprio emulador**, então abrir uma ROM é abrir o emulador pelo mesmo
+     código que abre qualquer jogo — nenhuma exceção no lançador.
+
+     O `id` da ROM é **negativo** (`-(n+1)`). Ele é a chave do cache de texturas, e `ContentItemId`
+     é sempre positivo: assim uma ROM nunca disputa a entrada de cache de um jogo da FreeStyle.
+     Quem vai para o disco é o `titleId`, que é o id sintético da decisão 109.
+
+     A varredura não tem tabela por emulador. Procura as pastas `Roms`/`roms`/`games` ao lado do
+     xex e aceita uma lista generosa de extensões — amarrar extensão a titleId quebraria na
+     próxima versão do emulador, amarrar à pasta vale para qualquer um que apareça depois. O
+     dispositivo sai do `lancador::Resolver`, não de um `Hdd:` suposto: o emulador pode estar num
+     pendrive.
+
+118. **`biblioteca::Ordenar` existe solta.** As ROMs entram depois do `Ler`, e a tela conta com a
+     lista ordenada — é dela que saem o índice alfabético e o salto por letra. Sem reordenar, as
+     ROMs ficariam todas no fim e o salto por letra mentiria.

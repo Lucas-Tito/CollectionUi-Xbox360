@@ -11,6 +11,7 @@
 #include <xgraphics.h>
 #include "diario.h"
 #include "biblioteca.h"
+#include "emuladores.h"
 #include "colecoes.h"
 #include "dispositivos.h"
 #include "config.h"
@@ -402,14 +403,10 @@ namespace
                         EstaNaLista(g_falhou, id))
                         continue;
 
-                    std::string pasta = biblioteca::PastaArte(g_caminhoBanco, id);
-                    if (pasta.empty())
+                    if (tres[k]->capa.empty())
                         continue;
 
-                    char arquivo[512];
-                    _snprintf(arquivo, sizeof(arquivo), "%s\\%08X.assets", pasta.c_str(), id);
-                    arquivo[sizeof(arquivo) - 1] = '\0';
-                    carregador::Pedir(id, arquivo);
+                    carregador::Pedir(id, tres[k]->capa);
                     g_emVoo.push_back(id);
                 }
             }
@@ -439,14 +436,10 @@ namespace
                     EstaNaLista(g_falhou, id))
                     continue;
 
-                std::string pasta = biblioteca::PastaArte(g_caminhoBanco, id);
-                if (pasta.empty())
+                if (L[i]->capa.empty())
                     continue;
 
-                char arquivo[512];
-                _snprintf(arquivo, sizeof(arquivo), "%s\\%08X.assets", pasta.c_str(), id);
-                arquivo[sizeof(arquivo) - 1] = '\0';
-                carregador::Pedir(id, arquivo);
+                carregador::Pedir(id, L[i]->capa);
                 g_emVoo.push_back(id);
             }
         }
@@ -2120,6 +2113,20 @@ void __cdecl main()
     if (!g_caminhoBanco.empty())
         biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
     diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
+
+    // As ROMs entram como itens comuns, e dai em diante nada no app sabe que elas sao
+    // diferentes: mesma grade, mesmas colecoes, mesmo lancador. "game:" e a pasta de
+    // onde este xex foi lancado -- e nela que mora capas\.
+    {
+        std::vector<biblioteca::Jogo> roms;
+        emuladores::Ler(g_jogos, "game:", roms);
+        if (!roms.empty())
+        {
+            g_jogos.insert(g_jogos.end(), roms.begin(), roms.end());
+            biblioteca::Ordenar(g_jogos);
+            diario::Escrever("biblioteca com ROMs: %d itens", (int)g_jogos.size());
+        }
+    }
 
     colecoes::Carregar();
     carregador::Iniciar();
