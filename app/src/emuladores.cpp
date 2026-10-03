@@ -81,6 +81,77 @@ namespace
         return false;
     }
 
+    // Nomes de exibicao, lidos de capas\\nomes.txt. Existe porque romset de arcade usa
+    // o nome curto do MAME -- "mslug3.zip" nao diz nada na grade. O arquivo e
+    // "arquivo da ROM|Nome a mostrar" por linha, com # de comentario.
+    //
+    // Nao renomear a ROM em disco: o FBANext casa o zip com a DAT dele pelo nome, e
+    // renomear quebraria o romset.
+    std::vector<std::string> g_chaves, g_rotulos;
+
+    void CarregarNomes(const std::string &pastaDoApp)
+    {
+        g_chaves.clear();
+        g_rotulos.clear();
+        if (pastaDoApp.empty())
+            return;
+
+        std::string caminho = pastaDoApp + "\\capas\\nomes.txt";
+        HANDLE h = CreateFile(caminho.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE)
+            return;
+
+        DWORD tam = GetFileSize(h, NULL);
+        if (tam == 0xFFFFFFFF || tam == 0 || tam > 256u * 1024u)
+        {
+            CloseHandle(h);
+            return;
+        }
+
+        std::vector<char> buf(tam + 1);
+        DWORD lidos = 0;
+        bool ok = (ReadFile(h, &buf[0], tam, &lidos, NULL) != FALSE) && lidos == tam;
+        CloseHandle(h);
+        if (!ok)
+            return;
+        buf[lidos] = '\0';
+
+        std::string texto(&buf[0], lidos);
+        size_t i = 0;
+        while (i < texto.size())
+        {
+            size_t fim = texto.find('\n', i);
+            if (fim == std::string::npos) fim = texto.size();
+
+            std::string linha = texto.substr(i, fim - i);
+            i = fim + 1;
+            if (!linha.empty() && linha[linha.size() - 1] == '\r')
+                linha.erase(linha.size() - 1);
+            if (linha.empty() || linha[0] == '#')
+                continue;
+
+            size_t barra = linha.find('|');
+            if (barra == std::string::npos || barra == 0 || barra + 1 >= linha.size())
+                continue;
+
+            g_chaves.push_back(Minusculas(linha.substr(0, barra)));
+            g_rotulos.push_back(linha.substr(barra + 1));
+        }
+
+        diario::Escrever("nomes de exibicao: %d", (int)g_chaves.size());
+    }
+
+    // Vazio quando nao ha troca para esta ROM.
+    std::string RotuloDe(const std::string &arquivo)
+    {
+        std::string chave = Minusculas(arquivo);
+        for (size_t i = 0; i < g_chaves.size(); i++)
+            if (g_chaves[i] == chave)
+                return g_rotulos[i];
+        return std::string();
+    }
+
     // A pasta que contem o executavel do emulador.
     std::string PastaDo(const std::string &caminhoDoXex)
     {
@@ -163,7 +234,11 @@ namespace emuladores
             // de cache de um jogo da FreeStyle.
             r.id             = -(int)(saida.size() + 1);
             r.titleId        = emuladores::IdDaRom(emu.titleId, rotulo + nome);
-            r.nome           = SemExtensao(nome);
+            // O nome de exibicao troca, o nome do ARQUIVO nao: o id sintetico e a
+            // busca da capa continuam saindo do arquivo, entao trocar um rotulo no
+            // nomes.txt nao tira a ROM das colecoes nem invalida a capa.
+            std::string rotuloDele = RotuloDe(nome);
+            r.nome           = rotuloDele.empty() ? SemExtensao(nome) : rotuloDele;
             r.genero         = emu.nome;        // "Snes360" vira o rotulo
             r.desenvolvedora = "";
             r.publicadora    = "";
@@ -180,7 +255,7 @@ namespace emuladores
             // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.
             if (!pastaDoApp.empty())
             {
-                std::string base = pastaDoApp + "\\capas\\" + r.nome;
+                std::string base = pastaDoApp + "\\capas\\" + SemExtensao(nome);
                 if (Existe(base + ".jpg"))      r.capa = base + ".jpg";
                 else if (Existe(base + ".png")) r.capa = base + ".png";
             }
@@ -199,6 +274,7 @@ namespace emuladores
              std::vector<biblioteca::Jogo> &saida)
     {
         saida.clear();
+        CarregarNomes(pastaDoApp);
 
         for (size_t e = 0; e < jogos.size(); e++)
         {

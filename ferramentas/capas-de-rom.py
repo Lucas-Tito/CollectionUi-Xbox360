@@ -74,6 +74,76 @@ TABELA = [
 DEITADA = 1.15
 
 
+# ROMs de arcade. O zip usa o nome curto do MAME, que nao diz nada na grade e nao tem
+# capa no xbox-vault (que so cobre PS1, SNES e GBA). Entao aqui vao tres coisas por
+# linha: o zip, como mostrar, e o nome no acervo do libretro (FBNeo - Arcade Games).
+#
+# O nome do libretro NAO e o do MAME: ele usa a descricao da DAT do FBNeo, com os
+# caracteres &*/:`<>?|" trocados por _. Casar por similaridade erra feio aqui --
+# "Killer Instinct" vira "Power Instinct" e "KOF '98" vira "KOF '97 Plus (bootleg)".
+ARCADE = [
+    ("mslug.zip",   "Metal Slug",                "Metal Slug - Super Vehicle-001"),
+    ("mslug2.zip",  "Metal Slug 2",              "Metal Slug 2 - Super Vehicle-001_II (NGM-2410 ~ NGH-2410)"),
+    ("mslug3.zip",  "Metal Slug 3",              "Metal Slug 3 (NGH-2560)"),
+    ("mslug4.zip",  "Metal Slug 4",              "Metal Slug 4 (NGH-2630)"),
+    ("mslug5.zip",  "Metal Slug 5",              "Metal Slug 5 (bootleg)"),
+    ("mslug6.zip",  "Metal Slug 6",              "Metal Slug 6 (Metal Slug 3 bootleg) [Bootleg]"),
+    ("kof98.zip",   "The King of Fighters '98",
+     "The King of Fighters '98 - The Slugfest _ King of Fighters '98 - Dream Match Never Ends (NGM-2420)"),
+    ("kof2003.zip", "The King of Fighters 2003", "The King of Fighters 2003 (NGH-2710)"),
+    ("mvsc.zip",    "Marvel vs. Capcom",         "Marvel Vs. Capcom_ Clash of Super Heroes (USA 971222)"),
+    # Naomi, nao FBNeo: o acervo de arcade do libretro nao tem. Fica sem capa, com o
+    # nome certo -- melhor que capa errada.
+    ("mvsc2u.zip",  "Marvel vs. Capcom 2",       None),
+    ("megaman.zip", "Mega Man: The Power Battle","Mega Man - the power battle (951006 USA)"),
+    ("megaman2.zip","Mega Man 2: The Power Fighters",
+     "Mega Man 2 - the power fighters (960708 USA)"),
+    ("contra.zip",  "Contra",                    "Contra (US _ Asia, set 1)"),
+    ("gaia.zip",    "Gaia Crusaders",            "Gaia Crusaders"),
+    ("alexkidd.zip","Alex Kidd: The Lost Stars", "Alex Kidd_ The Lost Stars (set 2, unprotected)"),
+    ("Killer Instinct.zip", "Killer Instinct",
+     "Killer Instinct (ROM ver. 1.5d) [Works best in 64-bit build]"),
+    ("kinst2.zip",  "Killer Instinct 2",
+     "Killer Instinct II (ROM ver. 1.4) [Works best in 64-bit build]"),
+]
+
+LIBRETRO = ("https://thumbnails.libretro.com/"
+            "FBNeo%20-%20Arcade%20Games/Named_Boxarts/")
+
+
+def baixar_arcade(nome_libretro, destino):
+    """Baixa a capa do libretro para um arquivo de cache. Devolve o caminho ou None."""
+    import urllib.parse
+    import urllib.request
+
+    if os.path.exists(destino):
+        return destino
+
+    saneado = nome_libretro
+    for c in '&*/:`<>?|"':
+        saneado = saneado.replace(c, "_")
+
+    # Duas tentativas: 404 e nome errado e nao adianta insistir, mas timeout e so o
+    # servidor engasgando -- na primeira rodada o Killer Instinct caiu por isso.
+    dados = None
+    for tentativa in range(2):
+        try:
+            with urllib.request.urlopen(LIBRETRO + urllib.parse.quote(saneado) + ".png",
+                                        timeout=60) as r:
+                dados = r.read()
+            break
+        except urllib.error.HTTPError:
+            return None
+        except Exception:
+            continue
+    if dados is None:
+        return None
+
+    with open(destino, "wb") as f:
+        f.write(dados)
+    return destino
+
+
 def compor(origem):
     """Capa inteira, centralizada, sobre um borrao escurecido dela mesma."""
     im = Image.open(origem).convert("RGB")
@@ -129,7 +199,39 @@ def main():
         total += os.path.getsize(destino)
         feitas += 1
 
+    # Arcade: capa do libretro, com cache em disco para nao rebaixar a cada rodada.
+    cache = os.path.join(args.saida, ".cache-arcade")
+    os.makedirs(cache, exist_ok=True)
+    nomes = []
+
+    for zipn, mostrar, libretro in ARCADE:
+        nomes.append((zipn, mostrar))
+        if libretro is None:
+            faltando.append((zipn, "sem capa no acervo de arcade"))
+            continue
+
+        bruto = baixar_arcade(libretro, os.path.join(cache, zipn + ".png"))
+        if bruto is None:
+            faltando.append((zipn, libretro))
+            continue
+
+        destino = os.path.join(args.saida, os.path.splitext(zipn)[0] + ".jpg")
+        compor(bruto).save(destino, "JPEG", quality=88)
+        total += os.path.getsize(destino)
+        feitas += 1
+
+    # O arquivo que o app le para mostrar "Metal Slug 3" em vez de "mslug3". O nome do
+    # ARQUIVO nao muda: renomear o zip quebraria o romset do FBANext, e e do nome do
+    # arquivo que saem o id sintetico e a busca da capa.
+    with open(os.path.join(args.saida, "nomes.txt"), "w", encoding="utf-8") as f:
+        f.write("# CollectionUI: nome de exibicao das ROMs.\n")
+        f.write("#   arquivo da ROM, barra vertical, nome a mostrar\n")
+        f.write("# Mexer aqui nao tira a ROM das colecoes: o id sai do nome do arquivo.\n")
+        for zipn, mostrar in nomes:
+            f.write("%s|%s\n" % (zipn, mostrar))
+
     print("%d capas em %s (%d KB)" % (feitas, args.saida, total // 1024))
+    print("nomes.txt com %d linhas" % len(nomes))
     for rom, slug in faltando:
         print("  SEM IMAGEM NO VAULT: %-42s -> %s" % (rom, slug))
     return 1 if faltando else 0
