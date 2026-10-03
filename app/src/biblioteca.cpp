@@ -1,4 +1,4 @@
-#include "biblioteca.h"
+﻿#include "biblioteca.h"
 #include "diario.h"
 #include "sqlite3.h"
 #include <xtl.h>
@@ -48,6 +48,9 @@ namespace
 
 namespace biblioteca
 {
+    // Definidas mais abaixo; usadas pelo Ler, que vem antes delas.
+    void        Ordenar(std::vector<Jogo> &lista);
+
     bool Existe(const std::string &caminho)
     {
         return ::GetFileAttributes(caminho.c_str()) != 0xFFFFFFFF;
@@ -99,6 +102,9 @@ namespace biblioteca
 
     bool Ler(const char *caminhoBanco, std::vector<Jogo> &saida)
     {
+        // Definida mais abaixo neste mesmo arquivo.
+        std::string PastaArte(const std::string &caminhoBanco, int id);
+
         saida.clear();
 
         sqlite3 *bd = NULL;
@@ -140,26 +146,42 @@ namespace biblioteca
             j.tipoArquivo    = sqlite3_column_int(stmt, 9);
             j.discos         = sqlite3_column_int(stmt, 10);
             j.contentType    = sqlite3_column_int(stmt, 11);
+
+            std::string pasta = PastaArte(caminhoBanco, j.id);
+            if (!pasta.empty())
+            {
+                char arq[512];
+                _snprintf(arq, sizeof(arq), "%s\\%08X.assets", pasta.c_str(), j.id);
+                arq[sizeof(arq) - 1] = '\0';
+                j.capa = arq;
+            }
+
             saida.push_back(j);
         }
 
         sqlite3_finalize(stmt);
         sqlite3_close(bd);
 
+        Ordenar(saida);
+        return true;
+    }
+
+    // Separada do Ler porque as ROMs de emulador entram DEPOIS, e a tela conta com a
+    // lista ordenada: e dela que saem o indice alfabetico e o salto por letra.
+    void Ordenar(std::vector<Jogo> &lista)
+    {
         // Insercao simples: sao ~120 itens, nao vale trazer <algorithm> para isto.
-        for (size_t i = 1; i < saida.size(); i++)
+        for (size_t i = 1; i < lista.size(); i++)
         {
-            Jogo atual = saida[i];
+            Jogo atual = lista[i];
             size_t k = i;
-            while (k > 0 && AntesDe(atual, saida[k - 1]))
+            while (k > 0 && AntesDe(atual, lista[k - 1]))
             {
-                saida[k] = saida[k - 1];
+                lista[k] = lista[k - 1];
                 k--;
             }
-            saida[k] = atual;
+            lista[k] = atual;
         }
-
-        return true;
     }
 
     std::string PastaArte(const std::string &caminhoBanco, int id)

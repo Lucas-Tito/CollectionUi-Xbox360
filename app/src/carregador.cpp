@@ -1,4 +1,4 @@
-#include "carregador.h"
+﻿#include "carregador.h"
 #include "diario.h"
 #include "fsda.h"
 #include <xtl.h>
@@ -25,11 +25,42 @@ namespace
     HANDLE                 g_temPedido = NULL;
     volatile bool          g_parar = false;
 
+    // Le o arquivo inteiro. E o caminho da capa de ROM: um .jpg solto, que o
+    // D3DXCreateTextureFromFileInMemoryEx decodifica direto, sem container no meio.
+    bool LerInteiro(const char *caminho, std::vector<unsigned char> &saida)
+    {
+        HANDLE h = CreateFile(caminho, GENERIC_READ, FILE_SHARE_READ, NULL,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE)
+            return false;
+
+        DWORD tam = GetFileSize(h, NULL);
+        // 8 MB e folga enorme para uma capa de 146x208; o teto existe porque um
+        // caminho errado pode cair num .bin de ROM de 600 MB, e ai o console morre
+        // na alocacao, nao numa mensagem de erro.
+        if (tam == 0xFFFFFFFF || tam == 0 || tam > 8u * 1024u * 1024u)
+        {
+            CloseHandle(h);
+            return false;
+        }
+
+        saida.resize(tam);
+        DWORD lidos = 0;
+        bool ok = (ReadFile(h, &saida[0], tam, &lidos, NULL) != FALSE) && lidos == tam;
+        CloseHandle(h);
+
+        if (!ok) saida.clear();
+        return ok;
+    }
+
     bool LerCapa(const Pedido &p, std::vector<unsigned char> &saida)
     {
+        // Decide pelo CONTEUDO, nao pela extensao: o container da FreeStyle abre com
+        // "FSDA", e qualquer outra coisa e imagem solta. Um .assets renomeado continua
+        // funcionando, e um .jpg com nome errado nao e interpretado como container.
         std::vector<fsda::Imagem> imagens;
         if (!fsda::Ler(p.arquivo.c_str(), imagens))
-            return false;
+            return LerInteiro(p.arquivo.c_str(), saida);
 
         const fsda::Imagem *capa = fsda::Achar(imagens, fsda::TIPO_CAPA);
         if (capa == NULL)
