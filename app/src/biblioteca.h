@@ -22,6 +22,14 @@ namespace biblioteca
         // container .assets; para ROM de emulador e um .jpg solto. Quem le decide
         // pelo conteudo, nao pela extensao. Vazio = sem capa, nem tenta.
         std::string  capa;
+        // A capa da FreeStyle e o ENCARTE inteiro, e so a frente dele vai para a tela.
+        // A capa de ROM ja vem pronta e tem de ser desenhada INTEIRA. O construtor
+        // abaixo define o valor: um bool deixado sem atribuir nao vem false, vem lixo
+        // da pilha -- e o defeito sairia intermitente, mudando a cada execucao.
+        bool         capaInteira;
+
+        Jogo() : id(0), titleId(0), tipoArquivo(0), contentType(0), discos(0),
+                 capaInteira(false) {}
         // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
         // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
         // pela MESMA chamada do 1.

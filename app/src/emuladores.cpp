@@ -250,6 +250,7 @@ namespace emuladores
             r.tipoArquivo    = emu.tipoArquivo;
             r.contentType    = emu.contentType;
             r.discos         = 1;
+            r.capaInteira    = true;    // o .jpg vem pronto, so com a arte
 
             // A arte e um arquivo solto com o nome da ROM. Nada de casamento
             // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.

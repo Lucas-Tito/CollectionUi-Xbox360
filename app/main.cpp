@@ -982,17 +982,21 @@ namespace
             const float ox[3] = { -(w + g), 0.0f,          0.0f  };
             const float oy[3] = { -h * 0.5f, -(h + g * 0.5f), g * 0.5f };
 
-            XMFLOAT2 uv[4];
-            uv[0] = XMFLOAT2(FRENTE_U0, 0.0f);
-            uv[1] = XMFLOAT2(1.0f,      0.0f);
-            uv[2] = XMFLOAT2(1.0f,      1.0f);
-            uv[3] = XMFLOAT2(FRENTE_U0, 1.0f);
-
             Mistura(true);
             for (int k = 0; k < n; k++)
             {
                 D3DTexture *capa = NoCache(tres[k]->id, true);
                 if (capa == NULL) continue;
+
+                // DENTRO do laco: as tres capas da colagem podem ter origens
+                // diferentes -- uma ROM e um jogo da FreeStyle no mesmo card. Calculado
+                // uma vez so la fora, a origem da primeira valeria para as tres.
+                const float u0 = tres[k]->capaInteira ? 0.0f : FRENTE_U0;
+                XMFLOAT2 uv[4];
+                uv[0] = XMFLOAT2(u0,   0.0f);
+                uv[1] = XMFLOAT2(1.0f, 0.0f);
+                uv[2] = XMFLOAT2(1.0f, 1.0f);
+                uv[3] = XMFLOAT2(u0,   1.0f);
 
                 const float px = ox[k], py = oy[k];
                 const float canto[4][2] = {
@@ -1323,10 +1327,13 @@ namespace
 
             if (capa != NULL)
             {
-                // Só a frente do encarte: amostra de U 0,532 até 1,0.
+                // Do encarte da FreeStyle sai so a frente, de U 0,532 ate 1,0. A capa
+                // de ROM vem pronta do PC, so com a arte, e vai inteira -- o mesmo
+                // recorte aplicado nela comia a metade esquerda do desenho.
+                const float u0 = L[i]->capaInteira ? 0.0f : FRENTE_U0;
                 ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
-                    r, XMFLOAT2(FRENTE_U0, 0.0f), XMFLOAT2(1.0f, 0.0f),
-                    XMFLOAT2(FRENTE_U0, 1.0f), capa);
+                    r, XMFLOAT2(u0, 0.0f), XMFLOAT2(1.0f, 0.0f),
+                    XMFLOAT2(u0, 1.0f), capa);
 
                 // Apagar é um véu por cima, não um desenho diferente: a variante
                 // Colored fixa UV 0..1 lá dentro (AtgDebugDraw.cpp:662) e mostrava o

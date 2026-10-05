@@ -1061,3 +1061,24 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      quase exato no slot. A regra de giro da decisão 125 os deixa quietos sozinha, sem exceção
      escrita. O Marvel vs. Capcom 2 fica sem capa — é Naomi, não existe no acervo de arcade —
      com o nome certo, que é melhor que capa errada.
+
+130. **A faixa de U do desenho depende da origem da imagem.** A capa da FreeStyle é o encarte
+     inteiro e só os 46,8% da direita vão para a tela (`FRENTE_U0`). Esse recorte estava sendo
+     aplicado a **toda** capa, inclusive à de ROM, que já sai do PC pronta e só com a arte — e
+     comia a metade esquerda dela. Agora o `Jogo` carrega `capaInteira`, e os dois pontos de
+     desenho usam `capaInteira ? 0.0f : FRENTE_U0`.
+
+     Preferido ao atalho de gerar a imagem com 312 px e a capa nos 46,8% da direita, que também
+     funcionaria e não exigiria recompilar. O atalho quebraria a promessa da decisão 115 — "para
+     corrigir uma capa, largue um `.jpg` com o nome da ROM na pasta" —, porque uma imagem comum
+     largada ali passaria a aparecer cortada. Regra escondida na pasta é pior que seis linhas no
+     app.
+
+     O campo nasce com valor no **construtor do `Jogo`**, não nos dois lugares que preenchem a
+     struct. Um `bool` deixado sem atribuir não vem `false`, vem lixo da pilha, e o defeito sairia
+     **intermitente** — este projeto já perdeu oito rodadas de console com um bug assim.
+
+     E o cálculo mora **dentro** do laço da colagem do card. Fora dele, como estava na primeira
+     tentativa, a origem da primeira das três capas valeria para as três — e o card mistura ROM
+     com jogo da FreeStyle. O compilador pegou essa por acaso (`k` fora de escopo); se o laço
+     usasse outro índice, teria passado.
