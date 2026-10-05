@@ -2123,9 +2123,15 @@ void __cdecl main()
         config::GravarBanco(g_caminhoBanco);
     }
 
+    bool bancoOk = true;
     if (!g_caminhoBanco.empty())
-        biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
+        bancoOk = biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
     diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
+
+    // Biblioteca vazia sem explicacao parece app quebrado. Com a FreeStyle varrendo, e
+    // so esperar o scan acabar -- mas isso o usuario precisa ser informado.
+    if (!bancoOk)
+        Avisar("Nao consegui ler a biblioteca. A FreeStyle esta varrendo? Tente depois.");
 
     // As ROMs entram como itens comuns, e dai em diante nada no app sabe que elas sao
     // diferentes: mesma grade, mesmas colecoes, mesmo lancador. "game:" e a pasta de

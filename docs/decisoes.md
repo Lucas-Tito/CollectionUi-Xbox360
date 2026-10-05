@@ -1082,3 +1082,39 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      tentativa, a origem da primeira das três capas valeria para as três — e o card mistura ROM
      com jogo da FreeStyle. O compilador pegou essa por acaso (`k` fora de escopo); se o laço
      usasse outro índice, teria passado.
+
+131. **O VFS de SQLite não tem trava, e o banco pode ser reescrito debaixo da leitura.** Em
+     `app/src/vfs_xbox.c`, `xbTravar`, `xbDestravar` e `xbChecarTrava` são no-op: respondem sempre
+     "consegui" e "ninguém mais está mexendo". Enquanto só a gente lia um banco parado, isso não
+     tinha consequência. Tem, quando a FreeStyle faz um scan manual: nada impede de lermos página
+     pela metade, e página de b-tree corrompida vira deslocamento inventado, que vira ponteiro
+     inventado.
+
+     Foi o que o primeiro arranque no HD novo mostrou. O log fechou o diagnóstico sozinho:
+
+     ```
+     instalacoes encontradas: 2
+     CRASH code=0xC0000005 addr=0x823C4E2C Iar=0x823C4E2C Lr=0x820A0E1C escrevendo=0x41560914
+     ```
+
+     `Iar` cai dentro do `memcpy` e `Lr` em `std::string::assign` — e `0x41560914` **não é
+     endereço, é um TitleId**, que inclusive está no `colecoes.txt` desta casa. Uma `std::string`
+     com um TitleId no ponteiro interno é memória sobrescrita com conteúdo do banco. O par
+     `ExceptionInformation[0]/[1]` do `AoMorrer` pagou-se de novo: sem ele isso exigiria
+     desassemblar o binário.
+
+132. **Falha de leitura do banco não é motivo para morrer.** Varrer é operação normal da
+     FreeStyle; ler durante a varredura é situação esperada, não excepcional. Três camadas, porque
+     nenhuma fecha o caso sozinha:
+
+     - `pragma quick_check` antes de ler. **Não é garantia** — o banco pode passar e ser reescrito
+       na linha seguinte —, mas pega a corrupção já consolidada, e custa pouco num banco de 157 KB.
+     - `Texto()` constrói pelo **tamanho** que o sqlite informa (`sqlite3_column_bytes`), com teto
+       de 1 KB, nunca pelo terminador. Página corrompida devolve ponteiro para região sem zero, e
+       o construtor a partir de `const char*` sairia lendo memória até morrer.
+     - O laço deixa de ignorar por que parou. `SQLITE_DONE` e corrupção eram a mesma coisa para
+       ele; agora um `step` que não termina limpo descarta o que leu e devolve falso — metade da
+       biblioteca é pior que biblioteca nenhuma, porque o usuário não tem como saber que falta.
+
+     E o arranque avisa na tela, pelo balão do sistema. Biblioteca vazia sem explicação parece app
+     quebrado; a informação que falta é "espere o scan terminar".

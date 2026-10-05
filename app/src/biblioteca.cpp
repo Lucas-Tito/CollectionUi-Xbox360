@@ -20,10 +20,44 @@ namespace
         return GetFileAttributes(caminho) != 0xFFFFFFFF;
     }
 
+    // Teto de sanidade por campo. O maior texto real desta biblioteca nao passa de
+    // uma centena de bytes; mil e folga larga.
+    //
+    // O teto existe porque pagina corrompida devolve ponteiro para regiao SEM
+    // terminador, e o construtor de std::string a partir de const char* sai lendo
+    // memoria ate achar um zero -- ou ate morrer. Construimos pelo TAMANHO que o
+    // proprio sqlite informa, nunca pelo terminador.
+    const int TEXTO_MAX = 1024;
+
+    bool Integro(sqlite3 *bd)
+    {
+        sqlite3_stmt *st = NULL;
+        if (sqlite3_prepare_v2(bd, "pragma quick_check", -1, &st, NULL) != SQLITE_OK)
+            return false;
+
+        bool ok = false;
+        if (sqlite3_step(st) == SQLITE_ROW)
+        {
+            const unsigned char *r = sqlite3_column_text(st, 0);
+            ok = (r != NULL && strcmp((const char *)r, "ok") == 0);
+            if (!ok)
+                diario::Escrever("quick_check: %s", r ? (const char *)r : "(nulo)");
+        }
+        sqlite3_finalize(st);
+        return ok;
+    }
+
     std::string Texto(sqlite3_stmt *stmt, int coluna)
     {
         const unsigned char *t = sqlite3_column_text(stmt, coluna);
-        return (t == NULL) ? std::string() : std::string((const char *)t);
+        if (t == NULL)
+            return std::string();
+
+        int n = sqlite3_column_bytes(stmt, coluna);
+        if (n < 0)         n = 0;
+        if (n > TEXTO_MAX) n = TEXTO_MAX;
+
+        return std::string((const char *)t, (size_t)n);
     }
 
     // Ordena ignorando o artigo inicial, para "The Darkness" cair no D e nao no T.
@@ -110,6 +144,22 @@ namespace biblioteca
             return false;
         }
 
+        // O banco esta inteiro? Vale perguntar porque o nosso VFS NAO TEM TRAVA: em
+        // vfs_xbox.c, xbTravar e xbChecarTrava sao no-op que respondem sempre "consegui"
+        // e "ninguem mais esta mexendo". Com a FreeStyle reescrevendo o content.db num
+        // scan, nada impede de lermos pagina pela metade -- e pagina de b-tree
+        // corrompida vira deslocamento inventado, que vira ponteiro inventado.
+        //
+        // Nao e garantia: o banco pode passar aqui e ser reescrito na linha seguinte.
+        // E a primeira das tres camadas, nao a unica. Custa pouco: este banco tem
+        // 157 KB.
+        if (!Integro(bd))
+        {
+            diario::Escrever("ERRO: banco inconsistente -- a FreeStyle esta varrendo?");
+            sqlite3_close(bd);
+            return false;
+        }
+
         const char *SQL =
             "select ContentItemId, ContentItemTitleId, ContentItemName, ContentItemGenre,"
             " ContentItemDeveloper, ContentItemPublisher, ContentItemRating,"
@@ -125,7 +175,8 @@ namespace biblioteca
             return false;
         }
 
-        while (sqlite3_step(stmt) == SQLITE_ROW)
+        int passo;
+        while ((passo = sqlite3_step(stmt)) == SQLITE_ROW)
         {
             Jogo j;
             j.id             = sqlite3_column_int(stmt, 0);
@@ -151,6 +202,19 @@ namespace biblioteca
             }
 
             saida.push_back(j);
+        }
+
+        // Parar por corrupcao e parar por fim de tabela eram a mesma coisa para este
+        // laco. Nao sao: metade da biblioteca e pior que biblioteca nenhuma, porque o
+        // usuario nao tem como saber que falta coisa.
+        if (passo != SQLITE_DONE)
+        {
+            diario::Escrever("ERRO: leitura parou em sqlite3_step = %d (%s), %d lidos",
+                             passo, sqlite3_errmsg(bd), (int)saida.size());
+            sqlite3_finalize(stmt);
+            sqlite3_close(bd);
+            saida.clear();
+            return false;
         }
 
         sqlite3_finalize(stmt);
