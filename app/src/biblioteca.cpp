@@ -228,18 +228,38 @@ namespace biblioteca
     // lista ordenada: e dela que saem o indice alfabetico e o salto por letra.
     void Ordenar(std::vector<Jogo> &lista)
     {
-        // Insercao simples: sao ~120 itens, nao vale trazer <algorithm> para isto.
-        for (size_t i = 1; i < lista.size(); i++)
+        // Insercao simples sobre PONTEIROS, nao sobre os itens. O comentario antigo
+        // dizia "sao ~120 itens, nao vale trazer <algorithm>" -- a conta mudou: a
+        // biblioteca desta casa foi para 418, e insercao e quadratica. Com o item
+        // inteiro, cada troca copiava um Jogo de NOVE std::string, o que dava centenas
+        // de milhares de alocacoes no arranque. Trocando ponteiro, a troca e um
+        // registrador, e so no fim os itens sao movidos uma vez cada.
+        if (lista.size() < 2)
+            return;
+
+        std::vector<Jogo *> p;
+        p.reserve(lista.size());
+        for (size_t i = 0; i < lista.size(); i++)
+            p.push_back(&lista[i]);
+
+        for (size_t i = 1; i < p.size(); i++)
         {
-            Jogo atual = lista[i];
+            Jogo *atual = p[i];
             size_t k = i;
-            while (k > 0 && AntesDe(atual, lista[k - 1]))
+            while (k > 0 && AntesDe(*atual, *p[k - 1]))
             {
-                lista[k] = lista[k - 1];
+                p[k] = p[k - 1];
                 k--;
             }
-            lista[k] = atual;
+            p[k] = atual;
         }
+
+        std::vector<Jogo> saida;
+        saida.reserve(lista.size());
+        for (size_t i = 0; i < p.size(); i++)
+            saida.push_back(*p[i]);
+
+        lista.swap(saida);
     }
 
     // Intercala uma lista JA ORDENADA na outra, numa passada. A alternativa --

@@ -1,4 +1,4 @@
-// Leitura de capas em thread separada.
+﻿// Leitura de capas em thread separada.
 //
 // Ler alguns MB de um .assets bloqueia por dezenas de milissegundos. Feito dentro do
 // laco de desenho, isso e o engasgo que se ve ao rolar. O FreeStyle resolve com um
@@ -26,7 +26,11 @@ namespace carregador
     void DescartarPendentes();
 
     // Devolve um resultado pronto, ou false. Chamar da thread de render.
-    bool Retirar(int *indice, std::vector<unsigned char> &bytes);
+    // "inteira" sai true quando os bytes sao a imagem toda -- capa pequena do FSDA ou
+    // .jpg de ROM -- e false quando sao o ENCARTE (900x600), de que a tela mostra so a
+    // frente. Quem sabe disso e quem LEU o arquivo: o mesmo jogo rende encarte ou capa
+    // pequena conforme o que existir dentro dele, entao a resposta nao cabe no Jogo.
+    bool Retirar(int *indice, std::vector<unsigned char> &bytes, bool *inteira);
 }
 
 #endif

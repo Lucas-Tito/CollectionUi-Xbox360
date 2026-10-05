@@ -16,6 +16,7 @@ namespace
     {
         int                        indice;
         std::vector<unsigned char> bytes;
+        bool                       inteira;   // ver carregador.h
     };
 
     CRITICAL_SECTION       g_trava;
@@ -53,8 +54,9 @@ namespace
         return ok;
     }
 
-    bool LerCapa(const Pedido &p, std::vector<unsigned char> &saida)
+    bool LerCapa(const Pedido &p, std::vector<unsigned char> &saida, bool *inteira)
     {
+        *inteira = true;
         // Decide pelo CONTEUDO, nao pela extensao: o container da FreeStyle abre com
         // "FSDA", e qualquer outra coisa e imagem solta. Um .assets renomeado continua
         // funcionando, e um .jpg com nome errado nao e interpretado como container.
@@ -62,10 +64,21 @@ namespace
         if (!fsda::Ler(p.arquivo.c_str(), imagens))
             return LerInteiro(p.arquivo.c_str(), saida);
 
+        // O encarte grande e o preferido, mas NAO esta em todo jogo: numa biblioteca
+        // de 418 faltava em 73 deles, que ficavam sem capa nenhuma embora a FreeStyle
+        // os mostrasse. Ela cai na capa pequena, e nos tambem.
         const fsda::Imagem *capa = fsda::Achar(imagens, fsda::TIPO_CAPA);
+        if (capa != NULL)
+        {
+            *inteira = false;            // encarte: a tela mostra so a frente
+            return fsda::LerBytes(p.arquivo.c_str(), *capa, saida);
+        }
+
+        capa = fsda::Achar(imagens, fsda::TIPO_CAPA_PEQ);
         if (capa == NULL)
             return false;
 
+        // 220x300 e a FRENTE, nao o encarte -- vai inteira para a tela.
         return fsda::LerBytes(p.arquivo.c_str(), *capa, saida);
     }
 
@@ -101,7 +114,8 @@ namespace
 
                 Resultado r;
                 r.indice = p.indice;
-                if (!LerCapa(p, r.bytes))
+                r.inteira = true;
+                if (!LerCapa(p, r.bytes, &r.inteira))
                     r.bytes.clear();       // indice sem bytes = falhou, e a tela mostra o vazio
 
                 diario::Detalhe("lido %d: %u bytes", p.indice, (unsigned)r.bytes.size());
@@ -193,14 +207,15 @@ namespace carregador
         LeaveCriticalSection(&g_trava);
     }
 
-    bool Retirar(int *indice, std::vector<unsigned char> &bytes)
+    bool Retirar(int *indice, std::vector<unsigned char> &bytes, bool *inteira)
     {
         bool tem = false;
 
         EnterCriticalSection(&g_trava);
         if (!g_prontos.empty())
         {
-            *indice = g_prontos.front().indice;
+            *indice  = g_prontos.front().indice;
+            *inteira = g_prontos.front().inteira;
             bytes.swap(g_prontos.front().bytes);
             g_prontos.erase(g_prontos.begin());
             tem = true;

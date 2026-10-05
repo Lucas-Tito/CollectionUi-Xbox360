@@ -1118,3 +1118,37 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
      E o arranque avisa na tela, pelo balão do sistema. Biblioteca vazia sem explicação parece app
      quebrado; a informação que falta é "espere o scan terminar".
+
+133. **A capa grande não está em todo jogo — e a nota que dizia o contrário envelheceu.** O
+     `fsda.h` registrava "a capa grande estava presente em 120 de 120 jogos". Era verdade naquela
+     biblioteca. Na de 418 do HD novo, **73 jogos não têm o tipo 128**, e ficavam sem capa nenhuma
+     embora a FreeStyle os mostrasse — ela cai na capa pequena, e nós desistíamos.
+
+     Medido, não suposto: um `.assets` que falha tem máscara `0x2F` (ícone, fundo, banner,
+     capa pequena) e um que funciona tem `0xEF`, com o 128 no meio.
+
+     Agora o carregador cai no `TIPO_CAPA_PEQ` quando o 128 falta. Lição: contagem apurada contra
+     a biblioteca de uma pessoa é amostra, não invariante — e vale escrever qual era a amostra.
+
+134. **Se a capa vai inteira ou cortada é propriedade da IMAGEM, não do jogo.** A decisão 130
+     colocou isso no `Jogo`, decidido pela origem do item na varredura. Errado, e a queda do 73
+     provou: o encarte (900×600) mostra só a frente, a capa pequena (220×300) já é a frente e vai
+     inteira — **o mesmo jogo** rende uma ou outra conforme o que existir dentro do arquivo. Só
+     quem leu sabe.
+
+     O flag passou a viajar junto da textura: o carregador diz qual veio, o cache guarda ao lado
+     da imagem, e os dois pontos de desenho leem de lá. O campo no `Jogo` foi removido — duas
+     fontes de verdade que podem discordar são pior que uma.
+
+     Era o defeito que a revisão da 130 já tinha apontado, com o cenário do `.assets` renomeado
+     largado em `capas\`. Eu classifiquei como cosmético e adiei; ele voltou três dias depois
+     valendo 73 jogos.
+
+135. **Ordenar passou a trocar ponteiro, não item.** O comentário dizia "são ~120 itens, não vale
+     trazer `<algorithm>`". A conta mudou: 418 jogos, inserção é quadrática, e cada troca copiava
+     um `Jogo` de **nove `std::string`** — centenas de milhares de alocações no arranque. Agora
+     ordena um vetor de ponteiros e move cada item uma vez só, no fim.
+
+     E o arranque passou a se medir: `[N ms]` por fase no log — dispositivos, ler o banco, varrer
+     ROMs, coleções, total. "Está demorando" sem número vira adivinhação, e aqui havia quatro
+     candidatos parecidos, incluindo o `quick_check` que eu mesmo tinha acabado de acrescentar.

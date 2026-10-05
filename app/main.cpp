@@ -98,6 +98,10 @@ namespace
         int         jogoId;
         D3DTexture *textura;
         DWORD       uso;      // relógio lógico, para descartar o usado há mais tempo
+        // Viaja junto da TEXTURA, não do Jogo: o mesmo jogo rende encarte (só a frente
+        // vai para a tela) ou capa pequena (vai inteira) conforme o que existir dentro
+        // do .assets. Guardado no Jogo, as duas decisões podiam discordar.
+        bool        inteira;
     };
 
     Entrada g_cache[CACHE_MAX];
@@ -281,7 +285,9 @@ namespace
     }
 
     // ---- cache -----------------------------------------------------------------
-    D3DTexture *NoCache(int jogoId, bool marcarUso)
+    // "inteira" e opcional: so quem DESENHA precisa dele. Quem so pergunta "ja esta
+    // carregada?" passa NULL.
+    D3DTexture *NoCache(int jogoId, bool marcarUso, bool *inteira = NULL)
     {
         for (int i = 0; i < CACHE_MAX; i++)
         {
@@ -289,6 +295,8 @@ namespace
             {
                 if (marcarUso)
                     g_cache[i].uso = ++g_relogio;
+                if (inteira != NULL)
+                    *inteira = g_cache[i].inteira;
                 return g_cache[i].textura;
             }
         }
@@ -303,7 +311,7 @@ namespace
         return false;
     }
 
-    void Guardar(int jogoId, D3DTexture *textura)
+    void Guardar(int jogoId, D3DTexture *textura, bool inteira)
     {
         int alvo = -1;
         DWORD maisAntigo = 0xFFFFFFFF;
@@ -334,6 +342,7 @@ namespace
         g_cache[alvo].jogoId  = jogoId;
         g_cache[alvo].textura = textura;
         g_cache[alvo].uso     = ++g_relogio;
+        g_cache[alvo].inteira = inteira;
     }
 
     // As tres primeiras da colecao NA ORDEM DA TELA. g_jogos ja vem alfabetica de
@@ -449,9 +458,10 @@ namespace
     {
         int jogoId;
         std::vector<unsigned char> bytes;
+        bool inteira = true;
 
         // UMA por quadro. Mesmo a 3 ms, cinco de uma vez dariam um solavanco.
-        if (!carregador::Retirar(&jogoId, bytes))
+        if (!carregador::Retirar(&jogoId, bytes, &inteira))
             return;
 
         for (size_t k = 0; k < g_emVoo.size(); k++)
@@ -520,7 +530,7 @@ namespace
             GlobalMemoryStatus(&mem);
             diario::Detalhe("textura %d (%u bytes, livre %u KB)", jogoId,
                             (unsigned)bytes.size(), (unsigned)(mem.dwAvailPhys / 1024));
-            Guardar(jogoId, textura);
+            Guardar(jogoId, textura, inteira);
         }
         else
         {
@@ -985,13 +995,14 @@ namespace
             Mistura(true);
             for (int k = 0; k < n; k++)
             {
-                D3DTexture *capa = NoCache(tres[k]->id, true);
+                bool inteira = true;
+                D3DTexture *capa = NoCache(tres[k]->id, true, &inteira);
                 if (capa == NULL) continue;
 
                 // DENTRO do laco: as tres capas da colagem podem ter origens
                 // diferentes -- uma ROM e um jogo da FreeStyle no mesmo card. Calculado
                 // uma vez so la fora, a origem da primeira valeria para as tres.
-                const float u0 = tres[k]->capaInteira ? 0.0f : FRENTE_U0;
+                const float u0 = inteira ? 0.0f : FRENTE_U0;
                 XMFLOAT2 uv[4];
                 uv[0] = XMFLOAT2(u0,   0.0f);
                 uv[1] = XMFLOAT2(1.0f, 0.0f);
@@ -1322,7 +1333,8 @@ namespace
 
             // A capa é pelo ContentItemId (a pasta de arte é GameData\<id em hex>);
             // a marcação é por TitleId, que é o que a coleção guarda.
-            D3DTexture *capa = NoCache(L[i]->id, true);
+            bool inteira = true;
+            D3DTexture *capa = NoCache(L[i]->id, true, &inteira);
             bool marcado = !adicionando || SelecionadoNoRascunho(L[i]->titleId);
 
             if (capa != NULL)
@@ -1330,7 +1342,7 @@ namespace
                 // Do encarte da FreeStyle sai so a frente, de U 0,532 ate 1,0. A capa
                 // de ROM vem pronta do PC, so com a arte, e vai inteira -- o mesmo
                 // recorte aplicado nela comia a metade esquerda do desenho.
-                const float u0 = L[i]->capaInteira ? 0.0f : FRENTE_U0;
+                const float u0 = inteira ? 0.0f : FRENTE_U0;
                 ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
                     r, XMFLOAT2(u0, 0.0f), XMFLOAT2(1.0f, 0.0f),
                     XMFLOAT2(u0, 1.0f), capa);
@@ -2105,8 +2117,13 @@ void __cdecl main()
     // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
     CriarCanto();
 
+    // Relogio do arranque. Sem isto, "esta demorando" vira adivinhacao: a leitura do
+    // banco, o quick_check, a ordenacao e a varredura de ROM sao candidatos parecidos.
+    DWORD t0 = GetTickCount(), tm = t0;
+
     diario::Escrever("montando dispositivos");
     dispositivos::MontarTodos();
+    diario::Escrever("  [%u ms] dispositivos", (unsigned)(GetTickCount() - tm)); tm = GetTickCount();
 
     std::vector<biblioteca::Candidato> candidatos;
     biblioteca::ListarCandidatos(candidatos);
@@ -2126,6 +2143,7 @@ void __cdecl main()
     bool bancoOk = true;
     if (!g_caminhoBanco.empty())
         bancoOk = biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
+    diario::Escrever("  [%u ms] ler o banco", (unsigned)(GetTickCount() - tm)); tm = GetTickCount();
     diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
 
     // Biblioteca vazia sem explicacao parece app quebrado. Com a FreeStyle varrendo, e
@@ -2144,9 +2162,12 @@ void __cdecl main()
             biblioteca::Juntar(g_jogos, roms);
             diario::Escrever("biblioteca com ROMs: %d itens", (int)g_jogos.size());
         }
+        diario::Escrever("  [%u ms] varrer ROMs", (unsigned)(GetTickCount() - tm)); tm = GetTickCount();
     }
 
     colecoes::Carregar();
+    diario::Escrever("  [%u ms] colecoes / [%u ms] ARRANQUE TOTAL",
+                     (unsigned)(GetTickCount() - tm), (unsigned)(GetTickCount() - t0));
     carregador::Iniciar();
 
     // Chaves do .ini para separar hipotese sem recompilar -- o crash ao marcar e
