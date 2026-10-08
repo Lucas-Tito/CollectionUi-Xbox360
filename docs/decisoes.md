@@ -1244,3 +1244,30 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      para o id repetido**. Sem isso a renumeração apagava a própria evidência e o vínculo errado
      virava definitivo sem ninguém saber que houve escolha. A mensagem também parou de afirmar que
      consertou o disco: `Carregar` não grava, então a renumeração vale só para a sessão.
+
+140. **O Makefile não via header nenhum, e isso montou um binário com duas definições da
+     mesma struct.** A regra era `$(INT_DIR)/%.obj: %.cpp`, sem nada mais: o make comparava o
+     `.obj` com o `.cpp` e **só com ele**. Mexer num `.h` não reconstruía absolutamente nada.
+
+     O estrago apareceu ao acrescentar `arquivoRom` ao `Jogo`, em `biblioteca.h` (decisão 139).
+     Os quatro `.cpp` editados na mesma rodada foram recompilados com o `sizeof` **novo**;
+     `biblioteca.cpp`, `carregador.cpp` e `lancador.cpp` não tinham sido tocados e entraram no
+     link com o `.obj` **antigo**, 28 bytes menor por item. `biblioteca::Ler` preenchia o
+     `vector<Jogo>` com um passo e o `main.cpp` o percorria com outro: o primeiro `std::string`
+     lido no deslocamento errado virava ponteiro de lixo. Fatal crash no arranque,
+     `0xC0000005` lendo `0xFFFFFFF8`, logo depois de listar as instalações do FreeStyle.
+
+     O sintoma não acusa a causa em nada: o código estava certo, o build é que montou duas
+     verdades no mesmo `.xex`. E vinha de longe — **toda** rodada anterior em que só um header
+     mudou produziu binário misto; o acaso é que decide se o campo novo cai num lugar que
+     derruba na hora ou num que corrompe devagar.
+
+     Agora cada objeto nosso depende de **todos** os headers, e os do `vendor` só dos deles --
+     senão um comentário num `.h` nosso recompilaria o sqlite inteiro. É grosso de propósito: a
+     precisão viria do `-showIncludes` do `cl.exe`, mas a saída dele atravessa o wine com
+     caminho do Windows e teria de ser traduzida de volta a cada arquivo. Para 14 fontes não
+     paga — reconstruir tudo custa poucos minutos e não tem como errar.
+
+     Detalhe que custou uma rodada: as regras precisam ficar **depois** do `all`. O primeiro
+     alvo do arquivo é o alvo padrão do make, e com elas em cima o padrão virou o primeiro
+     `.obj` da lista -- o build passou a produzir só `diario.obj`, sem erro nenhum.

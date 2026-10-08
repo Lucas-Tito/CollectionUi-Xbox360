@@ -60,7 +60,31 @@ else
 	$(error Unknown CONFIG=$(CONFIG))
 endif
 
+# DEPENDENCIA DE HEADER, grossa de proposito.
+#
+# A regra ".obj: .cpp" sozinha so olha o .cpp: mexer num header NAO reconstruia nada.
+# Isso ja produziu um binario com DUAS definicoes da mesma struct -- biblioteca.h
+# ganhou um campo, so os .cpp editados foram recompilados, e os outros ficaram com o
+# sizeof antigo. O vetor era preenchido com um passo e percorrido com outro: fatal
+# crash lendo 0xFFFFFFF8. Ver a decisao 140.
+#
+# A precisao viria do -showIncludes do cl.exe, mas a saida dele atravessa o wine com
+# caminho do Windows e teria de ser traduzida de volta a cada arquivo. Para 14 fontes
+# nossas nao paga: reconstruir tudo custa poucos minutos e NAO tem como errar.
+#
+# O vendor nao inclui header nosso, entao so depende dos dele -- senao cada ajuste de
+# comentario num .h nosso recompilaria o sqlite inteiro.
+HEADERS_NOSSOS := $(shell find src -name '*.h') $(wildcard *.h)
+HEADERS_VENDOR := $(shell find vendor -name '*.h')
+OBJS_VENDOR    := $(filter $(INT_DIR)/vendor/%,$(OBJS))
+OBJS_NOSSOS    := $(filter-out $(OBJS_VENDOR),$(OBJS))
+
+# As regras moram DEPOIS do "all": o primeiro alvo do arquivo e o alvo padrao do
+# make, e com elas aqui em cima o padrao virava o primeiro .obj da lista.
 all: $(OUT_DIR)/$(PROJECT_NAME).xex
+
+$(OBJS_NOSSOS): $(HEADERS_NOSSOS) $(HEADERS_VENDOR) Makefile
+$(OBJS_VENDOR): $(HEADERS_VENDOR) Makefile
 
 $(OUT_DIR)/$(PROJECT_NAME).xex: $(OUT_DIR)/$(PROJECT_NAME).exe
 	@echo "Creating XEX..."
