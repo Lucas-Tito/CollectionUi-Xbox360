@@ -27,7 +27,13 @@ namespace biblioteca
         // pequena conforme o que existir dentro do .assets, e so quem LEU o arquivo
         // sabe qual veio.
 
-        Jogo() : id(0), titleId(0), tipoArquivo(0), contentType(0), discos(0) {}
+        // Só para ROM de emulador: o TitleId de quem a abre. É ele que semeia o id
+        // sintético, então sem ele o id não se reproduz fora daqui. Zero nos jogos
+        // que vêm do banco.
+        unsigned int titleIdEmulador;
+
+        Jogo() : id(0), titleId(0), tipoArquivo(0), contentType(0), discos(0),
+                 titleIdEmulador(0) {}
         // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
         // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
         // pela MESMA chamada do 1.

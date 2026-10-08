@@ -1152,3 +1152,29 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      E o arranque passou a se medir: `[N ms]` por fase no log — dispositivos, ler o banco, varrer
      ROMs, coleções, total. "Está demorando" sem número vira adivinhação, e aqui havia quatro
      candidatos parecidos, incluindo o `quick_check` que eu mesmo tinha acabado de acrescentar.
+
+136. **Export para o xbox-vault: por item de menu, e sem as coleções.** O vault conhece o catálogo
+     de jogos do mundo mas não sabe o que **este** console tem — quais ROMs existem e com que nome
+     de arquivo, qual jogo o catálogo dele não cobre, e qual id sintético uma ROM recebe aqui.
+     `game:\biblioteca.txt` entrega as três coisas, ao lado do `colecoes.txt` para quem pega um
+     pegar o outro no mesmo FTP.
+
+     **Não inclui as coleções**: o `colecoes.txt` está do lado e o vault já o lê; duplicar daria
+     duas fontes da mesma verdade. **Não é escrito no arranque**: nem toda sessão usa o vault, e
+     gravar 460 linhas a cada abertura é peso à toa.
+
+     O formato repete a disciplina do `colecoes.txt`, inclusive a lição: o cabeçalho não contém
+     barra, porque é a **barra** que distingue item de comentário. Um leitor que tratasse `#` como
+     comentário apagaria uma coleção chamada "#1 favoritos".
+
+     O `Jogo` ganhou `titleIdEmulador`. Sem ele o id sintético não se reproduz fora daqui — ele é
+     semeado pelo TitleId do emulador, e a ROM só guardava o **nome** dele, em `genero`.
+
+137. **O menu de coleção passou a dizer o que cada linha faz, em vez de deduzir pelo índice.** Ele
+     tem layout variável: união ganha uma linha a mais, e agora o export aparece mesmo sem coleção
+     nenhuma. Decidir pela posição já quase deu errado antes — num laço de desenho o índice fora
+     de escopo salvou por acaso. Cada item agora carrega a ação. Os outros menus têm layout fixo e
+     seguem decidindo pelo índice.
+
+     De quebra, `AbrirMenuColecao` deixou de voltar sem abrir nada quando não há coleção: o export
+     é da **biblioteca**, não da coleção, e quem ainda não criou nenhuma também quer exportar.

@@ -12,6 +12,7 @@
 #include "diario.h"
 #include "biblioteca.h"
 #include "emuladores.h"
+#include "exportar.h"
 #include "colecoes.h"
 #include "dispositivos.h"
 #include "config.h"
@@ -134,6 +135,13 @@ namespace
     MenuDe g_menuDe = MENU_COLECAO;
     int    g_menuFoco = 0, g_menuQtd = 0;
     const char *g_menuItens[4];
+
+    // O menu de coleção tem layout VARIÁVEL -- união ganha uma linha a mais, e sem
+    // coleção nenhuma só sobra o export. Deduzir a ação do índice já quase deu errado
+    // uma vez; aqui cada linha diz o que faz. Os outros menus têm layout fixo e
+    // continuam decidindo pelo índice.
+    enum AcaoCol { ACAO_RENOMEAR, ACAO_ORIGENS, ACAO_APAGAR, ACAO_EXPORTAR };
+    AcaoCol g_menuAcao[4];
     char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
     char   g_menuItemBuf[64] = "";   // item de menu com texto montado na hora
 
@@ -1707,26 +1715,40 @@ namespace
     void AbrirMenuColecao()
     {
         std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-        if (L.empty()) return;
 
-        CopiarTitulo(L[g_iCol]->nome);
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
-        g_menuItens[0] = "Renomear";
+        g_menuQtd = 0;
 
-        // União ganha a opção de trocar as origens; coleção de jogos não tem o que
-        // escolher ali.
-        if (L[g_iCol]->uniao)
+        // Sem coleção nenhuma o menu NÃO sai vazio: o export é da biblioteca, não da
+        // coleção, e quem ainda não criou nenhuma também quer exportar. Antes isto
+        // voltava sem abrir nada.
+        if (!L.empty())
         {
-            g_menuItens[1] = "Escolher coleções";
-            g_menuItens[2] = "Apagar coleção";
-            g_menuQtd = 3;
+            CopiarTitulo(L[g_iCol]->nome);
+
+            g_menuItens[g_menuQtd] = "Renomear";
+            g_menuAcao [g_menuQtd] = ACAO_RENOMEAR;  g_menuQtd++;
+
+            // União ganha a opção de trocar as origens; coleção de jogos não tem o
+            // que escolher ali.
+            if (L[g_iCol]->uniao)
+            {
+                g_menuItens[g_menuQtd] = "Escolher coleções";
+                g_menuAcao [g_menuQtd] = ACAO_ORIGENS;   g_menuQtd++;
+            }
+
+            g_menuItens[g_menuQtd] = "Apagar coleção";
+            g_menuAcao [g_menuQtd] = ACAO_APAGAR;    g_menuQtd++;
         }
         else
         {
-            g_menuItens[1] = "Apagar coleção";
-            g_menuQtd = 2;
+            CopiarTitulo("Opções");
         }
+
+        g_menuItens[g_menuQtd] = "Exportar para o Vault";
+        g_menuAcao [g_menuQtd] = ACAO_EXPORTAR;  g_menuQtd++;
+
         g_menuFoco = 0; g_menuAberto = true;
     }
 
@@ -1862,10 +1884,20 @@ namespace
         else if (g_menuDe == MENU_COLECAO)
         {
             std::vector<colecoes::Colecao *> Lc = colecoes::Ordenadas();
-            bool ehUniao = !Lc.empty() && Lc[g_iCol]->uniao;
+            const AcaoCol acao = g_menuAcao[g_menuFoco];
 
-            if (g_menuFoco == 0) Renomear();
-            else if (ehUniao && g_menuFoco == 1)
+            if (acao == ACAO_EXPORTAR)
+            {
+                // A lista já tem as ROMs dentro: elas entraram como itens comuns no
+                // arranque, então o vault recebe jogo e ROM pela mesma varredura.
+                std::string erro;
+                if (exportar::Biblioteca(g_jogos, erro))
+                    Avisar("biblioteca.txt gravado ao lado do colecoes.txt");
+                else
+                    Avisar(erro.c_str());
+            }
+            else if (acao == ACAO_RENOMEAR) Renomear();
+            else if (acao == ACAO_ORIGENS && !Lc.empty())
             {
                 AbrirOrigens(Lc[g_iCol]);
             }
@@ -2117,6 +2149,19 @@ void __cdecl main()
     // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
     CriarCanto();
 
+    // Ligado ANTES de ler o banco. Ficava la embaixo, junto das outras chaves do .ini,
+    // e com isso nada do arranque entrava no canal de detalhe -- quem escreve detalhe
+    // mais cedo e a propria leitura da biblioteca.
+    //
+    // Ao contrario das outras chaves, esta e desligada por PADRAO: so liga com
+    // "logDetalhe=1" explicito. Mora no diario, nao aqui, porque quem mais escreve
+    // detalhe e a thread do carregador, noutro modulo.
+    {
+        bool detalhe = config::LigadoSeDito("logDetalhe");
+        diario::DefinirDetalhe(detalhe);
+        diario::Escrever("log detalhado: %s", detalhe ? "ligado" : "desligado");
+    }
+
     // Relogio do arranque. Sem isto, "esta demorando" vira adivinhacao: a leitura do
     // banco, o quick_check, a ordenacao e a varredura de ROM sao candidatos parecidos.
     DWORD t0 = GetTickCount(), tm = t0;
@@ -2181,12 +2226,6 @@ void __cdecl main()
     if (!g_anelMarcado)
         diario::Escrever("anel do marcado DESLIGADO pelo .ini");
 
-    // Ao contrario das outras chaves, esta e desligada por PADRAO: so liga com
-    // "logDetalhe=1" explicito no .ini. Mora no diario, nao aqui, porque quem mais
-    // escreve detalhe e a thread do carregador, noutro modulo.
-    bool detalhe = config::LigadoSeDito("logDetalhe");
-    diario::DefinirDetalhe(detalhe);
-    diario::Escrever("log detalhado: %s", detalhe ? "ligado" : "desligado");
 
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
