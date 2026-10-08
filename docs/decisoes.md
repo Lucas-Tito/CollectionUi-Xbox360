@@ -1271,3 +1271,43 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      Detalhe que custou uma rodada: as regras precisam ficar **depois** do `all`. O primeiro
      alvo do arquivo é o alvo padrão do make, e com elas em cima o padrão virou o primeiro
      `.obj` da lista -- o build passou a produzir só `diario.obj`, sem erro nenhum.
+
+141. **A varredura de ROM era 86% do arranque, e o que ela mais fazia era provar que jogo não
+     é emulador.** Medido no console: 6.208 ms de 7.237 ms, para achar 41 ROMs. O laço
+     percorria todo XEX solto da biblioteca -- **223 dos 416 itens** -- e por item pagava três
+     idas ao disco: uma no `lancador::Resolver` e duas sondando `Roms` e `games`. Em 219
+     deles as três respondiam "não". São ~710 `GetFileAttributes`, dos quais **438 são
+     sondagens negativas**: 63% do custo.
+
+     Duas coisas que a leitura desmentiu e vale registrar, porque a intuição erra nas duas:
+
+     - **O `Resolver` não sonda quatro apelidos por chamada.** Ele dá `return` no primeiro
+       acerto e `"Hdd:"` é o primeiro do mapa, então jogo no HD custa **uma** chamada. A
+       conta certa é 223, não 892 -- 31% do custo, não o gargalo.
+     - **Inverter a ordem não ganha nada.** Sondar a pasta antes de resolver não deixa
+       concluir "não é emulador" sem tentar os 4 apelidos × 2 pastas. O ganho dessa família
+       vem de sondar **um nome só** ou de **não sondar**, nunca da ordem.
+
+     A saída foi **cachear as RAÍZES, nunca as ROMs** (`game:\emus.txt`). O arquivo guarda o
+     caminho do emulador e a pasta de ROM dele; as ROMs continuam saindo de um
+     `FindFirstFile` vivo a cada arranque. Essa divisão é o ponto todo: ROM posta por FTP
+     aparece no arranque seguinte, e o id sintético nunca é servido de cache -- ele continua
+     saindo do nome de arquivo do momento, que é o que o `colecoes.txt` guarda.
+
+     O carimbo de invalidação é o FNV-1a dos caminhos de todos os XEX soltos, **na memória**:
+     não custa disco nenhum, e emulador instalado ou removido muda o conjunto e força a busca
+     completa. O cache guarda o *caminho* do emulador, não os campos dele, então `titleId` e
+     nome vêm sempre do banco vivo. Rede de proteção para o que o carimbo não vê -- pasta
+     renomeada no disco sem o banco mudar, pendrive ausente hoje: um `Existe()` por raiz,
+     quatro chamadas em vez de duzentas e vinte e três.
+
+     O que foi descartado, e por quê: tirar `"games"` da lista cortaria 1,9 s e quebraria em
+     silêncio qualquer emulador que use essa pasta -- é o bug da decisão 124, que custou caro
+     para achar. Paralelizar não ajuda: um HD, uma cabeça, e 223 buscas espalhadas em três
+     threads só rendem mais seeks. Cachear o id da ROM violaria a regra de que ele sai do
+     arquivo vivo.
+
+     Junto, uma correção em `dispositivos.cpp`: `APELIDOS[]` era preenchido **incondicional**,
+     com o `hr` indo só para o log. **Não muda nada neste console** -- `ObCreateSymbolicLink`
+     devolve `S_OK` mesmo para dispositivo ausente, como o log mostra nos três `Usb`, porque
+     criar o link não exige que o alvo exista. Fica porque é o certo, não porque mediu ganho.

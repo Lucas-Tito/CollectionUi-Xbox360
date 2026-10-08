@@ -271,6 +271,198 @@ namespace emuladores
                              emu.nome.c_str(), quantas, raiz.c_str());
     }
 
+    namespace
+    {
+        // Onde o laco caro ja achou raiz de ROM, para o arranque seguinte nao repetir
+        // o passeio pelos 223 XEX soltos. Guarda a RAIZ, nunca a ROM: as ROMs continuam
+        // saindo de um FindFirstFile vivo, senao uma ROM nova so apareceria no arranque
+        // depois -- e, pior, o id sintetico poderia ser servido de cache para um arquivo
+        // que nao existe mais.
+        const char *ARQ_CACHE = "game:\\emus.txt";
+
+        // Identidade do conjunto de XEX soltos. Nao toca o disco: sai do g_jogos que ja
+        // esta na memoria. Emulador instalado ou removido muda o conjunto de caminhos,
+        // o carimbo erra e a busca completa roda de novo.
+        unsigned int CarimboDeXexSoltos(const std::vector<biblioteca::Jogo> &jogos)
+        {
+            unsigned int h = 2166136261u;
+            for (size_t i = 0; i < jogos.size(); i++)
+            {
+                if (jogos[i].tipoArquivo != 1)
+                    continue;
+                const std::string &c = jogos[i].caminho;
+                for (size_t k = 0; k < c.size(); k++)
+                {
+                    h ^= (unsigned char)c[k];
+                    h *= 16777619u;
+                }
+                h ^= (unsigned char)'\n';      // separador: "ab"+"c" nao pode dar "a"+"bc"
+                h *= 16777619u;
+            }
+            return h;
+        }
+
+        const biblioteca::Jogo *PorCaminho(const std::vector<biblioteca::Jogo> &jogos,
+                                           const std::string &caminho)
+        {
+            for (size_t i = 0; i < jogos.size(); i++)
+                if (jogos[i].caminho == caminho)
+                    return &jogos[i];
+            return NULL;
+        }
+
+        // Devolve true so com o cache INTEIRO valido. O cache guarda o caminho do
+        // emulador, nao os campos dele: o titleId e o nome vem sempre do banco vivo, e
+        // assim nao ha como servir dado velho de emulador.
+        bool LerCache(unsigned int carimbo,
+                      std::vector<std::string> &caminhos, std::vector<std::string> &raizes)
+        {
+            caminhos.clear();
+            raizes.clear();
+
+            FILE *f = fopen(ARQ_CACHE, "r");
+            if (f == NULL)
+                return false;
+
+            bool viCarimbo = false;
+            char linha[1024];
+            while (fgets(linha, sizeof(linha), f) != NULL)
+            {
+                std::string s = linha;
+                while (!s.empty() && (s[s.size() - 1] == '\n' || s[s.size() - 1] == '\r'))
+                    s.erase(s.size() - 1);
+                if (s.empty() || s[0] == '#')
+                    continue;
+
+                if (!viCarimbo)
+                {
+                    // Primeira linha util e o carimbo, em hexa. Errou, nao le o resto.
+                    unsigned int lido = 0;
+                    if (sscanf(s.c_str(), "%x", &lido) != 1 || lido != carimbo)
+                    {
+                        fclose(f);
+                        return false;
+                    }
+                    viCarimbo = true;
+                    continue;
+                }
+
+                const size_t barra = s.find('|');
+                if (barra == std::string::npos)
+                    continue;
+                caminhos.push_back(s.substr(0, barra));
+                raizes.push_back(s.substr(barra + 1));
+            }
+            fclose(f);
+            return viCarimbo;
+        }
+
+        void GravarCache(unsigned int carimbo,
+                         const std::vector<std::string> &caminhos,
+                         const std::vector<std::string> &raizes)
+        {
+            FILE *f = fopen(ARQ_CACHE, "w");
+            if (f == NULL)
+            {
+                diario::Escrever("AVISO: nao consegui gravar %s", ARQ_CACHE);
+                return;
+            }
+            fprintf(f, "# CollectionUI: onde varrer ROM. Apague para forcar nova busca.\n");
+            fprintf(f, "%08X\n", carimbo);
+            for (size_t i = 0; i < raizes.size(); i++)
+                fprintf(f, "%s|%s\n", caminhos[i].c_str(), raizes[i].c_str());
+            fclose(f);
+        }
+
+        // O laco caro: passeia por todo XEX solto da biblioteca atras de pasta de ROM.
+        // E ele que o cache existe para pular.
+        void Descobrir(const std::vector<biblioteca::Jogo> &jogos,
+                       std::vector<std::string> &caminhos, std::vector<std::string> &raizes)
+        {
+            DWORD msResolver = 0, msSondar = 0;
+            int   soltos = 0, semArquivo = 0;
+
+            for (size_t e = 0; e < jogos.size(); e++)
+            {
+                const biblioteca::Jogo &emu = jogos[e];
+
+                // So XEX solto: um emulador empacotado em container nao tem pasta de ROM ao
+                // lado para varrer.
+                if (emu.tipoArquivo != 1)
+                    continue;
+                soltos++;
+
+                // Pelo dispositivo de verdade, nao supondo Hdd: -- o emulador pode estar num
+                // pendrive, e e o lancador que ja sabe sondar os apelidos.
+                DWORD t = GetTickCount();
+                std::string xex = lancador::Resolver(emu.caminho);
+                msResolver += GetTickCount() - t;
+                if (xex.empty())
+                {
+                    semArquivo++;       // linha morta do content.db: jogo que saiu do disco
+                    continue;
+                }
+
+                std::string pasta = PastaDo(xex);
+                if (pasta.empty())
+                    continue;
+
+                t = GetTickCount();
+                for (int k = 0; k < QUANTAS_PASTAS; k++)
+                {
+                    std::string raiz = pasta + "\\" + PASTAS[k];
+                    if (!Existe(raiz))
+                        continue;
+                    caminhos.push_back(emu.caminho);
+                    raizes.push_back(raiz);
+                }
+                msSondar += GetTickCount() - t;
+            }
+
+            diario::Escrever("  busca completa: %d XEX soltos, %u ms resolvendo "
+                             "(%d sem arquivo no disco), %u ms sondando pasta de ROM",
+                             soltos, (unsigned)msResolver, semArquivo, (unsigned)msSondar);
+        }
+
+        // A pasta de ROM e, depois, UM nivel de subpasta. O FBANext guarda tudo em
+        // subpasta por sistema (Arcade, megadrive, neocdz, pce) e sem isto nenhuma ROM
+        // dele aparecia. Um nivel so, de proposito: varrer fundo custa tempo de arranque
+        // e entra em pasta de save e de arte.
+        //
+        // Isto roda SEMPRE, com cache ou sem: e o trabalho util, e e o que faz uma ROM
+        // posta por FTP aparecer ja no arranque seguinte.
+        void VarrerRaiz(const biblioteca::Jogo &emu, const std::string &raiz,
+                        const std::string &pastaDoApp,
+                        std::vector<biblioteca::Jogo> &saida)
+        {
+            std::vector<std::string> ondeVarrer, rotulos;
+            ondeVarrer.push_back(raiz);
+            rotulos.push_back("");
+
+            WIN32_FIND_DATA sub;
+            HANDLE bsub = FindFirstFile((raiz + "\\*").c_str(), &sub);
+            if (bsub != INVALID_HANDLE_VALUE)
+            {
+                do
+                {
+                    if (!(sub.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+                        continue;
+                    if (strcmp(sub.cFileName, ".") == 0 ||
+                        strcmp(sub.cFileName, "..") == 0)
+                        continue;
+
+                    ondeVarrer.push_back(raiz + "\\" + sub.cFileName);
+                    rotulos.push_back(std::string(sub.cFileName) + "\\");
+                }
+                while (FindNextFile(bsub, &sub));
+                FindClose(bsub);
+            }
+
+            for (size_t d = 0; d < ondeVarrer.size(); d++)
+                Varrer(emu, ondeVarrer[d], rotulos[d], pastaDoApp, saida);
+        }
+    }
+
     void Ler(const std::vector<biblioteca::Jogo> &jogos,
              const std::string &pastaDoApp,
              std::vector<biblioteca::Jogo> &saida)
@@ -278,61 +470,36 @@ namespace emuladores
         saida.clear();
         CarregarNomes(pastaDoApp);
 
-        for (size_t e = 0; e < jogos.size(); e++)
+        std::vector<std::string> caminhos, raizes;
+        const unsigned int carimbo = CarimboDeXexSoltos(jogos);
+        bool doCache = LerCache(carimbo, caminhos, raizes);
+
+        if (doCache)
         {
-            const biblioteca::Jogo &emu = jogos[e];
+            // Rede de protecao para o que o carimbo nao ve: a pasta renomeada no
+            // disco sem o banco mudar, ou o pendrive que nao esta montado hoje.
+            // Custa uma chamada por raiz -- quatro, nao duzentas e vinte e tres.
+            for (size_t i = 0; i < raizes.size() && doCache; i++)
+                if (PorCaminho(jogos, caminhos[i]) == NULL || !Existe(raizes[i]))
+                    doCache = false;
+        }
 
-            // So XEX solto: um emulador empacotado em container nao tem pasta de ROM ao
-            // lado para varrer.
-            if (emu.tipoArquivo != 1)
-                continue;
+        if (!doCache)
+        {
+            caminhos.clear();
+            raizes.clear();
+            Descobrir(jogos, caminhos, raizes);
+            GravarCache(carimbo, caminhos, raizes);
+        }
 
-            // Pelo dispositivo de verdade, nao supondo Hdd: -- o emulador pode estar num
-            // pendrive, e e o lancador que ja sabe sondar os apelidos.
-            std::string xex = lancador::Resolver(emu.caminho);
-            if (xex.empty())
-                continue;
+        diario::Escrever("  onde varrer: %d raiz(es), %s",
+                         (int)raizes.size(), doCache ? "do cache" : "busca completa");
 
-            std::string pasta = PastaDo(xex);
-            if (pasta.empty())
-                continue;
-
-            for (int k = 0; k < QUANTAS_PASTAS; k++)
-            {
-                std::string raiz = pasta + "\\" + PASTAS[k];
-                if (!Existe(raiz))
-                    continue;
-
-                // A pasta de ROM e, depois, UM nivel de subpasta. O FBANext guarda
-                // tudo em subpasta por sistema (Arcade, megadrive, neocdz, pce) e sem
-                // isto nenhuma ROM dele aparecia. Um nivel so, de proposito: varrer
-                // fundo custa tempo de arranque e entra em pasta de save e de arte.
-                std::vector<std::string> ondeVarrer, rotulos;
-                ondeVarrer.push_back(raiz);
-                rotulos.push_back("");
-
-                WIN32_FIND_DATA sub;
-                HANDLE bsub = FindFirstFile((raiz + "\\*").c_str(), &sub);
-                if (bsub != INVALID_HANDLE_VALUE)
-                {
-                    do
-                    {
-                        if (!(sub.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-                            continue;
-                        if (strcmp(sub.cFileName, ".") == 0 ||
-                            strcmp(sub.cFileName, "..") == 0)
-                            continue;
-
-                        ondeVarrer.push_back(raiz + "\\" + sub.cFileName);
-                        rotulos.push_back(std::string(sub.cFileName) + "\\");
-                    }
-                    while (FindNextFile(bsub, &sub));
-                    FindClose(bsub);
-                }
-
-                for (size_t d = 0; d < ondeVarrer.size(); d++)
-                    Varrer(emu, ondeVarrer[d], rotulos[d], pastaDoApp, saida);
-            }
+        for (size_t i = 0; i < raizes.size(); i++)
+        {
+            const biblioteca::Jogo *emu = PorCaminho(jogos, caminhos[i]);
+            if (emu != NULL)
+                VarrerRaiz(*emu, raizes[i], pastaDoApp, saida);
         }
 
         diario::Escrever("ROMs de emulador encontradas: %d", (int)saida.size());

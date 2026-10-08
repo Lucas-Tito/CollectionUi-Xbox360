@@ -37,6 +37,7 @@ namespace
     const int QUANTOS = sizeof(MAPA) / sizeof(MAPA[0]);
 
     const char *APELIDOS[QUANTOS + 1];
+    int         QUANTOS_VIVOS = 0;
 
     HRESULT Montar(const char *apelido, const char *dispositivo)
     {
@@ -56,21 +57,30 @@ namespace dispositivos
 {
     void MontarTodos()
     {
+        QUANTOS_VIVOS = 0;
         for (int i = 0; i < QUANTOS; i++)
         {
             HRESULT hr = Montar(MAPA[i].apelido, MAPA[i].dispositivo);
-            APELIDOS[i] = MAPA[i].apelido;
+
+            // So entra na lista o que MONTOU. Antes entrava sempre e o hr ia apenas
+            // para o log, entao um console sem pendrive seguia sondando Usb0:, Usb1: e
+            // Usb2: em toda busca de caminho. Nao custa nada para jogo que esta no HD
+            // (o Resolver acerta no primeiro), mas cada linha morta do content.db --
+            // jogo apagado do disco que ficou no banco -- pagava tres chamadas a toa.
+            if (SUCCEEDED(hr))
+                APELIDOS[QUANTOS_VIVOS++] = MAPA[i].apelido;
+
             diario::Escrever("  montar %-6s -> %-32s hr = 0x%08X%s",
                              MAPA[i].apelido, MAPA[i].dispositivo, hr,
                              SUCCEEDED(hr) ? "" : "  (pode ser normal: dispositivo ausente)");
         }
-        APELIDOS[QUANTOS] = NULL;
+        APELIDOS[QUANTOS_VIVOS] = NULL;
     }
 
     const char *const *Apelidos(int *quantos)
     {
         if (quantos != NULL)
-            *quantos = QUANTOS;
+            *quantos = QUANTOS_VIVOS;
         return APELIDOS;
     }
 }
