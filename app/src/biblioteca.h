@@ -28,9 +28,13 @@ namespace biblioteca
         // sabe qual veio.
 
         // Só para ROM de emulador: o TitleId de quem a abre. É ele que semeia o id
-        // sintético, então sem ele o id não se reproduz fora daqui. Zero nos jogos
-        // que vêm do banco.
+        // sintético, junto do campo abaixo. Zero nos jogos que vêm do banco.
         unsigned int titleIdEmulador;
+        // Só para ROM: o nome do arquivo dentro da pasta de ROMs ("Arcade\\smw.smc"),
+        // que é a OUTRA metade da semente do id sintético. O "nome" acima não serve:
+        // ele pode ser o rótulo do nomes.txt, que é escolhido por quem edita o arquivo
+        // e não entra no cálculo. Sem este campo o id não se reproduz fora daqui.
+        std::string  arquivoRom;
 
         Jogo() : id(0), titleId(0), tipoArquivo(0), contentType(0), discos(0),
                  titleIdEmulador(0) {}

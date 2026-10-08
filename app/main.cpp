@@ -120,6 +120,9 @@ namespace
 
     std::string                   g_caminhoBanco;
     std::vector<biblioteca::Jogo> g_jogos;
+    // Se o banco FOI LIDO. Lista vazia nao distingue console sem jogo de leitura que
+    // falhou, e o export precisa dessa diferenca -- ver exportar.h.
+    bool g_bancoOk = true;
 
     Tela g_tela = TELA_COLECOES;
     colecoes::Colecao *g_atual = NULL;
@@ -1891,7 +1894,7 @@ namespace
                 // A lista já tem as ROMs dentro: elas entraram como itens comuns no
                 // arranque, então o vault recebe jogo e ROM pela mesma varredura.
                 std::string erro;
-                if (exportar::Biblioteca(g_jogos, erro))
+                if (exportar::Biblioteca(g_jogos, g_bancoOk, erro))
                     Avisar("biblioteca.txt gravado ao lado do colecoes.txt");
                 else
                     Avisar(erro.c_str());
@@ -1901,7 +1904,10 @@ namespace
             {
                 AbrirOrigens(Lc[g_iCol]);
             }
-            else
+            // Comparacao EXPLICITA, e nao um "else": apagar e a acao destrutiva, e
+            // como fallback ela recebia tudo o que nao casasse acima -- inclusive uma
+            // acao nova que alguem acrescentasse ao enum sem mexer nesta cadeia.
+            else if (acao == ACAO_APAGAR)
             {
                 // Nao apaga aqui: abre a confirmacao.
                 std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
@@ -2185,15 +2191,15 @@ void __cdecl main()
         config::GravarBanco(g_caminhoBanco);
     }
 
-    bool bancoOk = true;
+    g_bancoOk = true;
     if (!g_caminhoBanco.empty())
-        bancoOk = biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
+        g_bancoOk = biblioteca::Ler(g_caminhoBanco.c_str(), g_jogos);
     diario::Escrever("  [%u ms] ler o banco", (unsigned)(GetTickCount() - tm)); tm = GetTickCount();
     diario::Escrever("biblioteca: %d jogos", (int)g_jogos.size());
 
     // Biblioteca vazia sem explicacao parece app quebrado. Com a FreeStyle varrendo, e
     // so esperar o scan acabar -- mas isso o usuario precisa ser informado.
-    if (!bancoOk)
+    if (!g_bancoOk)
         Avisar("Nao consegui ler a biblioteca. A FreeStyle esta varrendo? Tente depois.");
 
     // As ROMs entram como itens comuns, e dai em diante nada no app sabe que elas sao

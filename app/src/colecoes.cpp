@@ -98,6 +98,14 @@ namespace colecoes
         while (fgets(pedaco, sizeof(pedaco), f) != NULL)
         {
             saida += pedaco;
+            // fgets devolve não-NULL mesmo quando o que leu começa com byte NULO, e aí
+            // o += não acrescenta caractere nenhum. Sem este guarda, saida.size() - 1
+            // é (size_t)-1 e o operator[] do Release indexa 4 GB adiante: fatal crash.
+            //
+            // Não é hipótese: o Gravar abre com "w", que trunca na hora. Console
+            // desligado no meio da regravação deixa o cluster já alocado cheio de
+            // zeros, e o app morria em TODO arranque até alguém apagar o arquivo.
+            if (saida.empty()) continue;
             if (saida[saida.size() - 1] == '\n')
                 return true;
         }
@@ -228,9 +236,30 @@ namespace colecoes
                 if (g_lista[k]->id != g_lista[i]->id)
                     continue;
 
-                int novo = ProximoId();
-                diario::Escrever("colecao '%s' tinha o id %d repetido; virou %d",
-                                 g_lista[i]->nome.c_str(), g_lista[i]->id, novo);
+                const int repetido = g_lista[i]->id;
+                const int novo = ProximoId();
+                diario::Escrever("colecao '%s' tinha o id %d repetido com '%s'; "
+                                 "virou %d NESTA SESSAO (o disco so muda na proxima "
+                                 "gravacao)",
+                                 g_lista[i]->nome.c_str(), repetido,
+                                 g_lista[k]->nome.c_str(), novo);
+
+                // Qual das duas a uniao queria e INDECIDIVEL: o arquivo guarda o
+                // numero, nao a intencao. Fica com a primeira, que e quem o PorId ja
+                // devolvia -- mas a ambiguidade tem de deixar rastro, senao a
+                // renumeracao apaga a evidencia e o vinculo errado vira definitivo
+                // sem ninguem nunca saber que houve escolha.
+                for (size_t u = 0; u < g_lista.size(); u++)
+                {
+                    if (!g_lista[u]->uniao) continue;
+                    for (size_t o = 0; o < g_lista[u]->origens.size(); o++)
+                        if (g_lista[u]->origens[o] == repetido)
+                            diario::Escrever("  AVISO: a uniao '%s' aponta para o id "
+                                             "%d e ficou com '%s'; confira",
+                                             g_lista[u]->nome.c_str(), repetido,
+                                             g_lista[k]->nome.c_str());
+                }
+
                 g_lista[i]->id = novo;
                 break;
             }
@@ -313,8 +342,6 @@ namespace colecoes
         return s;
     }
 
-    // O ponteiro devolvido é estável: g_lista guarda ponteiros, então nem push_back
-    // nem erase mexem no endereço das outras coleções.
     // Id de coleção é SORTEADO, não sequencial.
     //
     // O arquivo tem dois editores -- este app e o xbox-vault, no PC -- e os dois
@@ -332,8 +359,12 @@ namespace colecoes
     {
         if (g_semente == 0)
         {
-            // Hora desde o boot misturada com o endereço de uma variável: dois
-            // consoles ligados no mesmo instante não partem do mesmo ponto.
+            // A entropia vem do GetTickCount, e só dele. O endereço entra porque é
+            // de graça, mas NÃO conta como aleatoriedade: g_semente é global num .xex
+            // sem ASLR, então o endereço é o mesmo byte a byte em todo console que
+            // rode este build. Quem sincroniza dois consoles ligados juntos está
+            // apostando no relógio -- e em 31 bits, com dezenas de coleções, a aposta
+            // paga.
             g_semente = (unsigned int)GetTickCount() ^
                         (unsigned int)(ULONG_PTR)&g_semente;
             if (g_semente == 0) g_semente = 1;
@@ -353,13 +384,19 @@ namespace colecoes
         }
 
         // 64 sorteios sem achar um livre não acontece com dezenas de coleções. Se
-        // acontecer, cair no sequencial é melhor que devolver id repetido.
-        int maior = 0;
-        for (size_t i = 0; i < g_lista.size(); i++)
-            if (g_lista[i]->id > maior) maior = g_lista[i]->id;
-        return maior + 1;
+        // acontecer, o MENOR id livre é melhor que "maior + 1": o sorteio pode ter
+        // devolvido 0x7FFFFFFF a alguém, e aí maior + 1 estoura o int com sinal e
+        // volta negativo. Id negativo no arquivo não passa no teste de formato novo
+        // (o '-' não é dígito), a linha cai na migração do formato antigo e a coleção
+        // perde todos os jogos. Procurando de baixo isso não tem como acontecer, e o
+        // laço termina sempre: há no máximo g_lista.size() ids ocupados.
+        for (int id = 1; id <= (int)g_lista.size() + 1; id++)
+            if (PorId(id) == NULL) return id;
+        return 1;       // inalcançável: o laço acima só sai achando
     }
 
+    // O ponteiro devolvido é estável: g_lista guarda ponteiros, então nem push_back
+    // nem erase mexem no endereço das outras coleções.
     Colecao *Criar(const std::string &nome)
     {
         Colecao *c = new Colecao();
@@ -392,8 +429,10 @@ namespace colecoes
                 delete g_lista[i];
                 g_lista.erase(g_lista.begin() + i);
                 // Antes de gravar: senao o id apagado fica pendurado em alguma uniao
-                // no disco, e o proximo ProximoId() pode devolver esse mesmo id a uma
-                // colecao nova -- que entraria na uniao sem ninguem ter pedido.
+                // no disco. O motivo original era pior -- o ProximoId sequencial podia
+                // devolver esse mesmo id a uma colecao nova, que entraria na uniao sem
+                // ninguem ter pedido. Com id sorteado em 31 bits o reuso deixou de
+                // preocupar, mas uniao com origem morta continua sendo lixo no arquivo.
                 LimparUnioes();
                 Gravar();
                 return;

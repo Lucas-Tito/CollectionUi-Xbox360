@@ -1198,3 +1198,49 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      renumerado e registrado no log. Antes o `PorId` devolvia o primeiro e seguia calado. Renumera
      o **segundo**, porque é o primeiro que o `PorId` já devolvia — as uniões que existem hoje
      continuam apontando para onde apontavam.
+
+139. **A revisão das decisões 136–138 achou seis defeitos; o pior era o export mentir.**
+     `biblioteca::Ler` faz `saida.clear()` quando para por corrupção (decisão 135), então
+     **biblioteca não lida e console sem jogo chegam ao export como a mesma lista vazia**. O
+     `exportar::Biblioteca` não distinguia: escrevia só o cabeçalho e devolvia `true`, com balão de
+     sucesso. No caso exato que a decisão 135 existe para tratar — FreeStyle varrendo em paralelo —
+     o vault receberia um inventário vazio com cara de verdade e trataria todo TitleId do
+     `colecoes.txt` como referência órfã. Agora o export recebe o `bancoOk` e **recusa**: o estado
+     "não sei" não vira arquivo.
+
+     Os outros cinco:
+
+     - **O `biblioteca.txt` não entregava o que a decisão 136 prometia.** Para ROM, `caminho` era o
+       do **emulador** (igual para todas as ROMs do mesmo sistema) e `nome` era o rótulo do
+       `nomes.txt`. O id sintético é `FNV-1a(titleId do emulador, arquivo)`, e o **arquivo** nunca
+       saía do console: o vault recebia metade da semente e não podia conferir nem prever um id.
+       Entrou o campo `arquivoRom` no `Jogo`, e o formato ganhou uma coluna `item` com o
+       `ContentItemId` — porque **TitleId não é chave**: disco 2 e instalação repetida compartilham
+       o do disco 1 (4 pares em 120 itens, ver `colecoes.h`), e as duas linhas só se distinguem por
+       ele.
+     - **`ACAO_APAGAR` era escrito e nunca lido.** A decisão 137 criou o enum para tirar a
+       adivinhação por índice e deixou justamente a ação destrutiva como `else` — ela recebia tudo
+       o que não casasse acima, inclusive uma ação nova que alguém acrescentasse ao enum sem mexer
+       na cadeia. Agora é comparação explícita.
+     - **`colecoes.txt` com cauda de bytes nulos derrubava o console em todo arranque.** `fgets`
+       devolve não-NULL quando o que leu começa com `\0`, e aí `saida += pedaco` não acrescenta
+       nada: `saida[saida.size() - 1]` indexa `(size_t)-1`. E o `Gravar` abre com `"w"`, que trunca
+       na hora — console desligado no meio da regravação deixa o cluster alocado cheio de zeros. O
+       app morria até alguém apagar o arquivo por FTP. Pré-existente, e o pior modo de falha que o
+       arquivo tinha.
+     - **Nenhum erro de escrita era detectado.** Disco cheio dava arquivo truncado com balão de
+       sucesso: o erro aparece no flush, que acontece no `fclose`, e ninguém olhava o retorno.
+       Agora olha, e o arquivo ganhou rodapé com a contagem, para o vault também detectar corte.
+     - **O fallback do `ProximoId` podia devolver id NEGATIVO.** O sorteio pode produzir
+       `0x7FFFFFFF`; com ele em uso e 64 sorteios falhos, `maior + 1` estoura o `int` com sinal. Id
+       negativo não passa no teste de formato novo (o `-` não é dígito), a linha cai na migração do
+       formato antigo e a coleção **perde todos os jogos**. Virou busca do menor id livre, que não
+       pode estourar. De quebra, sai de cena o `maior + 1` que a decisão 138 descreve como quebrado
+       com dois editores.
+
+     E uma correção de honestidade na rede de proteção da 138: a renumeração **não olha `origens`**,
+     e qual das duas coleções a união queria é **indecidível** — o arquivo guarda o número, não a
+     intenção. Fica com a primeira, como antes, mas agora **registra no log cada união que apontava
+     para o id repetido**. Sem isso a renumeração apagava a própria evidência e o vínculo errado
+     virava definitivo sem ninguém saber que houve escolha. A mensagem também parou de afirmar que
+     consertou o disco: `Carregar` não grava, então a renumeração vale só para a sessão.

@@ -251,6 +251,7 @@ namespace emuladores
             r.contentType    = emu.contentType;
             r.discos         = 1;
             r.titleIdEmulador = emu.titleId;
+            r.arquivoRom      = rotulo + nome;   // exatamente o que semeia o id acima
 
             // A arte e um arquivo solto com o nome da ROM. Nada de casamento
             // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.
