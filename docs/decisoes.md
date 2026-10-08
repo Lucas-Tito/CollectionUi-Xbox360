@@ -1178,3 +1178,23 @@ erradas minhas. O que resolveu não foi nenhuma delas.
 
      De quebra, `AbrirMenuColecao` deixou de voltar sem abrir nada quando não há coleção: o export
      é da **biblioteca**, não da coleção, e quem ainda não criou nenhuma também quer exportar.
+
+138. **Id de coleção passou a ser sorteado, não sequencial.** O `colecoes.txt` tem **dois
+     editores** — este app e o xbox-vault, no PC — e os dois criavam id como `maior + 1` sobre as
+     coleções vivas. Duas consequências:
+
+     - apagar a de maior id devolvia aquele número ao estoque, e a próxima criada o reusava;
+     - criar uma de cada lado antes de sincronizar dava o **mesmo id para coleções diferentes**.
+
+     A partir daí, uma união aponta para a coleção errada — e em silêncio. Sortear em 31 bits
+     (xorshift32, semeado com `GetTickCount` misturado ao endereço de uma variável) resolve **sem
+     os dois lados combinarem nada**, que é a única coisa que funciona quando não há coordenação.
+     Faixa, contador compartilhado e "maior já usado" resolveriam só o caso de apagar e recriar,
+     não o de criar dos dois lados.
+
+     Não exige migração: os ids pequenos que já existem continuam valendo, só os novos mudam.
+
+     Rede de proteção junto: id repetido no arquivo passa a ser **detectado na leitura**,
+     renumerado e registrado no log. Antes o `PorId` devolvia o primeiro e seguia calado. Renumera
+     o **segundo**, porque é o primeiro que o `PorId` já devolvia — as uniões que existem hoje
+     continuam apontando para onde apontavam.

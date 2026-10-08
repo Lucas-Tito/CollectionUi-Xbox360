@@ -29,6 +29,10 @@ namespace
 
 namespace colecoes
 {
+    // Definida depois do Carregar, que a usa: é ela que sorteia id para a linha do
+    // formato antigo e para a que vier com id repetido.
+    int ProximoId();
+
     Colecao *PorId(int id)
     {
         for (size_t i = 0; i < g_lista.size(); i++)
@@ -205,12 +209,32 @@ namespace colecoes
         }
         fclose(f);
 
-        // Quem veio do formato antigo ganha id agora, acima do maior ja usado.
-        int maior = 0;
+        // Quem veio do formato antigo ganha id agora.
         for (size_t i = 0; i < g_lista.size(); i++)
-            if (g_lista[i]->id > maior) maior = g_lista[i]->id;
+            if (g_lista[i]->id == 0) g_lista[i]->id = ProximoId();
+
+        // Id repetido no arquivo: até agora o PorId devolvia o primeiro e seguia em
+        // SILÊNCIO, e uma união que apontasse para aquele id ficava presa na coleção
+        // errada para sempre. Com dois editores isso deixou de ser teórico, então
+        // vale detectar, renumerar a segunda e registrar.
+        //
+        // Renumerar a SEGUNDA, não a primeira, porque é a primeira que o PorId já
+        // devolvia -- as uniões que existem hoje continuam apontando para onde
+        // apontavam.
         for (size_t i = 0; i < g_lista.size(); i++)
-            if (g_lista[i]->id == 0) g_lista[i]->id = ++maior;
+        {
+            for (size_t k = 0; k < i; k++)
+            {
+                if (g_lista[k]->id != g_lista[i]->id)
+                    continue;
+
+                int novo = ProximoId();
+                diario::Escrever("colecao '%s' tinha o id %d repetido; virou %d",
+                                 g_lista[i]->nome.c_str(), g_lista[i]->id, novo);
+                g_lista[i]->id = novo;
+                break;
+            }
+        }
 
         LimparUnioes();
 
@@ -291,8 +315,45 @@ namespace colecoes
 
     // O ponteiro devolvido é estável: g_lista guarda ponteiros, então nem push_back
     // nem erase mexem no endereço das outras coleções.
+    // Id de coleção é SORTEADO, não sequencial.
+    //
+    // O arquivo tem dois editores -- este app e o xbox-vault, no PC -- e os dois
+    // criavam id como "maior + 1" sobre as coleções vivas. Apagar a de maior id
+    // devolvia aquele número ao estoque, e criar uma de cada lado antes de
+    // sincronizar dava o MESMO id para coleções diferentes. A partir daí uma união
+    // aponta para a errada, em silêncio.
+    //
+    // Sortear em 31 bits resolve sem os dois lados combinarem nada, que é a única
+    // forma que funciona quando não há coordenação entre eles. Os ids pequenos que já
+    // existem continuam valendo: só os novos mudam.
+    unsigned int g_semente = 0;
+
     int ProximoId()
     {
+        if (g_semente == 0)
+        {
+            // Hora desde o boot misturada com o endereço de uma variável: dois
+            // consoles ligados no mesmo instante não partem do mesmo ponto.
+            g_semente = (unsigned int)GetTickCount() ^
+                        (unsigned int)(ULONG_PTR)&g_semente;
+            if (g_semente == 0) g_semente = 1;
+        }
+
+        for (int tentativa = 0; tentativa < 64; tentativa++)
+        {
+            // xorshift32: cabe em três linhas e não depende do rand() da CRT, que
+            // devolve só 15 bits -- metade do que precisamos.
+            g_semente ^= g_semente << 13;
+            g_semente ^= g_semente >> 17;
+            g_semente ^= g_semente << 5;
+
+            int id = (int)(g_semente & 0x7FFFFFFF);
+            if (id > 0 && PorId(id) == NULL)
+                return id;
+        }
+
+        // 64 sorteios sem achar um livre não acontece com dezenas de coleções. Se
+        // acontecer, cair no sequencial é melhor que devolver id repetido.
         int maior = 0;
         for (size_t i = 0; i < g_lista.size(); i++)
             if (g_lista[i]->id > maior) maior = g_lista[i]->id;
