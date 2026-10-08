@@ -1311,3 +1311,35 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      com o `hr` indo só para o log. **Não muda nada neste console** -- `ObCreateSymbolicLink`
      devolve `S_OK` mesmo para dispositivo ausente, como o log mostra nos três `Usb`, porque
      criar o link não exige que o alvo exista. Fica porque é o certo, não porque mediu ganho.
+
+142. **O export virou arquivo único, `vault.txt`, e perdeu a data de geração.** Eram duas
+     mudanças pequenas na mesma função, puxadas pela mesma pergunta: o que o vault precisa
+     *importar* e no que ele pode *confiar*.
+
+     O `biblioteca.txt` entregava os itens e deixava as coleções de fora, e a justificativa
+     escrita no cabeçalho era "não ter duas fontes da mesma verdade". O raciocínio estava
+     errado. O `colecoes.txt` é o arquivo **vivo**, que o app lê no arranque e reescreve a
+     cada marcação; o export é um **retrato morto**, gerado sob demanda e nunca lido de
+     volta. Retrato que duplica o original não disputa verdade com ele -- quem manda continua
+     sendo o único que o app reabre. O risco real era o oposto do que estava escrito: dois
+     arquivos para importar, que podem ser pegos em momentos diferentes e descrever consoles
+     diferentes. Um `colecoes.txt` de ontem com um `biblioteca.txt` de hoje produz órfão que
+     não existe. Com os dois na mesma gravação isso deixa de ser possível por construção.
+
+     As coleções saem como `COLECAO|id|tipo|nome|conteudo`, que é a linha do `colecoes.txt`
+     com prefixo: o vault reusa o parser que já tem. Vão **depois** dos itens, para que todo
+     TitleId já tenha sido visto quando o conteúdo de uma coleção for resolvido. O nome do
+     arquivo mudou junto, e só por isso: `biblioteca.txt` passou a descrever mal o conteúdo.
+     Uma troca de nome sozinha teria sido ruído -- foi recusada antes, com razão.
+
+     A data de geração, pedida pelo vault e implementada na decisão 141, **foi removida em
+     vez de corrigida**. O relógio do 360 sem rede volta para 2005, e `GetLocalTime` não tem
+     como avisar que está perdido: a linha sairia errada com a mesma cara de certa, e o vault
+     ordenaria inventários por ela. Um campo que mente em silêncio é pior que campo ausente.
+     Cogitou-se um `if (ano < 2010)` para marcar relógio zerado, mas ele só pega o caso
+     grosseiro -- relógio *errado* por um mês passaria igual. Quem sabe a hora de verdade é
+     quem **recebe** o arquivo, e essa informação o vault já tem de graça.
+
+     O export apaga o `biblioteca.txt` antigo ao gravar com sucesso. Sem isso o retrato velho
+     fica ao lado do novo e o vault pode importar o errado, que é exatamente o problema que o
+     arquivo único veio resolver.

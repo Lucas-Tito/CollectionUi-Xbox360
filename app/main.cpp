@@ -1892,10 +1892,11 @@ namespace
             if (acao == ACAO_EXPORTAR)
             {
                 // A lista já tem as ROMs dentro: elas entraram como itens comuns no
-                // arranque, então o vault recebe jogo e ROM pela mesma varredura.
+                // arranque, então o vault recebe jogo e ROM pela mesma varredura. As
+                // coleções o próprio exportar busca -- não passam por aqui.
                 std::string erro;
-                if (exportar::Biblioteca(g_jogos, g_bancoOk, erro))
-                    Avisar("biblioteca.txt gravado");
+                if (exportar::ParaOVault(g_jogos, g_bancoOk, erro))
+                    Avisar("vault.txt gravado");
                 else
                     Avisar(erro.c_str());
             }

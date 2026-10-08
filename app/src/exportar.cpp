@@ -1,12 +1,18 @@
 #include "exportar.h"
+#include "colecoes.h"
 #include "diario.h"
 #include <xtl.h>
 #include <stdio.h>
 
 namespace
 {
-    // Ao lado do colecoes.txt, de proposito: quem pega um pega o outro no mesmo FTP.
-    const char *ARQUIVO = "game:\\biblioteca.txt";
+    const char *ARQUIVO = "game:\\vault.txt";
+
+    // O que este arquivo se chamava antes de levar as colecoes junto. Apagado a cada
+    // export bem-sucedido: deixado para tras, o vault poderia importar o retrato
+    // velho pensando que era o novo, e era justamente isso que o arquivo unico veio
+    // resolver. Se nao existir, o DeleteFile falha em silencio, que e o esperado.
+    const char *ARQUIVO_ANTIGO = "game:\\biblioteca.txt";
 
     // O mesmo saneamento de nome do colecoes.txt, pelo mesmo motivo: a barra e o
     // separador, e nome com barra quebraria a linha em dois campos. Aqui NAO ha corte
@@ -23,7 +29,7 @@ namespace
 
 namespace exportar
 {
-    bool Biblioteca(const std::vector<biblioteca::Jogo> &jogos, bool bancoOk,
+    bool ParaOVault(const std::vector<biblioteca::Jogo> &jogos, bool bancoOk,
                     std::string &erro)
     {
         // Inventario vazio e inventario NAO LIDO sao a mesma coisa no arquivo, e o
@@ -46,7 +52,7 @@ namespace exportar
         FILE *f = fopen(ARQUIVO, "w");
         if (f == NULL)
         {
-            erro = "Nao consegui gravar biblioteca.txt";
+            erro = "Nao consegui gravar vault.txt";
             diario::Escrever("AVISO: nao consegui gravar %s", ARQUIVO);
             return false;
         }
@@ -56,16 +62,10 @@ namespace exportar
         // apagaria uma colecao chamada "#1 favoritos", entao o criterio e a barra.
         fprintf(f, "# CollectionUI: inventario deste console, para o xbox-vault\n");
 
-        // Data da geracao: sem ela o vault nao distingue inventario de agora de um de
-        // tres semanas atras -- e desde que o export passou a RECUSAR quando a
-        // biblioteca nao carregou, encontrar um arquivo velho virou caso normal.
-        {
-            SYSTEMTIME agora;
-            GetLocalTime(&agora);
-            fprintf(f, "#   gerado: %04d-%02d-%02d %02d:%02d\n",
-                    agora.wYear, agora.wMonth, agora.wDay,
-                    agora.wHour, agora.wMinute);
-        }
+        // NAO ha data de geracao, e a ausencia e deliberada. O relogio do 360 sem rede
+        // volta para 2005, e GetLocalTime nao tem como avisar que esta perdido: a
+        // linha sairia errada com a mesma cara de certa, e o vault ordenaria os
+        // inventarios por ela. Quem sabe a hora de verdade e quem RECEBE o arquivo.
         fprintf(f, "#   tipo|id|contentType|emulador|item|nome|arquivo\n");
         fprintf(f, "#   os quatro primeiros em hexa de 8 digitos, ou vazios\n");
         fprintf(f, "#   JOGO: id e o TitleId, que e o que vai no colecoes.txt;\n");
@@ -79,6 +79,12 @@ namespace exportar
         fprintf(f, "#         arquivo da ROM dentro da pasta de ROMs do emulador.\n");
         fprintf(f, "#         id = FNV-1a 32 de (emulador, arquivo em minusculas),\n");
         fprintf(f, "#         base 2166136261 xor emulador, primo 16777619\n");
+        fprintf(f, "#   COLECAO: outra forma de linha, com 5 campos --\n");
+        fprintf(f, "#         COLECAO|id|tipo|nome|conteudo. E a linha do colecoes.txt\n");
+        fprintf(f, "#         com o prefixo na frente, para o vault reusar o parser.\n");
+        fprintf(f, "#         tipo 'jogos': conteudo e TitleId em hexa, e casa com o\n");
+        fprintf(f, "#         id das linhas JOGO e ROM acima. tipo 'uniao': conteudo e\n");
+        fprintf(f, "#         id de COLECAO, em decimal. Uniao nunca contem uniao.\n");
 
         int nJogos = 0, nRoms = 0;
         for (size_t i = 0; i < jogos.size(); i++)
@@ -108,9 +114,31 @@ namespace exportar
             }
         }
 
+        // As colecoes saem DEPOIS dos itens, para que o vault ja tenha visto todo
+        // TitleId quando for resolver o conteudo de cada uma. Ordem alfabetica, a
+        // mesma da tela; cada linha carrega o proprio id, entao a ordem e so conforto
+        // de quem le.
+        std::vector<colecoes::Colecao *> cols = colecoes::Ordenadas();
+        for (size_t c = 0; c < cols.size(); c++)
+        {
+            const colecoes::Colecao *col = cols[c];
+            fprintf(f, "COLECAO|%d|%s|%s|", col->id, col->uniao ? "uniao" : "jogos",
+                    SemBarra(col->nome).c_str());
+
+            if (col->uniao)
+                for (size_t k = 0; k < col->origens.size(); k++)
+                    fprintf(f, "%s%d", k ? "," : "", col->origens[k]);
+            else
+                for (size_t k = 0; k < col->ids.size(); k++)
+                    fprintf(f, "%s%08X", k ? "," : "", col->ids[k]);
+
+            fputc('\n', f);
+        }
+
         // Rodape com a contagem: sem ele, arquivo cortado por disco cheio e arquivo
         // inteiro sao indistinguiveis do lado do vault. Sem barra, como o cabecalho.
-        fprintf(f, "# total: %d jogos, %d ROMs\n", nJogos, nRoms);
+        fprintf(f, "# total: %d jogos, %d ROMs, %d colecoes\n",
+                nJogos, nRoms, (int)cols.size());
 
         // O erro de escrita aparece no flush, que acontece no fclose -- checar so os
         // fprintf nao pegaria disco cheio. Sem isto, um arquivo truncado saia daqui
@@ -120,12 +148,15 @@ namespace exportar
             ok = false;
         if (!ok)
         {
-            erro = "Escrita de biblioteca.txt falhou; disco cheio?";
+            erro = "Escrita de vault.txt falhou; disco cheio?";
             diario::Escrever("ERRO: escrita de %s falhou", ARQUIVO);
             return false;
         }
 
-        diario::Escrever("biblioteca.txt: %d jogos e %d ROMs", nJogos, nRoms);
+        DeleteFileA(ARQUIVO_ANTIGO);
+
+        diario::Escrever("vault.txt: %d jogos, %d ROMs e %d colecoes",
+                         nJogos, nRoms, (int)cols.size());
         return true;
     }
 }
