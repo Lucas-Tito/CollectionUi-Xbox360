@@ -1,5 +1,6 @@
 #include "exportar.h"
 #include "diario.h"
+#include <xtl.h>
 #include <stdio.h>
 
 namespace
@@ -54,6 +55,17 @@ namespace exportar
         // licao e do colecoes.txt -- um leitor que tratasse '#' como comentario
         // apagaria uma colecao chamada "#1 favoritos", entao o criterio e a barra.
         fprintf(f, "# CollectionUI: inventario deste console, para o xbox-vault\n");
+
+        // Data da geracao: sem ela o vault nao distingue inventario de agora de um de
+        // tres semanas atras -- e desde que o export passou a RECUSAR quando a
+        // biblioteca nao carregou, encontrar um arquivo velho virou caso normal.
+        {
+            SYSTEMTIME agora;
+            GetLocalTime(&agora);
+            fprintf(f, "#   gerado: %04d-%02d-%02d %02d:%02d\n",
+                    agora.wYear, agora.wMonth, agora.wDay,
+                    agora.wHour, agora.wMinute);
+        }
         fprintf(f, "#   tipo|id|contentType|emulador|item|nome|arquivo\n");
         fprintf(f, "#   os quatro primeiros em hexa de 8 digitos, ou vazios\n");
         fprintf(f, "#   JOGO: id e o TitleId, que e o que vai no colecoes.txt;\n");
