@@ -1895,7 +1895,7 @@ namespace
                 // arranque, então o vault recebe jogo e ROM pela mesma varredura.
                 std::string erro;
                 if (exportar::Biblioteca(g_jogos, g_bancoOk, erro))
-                    Avisar("biblioteca.txt gravado ao lado do colecoes.txt");
+                    Avisar("biblioteca.txt gravado");
                 else
                     Avisar(erro.c_str());
             }
