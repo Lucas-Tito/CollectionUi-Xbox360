@@ -1,18 +1,11 @@
 #include "exportar.h"
 #include "colecoes.h"
 #include "diario.h"
-#include <xtl.h>
 #include <stdio.h>
 
 namespace
 {
     const char *ARQUIVO = "game:\\vault.txt";
-
-    // O que este arquivo se chamava antes de levar as colecoes junto. Apagado a cada
-    // export bem-sucedido: deixado para tras, o vault poderia importar o retrato
-    // velho pensando que era o novo, e era justamente isso que o arquivo unico veio
-    // resolver. Se nao existir, o DeleteFile falha em silencio, que e o esperado.
-    const char *ARQUIVO_ANTIGO = "game:\\biblioteca.txt";
 
     // O mesmo saneamento de nome do colecoes.txt, pelo mesmo motivo: a barra e o
     // separador, e nome com barra quebraria a linha em dois campos. Aqui NAO ha corte
@@ -152,8 +145,6 @@ namespace exportar
             diario::Escrever("ERRO: escrita de %s falhou", ARQUIVO);
             return false;
         }
-
-        DeleteFileA(ARQUIVO_ANTIGO);
 
         diario::Escrever("vault.txt: %d jogos, %d ROMs e %d colecoes",
                          nJogos, nRoms, (int)cols.size());

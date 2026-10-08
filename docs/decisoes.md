@@ -1340,6 +1340,8 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      grosseiro -- relógio *errado* por um mês passaria igual. Quem sabe a hora de verdade é
      quem **recebe** o arquivo, e essa informação o vault já tem de graça.
 
-     O export apaga o `biblioteca.txt` antigo ao gravar com sucesso. Sem isso o retrato velho
-     fica ao lado do novo e o vault pode importar o errado, que é exatamente o problema que o
-     arquivo único veio resolver.
+     O `biblioteca.txt` que já estava no console foi apagado **por FTP, uma vez**, e não por
+     código. Houve uma versão com `DeleteFile` no export; saiu no mesmo dia. O problema é real
+     -- retrato velho ao lado do novo, e o vault importando o errado em silêncio -- mas é de
+     uma vez só: depois da primeira gravação o arquivo nunca mais existe, e a chamada ficaria
+     ali para sempre sem fazer nada. Tarefa de migração não mora no caminho quente.
