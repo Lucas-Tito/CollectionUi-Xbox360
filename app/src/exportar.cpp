@@ -50,10 +50,17 @@ namespace exportar
             return false;
         }
 
-        // Sem barra nestas linhas, de proposito: e o que as distingue de um item. A
-        // licao e do colecoes.txt -- um leitor que tratasse '#' como comentario
-        // apagaria uma colecao chamada "#1 favoritos", entao o criterio e a barra.
+        // O criterio de comentario aqui e o PRIMEIRO CAMPO, nao a ausencia de barra:
+        // as linhas que documentam o formato precisam mostrar a barra, e mostram. A
+        // regra "linha sem barra e comentario" veio do colecoes.txt, onde vale porque
+        // nenhuma linha de cabecalho dele tem barra -- aqui ela estava errada desde
+        // sempre, e o cabecalho a violava em duas linhas.
+        //
+        // Comecar com '#' tambem serve, e nao colide com colecao chamada "#1
+        // favoritos": o nome nunca abre a linha, vem depois de "COLECAO|id|tipo|".
         fprintf(f, "# CollectionUI: inventario deste console, para o xbox-vault\n");
+        fprintf(f, "#   linha de dado comeca com JOGO, ROM ou COLECAO; o resto e\n");
+        fprintf(f, "#   comentario, inclusive as linhas abaixo, que tem barra\n");
 
         // NAO ha data de geracao, e a ausencia e deliberada. O relogio do 360 sem rede
         // volta para 2005, e GetLocalTime nao tem como avisar que esta perdido: a
