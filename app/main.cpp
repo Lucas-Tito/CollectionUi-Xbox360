@@ -2127,10 +2127,14 @@ namespace
 
             unsigned int titleId = L[g_iJogo]->titleId;
 
-            // Barra na ESCRITA, não só na leitura. Um jogo cujo cabeçalho o FreeStyle
-            // não leu tem TitleId zero: o anel acenderia, o arquivo gravaria 00000000
-            // e a releitura descartaria -- o jogo sumiria da coleção no próximo boot,
-            // sem aviso. Não há caso assim nestes 120, mas a perda seria silenciosa.
+            // Barra na ESCRITA, não só na leitura. TitleId zero gravaria 00000000 e a
+            // releitura descartaria -- o item sumiria da coleção no próximo boot, sem
+            // aviso.
+            //
+            // Isto virou REDE DE SEGURANÇA: o biblioteca::IdDoApp agora dá id
+            // sintético a todo item que chega com zero, então só sobra aqui o caso de
+            // item sem caminho, que não dá para semear. Fica porque a perda seria
+            // silenciosa e o teste custa nada.
             if (titleId == 0)
             {
                 Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");

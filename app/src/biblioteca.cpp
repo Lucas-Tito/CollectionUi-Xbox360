@@ -82,6 +82,24 @@ namespace
 
 namespace biblioteca
 {
+    unsigned int IdDoApp(const std::string &caminho)
+    {
+        unsigned int h = 2166136261u;
+        for (size_t i = 0; i < caminho.size(); i++)
+        {
+            // O FATX nao distingue caixa, e um mesmo caminho nao pode render dois ids
+            // conforme quem o leu -- senao o item sumiria das colecoes em que estava,
+            // em silencio, so porque alguem escreveu a pasta com outra caixa.
+            char c = caminho[i];
+            if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+            h ^= (unsigned char)c;
+            h *= 16777619u;
+        }
+        // Zero e exatamente o que se esta fugindo: ele voltaria a significar "sem id",
+        // e o colecoes::Carregar o descartaria.
+        return h ? h : 1u;
+    }
+
     bool Existe(const std::string &caminho)
     {
         return ::GetFileAttributes(caminho.c_str()) != 0xFFFFFFFF;
@@ -191,6 +209,14 @@ namespace biblioteca
             j.tipoArquivo    = sqlite3_column_int(stmt, 9);
             j.discos         = sqlite3_column_int(stmt, 10);
             j.contentType    = sqlite3_column_int(stmt, 11);
+
+            // TitleId zero vira id sintetico do caminho. Sem caminho nao da para
+            // sintetizar nada estavel, e ai o zero fica -- quem marca ainda barra.
+            if (j.titleId == 0 && !j.caminho.empty())
+            {
+                j.titleId = IdDoApp(j.caminho);
+                j.idSintetico = true;
+            }
 
             std::string pasta = PastaArte(caminhoBanco, j.id);
             if (!pasta.empty())

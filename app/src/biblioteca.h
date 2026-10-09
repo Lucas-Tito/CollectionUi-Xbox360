@@ -36,8 +36,16 @@ namespace biblioteca
         // e não entra no cálculo. Sem este campo o id não se reproduz fora daqui.
         std::string  arquivoRom;
 
-        Jogo() : id(0), titleId(0), tipoArquivo(0), contentType(0), discos(0),
-                 titleIdEmulador(0) {}
+        // O titleId acima e SINTETICO, vindo do caminho em vez do cabecalho do xex.
+        //
+        // Xex sem EXECUTION_INFO chega do banco com TitleId zero, e zero nao e
+        // identificador: e a AUSENCIA de um. Os seis homebrews deste console chegavam
+        // todos como 00000000, o que os fundia num item so -- e nenhum entrava em
+        // colecao, porque o colecoes::Carregar descarta o id zero. Ver IdDoApp.
+        bool         idSintetico;
+
+        Jogo() : id(0), titleId(0), idSintetico(false), tipoArquivo(0), contentType(0),
+                 discos(0), titleIdEmulador(0) {}
         // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
         // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
         // pela MESMA chamada do 1.
@@ -49,6 +57,20 @@ namespace biblioteca
         int          contentType;
         int          discos;
     };
+
+    // FNV-1a de 32 bits sobre o CAMINHO de instalacao, em minusculas. Mesma ideia do
+    // emuladores::IdDaRom e pelo mesmo motivo: o item nao tem TitleId e precisa de um
+    // numero ESTAVEL entre execucoes, porque ele vai para o colecoes.txt.
+    //
+    // O caminho e a semente certa porque e a chave que o proprio FreeStyle usa -- o
+    // schema tem UNIQUE (ContentItemPath) --, entao duas instalacoes nunca o
+    // compartilham, e ele sobrevive a rescan e a reboot. Mover ou renomear a pasta
+    // troca o id e tira o item das colecoes em que estava; e o mesmo preco que a ROM
+    // ja paga ao ser renomeada, e pelo mesmo motivo.
+    //
+    // Colisao com um TitleId de verdade e possivel e tolerada: o efeito seria dois
+    // itens sempre marcados juntos, que e o caso de jogo multi-disco -- ja previsto.
+    unsigned int IdDoApp(const std::string &caminho);
 
     struct Candidato
     {

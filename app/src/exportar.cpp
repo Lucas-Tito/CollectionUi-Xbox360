@@ -74,6 +74,12 @@ namespace exportar
         fprintf(f, "#         compartilham o do disco 1, e ai as duas linhas se\n");
         fprintf(f, "#         distinguem so pelo item; arquivo e o caminho de\n");
         fprintf(f, "#         instalacao, relativo ao dispositivo\n");
+        fprintf(f, "#   APP:  xex sem EXECUTION_INFO -- homebrew. Nao tem TitleId, e\n");
+        fprintf(f, "#         por isso id e SINTETICO: FNV-1a 32 do caminho em\n");
+        fprintf(f, "#         minusculas, base 2166136261, primo 16777619. Fora o\n");
+        fprintf(f, "#         prefixo, a linha e igual a de JOGO -- mesmos 7 campos,\n");
+        fprintf(f, "#         item e o ContentItemId. O prefixo existe justamente para\n");
+        fprintf(f, "#         dizer que o id NAO e TitleId e nao casa com catalogo.\n");
         fprintf(f, "#   ROM:  id e o sintetico que vai no colecoes.txt; emulador e o\n");
         fprintf(f, "#         TitleId de quem a abre; item vazio; arquivo e o nome do\n");
         fprintf(f, "#         arquivo da ROM dentro da pasta de ROMs do emulador.\n");
@@ -94,7 +100,7 @@ namespace exportar
         fprintf(f, "#         TIPO QUE O VAULT NAO CONHECER: ignore a linha, nao tente\n");
         fprintf(f, "#         ler o conteudo como TitleId -- pode vir tipo novo aqui.\n");
 
-        int nJogos = 0, nRoms = 0;
+        int nJogos = 0, nApps = 0, nRoms = 0;
         for (size_t i = 0; i < jogos.size(); i++)
         {
             const biblioteca::Jogo &j = jogos[i];
@@ -115,10 +121,14 @@ namespace exportar
             }
             else
             {
-                fprintf(f, "JOGO|%08X|%08X||%08X|%s|%s\n",
+                // APP e JOGO so diferem no prefixo, e o prefixo e a informacao: diz que
+                // o id saiu do caminho e nao do cabecalho do xex, entao nao adianta
+                // procura-lo em catalogo de TitleId.
+                fprintf(f, "%s|%08X|%08X||%08X|%s|%s\n",
+                        j.idSintetico ? "APP" : "JOGO",
                         j.titleId, (unsigned)j.contentType, (unsigned)j.id,
                         SemBarra(j.nome).c_str(), SemBarra(j.caminho).c_str());
-                nJogos++;
+                if (j.idSintetico) nApps++; else nJogos++;
             }
         }
 
@@ -145,8 +155,8 @@ namespace exportar
 
         // Rodape com a contagem: sem ele, arquivo cortado por disco cheio e arquivo
         // inteiro sao indistinguiveis do lado do vault. Sem barra, como o cabecalho.
-        fprintf(f, "# total: %d jogos, %d ROMs, %d colecoes\n",
-                nJogos, nRoms, (int)cols.size());
+        fprintf(f, "# total: %d jogos, %d apps, %d ROMs, %d colecoes\n",
+                nJogos, nApps, nRoms, (int)cols.size());
 
         // O erro de escrita aparece no flush, que acontece no fclose -- checar so os
         // fprintf nao pegaria disco cheio. Sem isto, um arquivo truncado saia daqui
@@ -161,8 +171,8 @@ namespace exportar
             return false;
         }
 
-        diario::Escrever("vault.txt: %d jogos, %d ROMs e %d colecoes",
-                         nJogos, nRoms, (int)cols.size());
+        diario::Escrever("vault.txt: %d jogos, %d apps, %d ROMs e %d colecoes",
+                         nJogos, nApps, nRoms, (int)cols.size());
         return true;
     }
 }
