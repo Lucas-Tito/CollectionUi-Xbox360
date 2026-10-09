@@ -1221,7 +1221,7 @@ namespace
         {
             g_fonte.Begin();
             g_fonte.SetScaleFactors(1.3f, 1.3f);
-            // Cruzamento aceita junção como origem, junção não aceita -- então a
+            // Interseção aceita junção como origem, junção não aceita -- então a
             // frase tem de dizer o que FALTA, e não a mesma coisa para os dois.
             const WCHAR *vazia = L"Nenhuma coleção ainda";
             if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
@@ -1808,13 +1808,15 @@ namespace
             g_nomeNovo[sizeof(g_nomeNovo) - 1] = '\0';
 
             CopiarTitulo(g_nomeNovo);
-            // O que decide entre junção e cruzamento NÃO é a palavra, é a frase: a
-            // linha diz o nome e o subtítulo diz o efeito, e ninguém precisa saber o
-            // que é união nem interseção para escolher certo.
+            // Nomes curtos, sem a explicação a reboque: quem escolheu Junção ou
+            // Interseção cai na tela de origens no quadro seguinte, e é LÁ que o
+            // subtítulo diz "em qualquer uma delas" ou "só em todas elas" -- com as
+            // coleções à vista e a contagem ao vivo no rodapé, que explica melhor do
+            // que qualquer frase no menu.
             g_menuDe = MENU_TIPO;
-            g_menuItens[0] = "Coleção de jogos";
-            g_menuItens[1] = "Junção: em qualquer uma delas";
-            g_menuItens[2] = "Cruzamento: só em todas elas";
+            g_menuItens[0] = "Coleção Manual";
+            g_menuItens[1] = "Junção";
+            g_menuItens[2] = "Interseção";
             g_menuQtd = 3; g_menuFoco = 0; g_menuAberto = true;
         }
         else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
