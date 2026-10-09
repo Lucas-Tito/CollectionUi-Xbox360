@@ -71,6 +71,9 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
 .opts{display:flex;flex-direction:column;gap:6px}
 .opt{width:100%;text-align:left;background:#1D2521;border:1px solid var(--linha);
   border-radius:4px;padding:9px 12px;font-size:13px;cursor:pointer}
+.opt:hover{border-color:var(--anel)}
+.opt b{font-weight:600}
+.opt i{font-style:normal;display:block;margin-top:3px;font-size:11px;color:var(--fraco)}
 
 @media (max-width:640px){
   .barra,.rodape{padding-left:12px;padding-right:12px;gap:10px}
@@ -126,6 +129,10 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
       <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Concluir: grava o que foi marcado</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar: descarta as marcações</td></tr>
+      <tr class="grp"><td colspan="3">Escolhendo coleções (junção / cruzamento)</td></tr>
+      <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
+      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Concluir</td></tr>
+      <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar</td></tr>
       <tr class="grp"><td colspan="3">Só na prévia</td></tr>
       <tr><td><i class="pad menu">—</i></td><td class="kb">mouse</td><td>Clicar move o foco; clicar de novo confirma</td></tr>
     </table>
@@ -145,11 +152,30 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
   </div>
 </div>
 
+<div class="dlg" id="dlg-tipo" hidden>
+  <div class="cx">
+    <h3 id="dt-tit">Nova coleção</h3>
+    <p>No console isto é o menu de opções, percorrido pelo d-pad. A frase embaixo de
+       cada uma é o que decide entre junção e cruzamento sem precisar da palavra
+       "união" nem de símbolo de conjunto — que a fonte do console nem tem.</p>
+    <div class="opts">
+      <button class="opt" id="dt-jogos"><b>Coleção de jogos</b>
+        <i>Você escolhe os jogos, um a um</i></button>
+      <button class="opt" id="dt-uniao"><b>Junção: em qualquer uma delas</b>
+        <i>Tudo o que estiver em pelo menos uma das escolhidas</i></button>
+      <button class="opt" id="dt-inter"><b>Cruzamento: só em todas elas</b>
+        <i>Só o que estiver, ao mesmo tempo, em todas as escolhidas</i></button>
+    </div>
+    <div class="acoes"><button class="bt" id="dt-cancelar">Cancelar</button></div>
+  </div>
+</div>
+
 <div class="dlg" id="dlg-menu" hidden>
   <div class="cx">
     <h3 id="dm-tit">Opções</h3>
     <div class="opts" id="dm-colecao">
       <button class="opt" id="dm-renomear">Renomear</button>
+      <button class="opt" id="dm-origens" hidden>Escolher coleções</button>
       <button class="opt perigo" id="dm-apagar">Apagar coleção</button>
     </div>
     <div class="opts" id="dm-jogo" hidden>
@@ -268,7 +294,10 @@ function pintarCard(ctx, x, y, l, a, selecionado, col) {
     ctx.fillRect(x, y, l, a);
 
     // O grupo inteiro gira junto; dentro dele as tres se encostam.
-    const ids = (col && col.ids) ? col.ids.slice(0, 3) : [];
+    //
+    // As capas saem do que a coleção MOSTRA, não do que ela guarda: uma junção e um
+    // cruzamento têm ids vazio, e o card deles sairia cinza se olhássemos col.ids.
+    const ids = col ? jogosDe(col).slice(0, 3).map(g => g.id) : [];
     if (ids.length) {
       ctx.save();
       ctx.translate(x + l / 2, y + a / 2);
@@ -325,6 +354,50 @@ function pintarCard(ctx, x, y, l, a, selecionado, col) {
   }
 }
 
+// Emblema no canto superior direito, dizendo que a coleção é composta e QUAL das
+// duas. O raio já existe no C++ (CriarRaio, textura procedural de 22px); o cruzamento
+// seria uma segunda textura gerada do mesmo jeito -- dois círculos com a lente cheia.
+//
+// Desenhado antes do contorno, como no C++, para ser recortado junto se encostar.
+function emblema(ctx, x, y, lado, tipo){
+  if (tipo !== 'uniao' && tipo !== 'intersecao') return;
+
+  const M = 22, folga = 10;
+  const px = x + lado - folga - M, py = y + folga;
+
+  const desenha = (dx, dy, cor) => {
+    ctx.save();
+    ctx.translate(px + dx, py + dy);
+    ctx.scale(M, M);
+
+    if (tipo === 'uniao'){
+      // Raio: polígono fechado, mesmo contorno do DentroDoRaio() do C++.
+      ctx.beginPath();
+      ctx.moveTo(0.62,0.02); ctx.lineTo(0.17,0.56); ctx.lineTo(0.44,0.56);
+      ctx.lineTo(0.34,0.98); ctx.lineTo(0.82,0.42); ctx.lineTo(0.54,0.42);
+      ctx.closePath();
+      ctx.fillStyle = cor; ctx.fill();
+    } else {
+      // Cruzamento: dois círculos vazados e a LENTE cheia. Vazado de propósito --
+      // dois discos cheios viram um borrão a 22px, e é a sobreposição que carrega
+      // o significado.
+      const r = 0.27, cy = 0.5, ax = 0.35, bx = 0.65;
+      ctx.lineWidth = 0.11; ctx.strokeStyle = cor;
+      ctx.beginPath(); ctx.arc(ax, cy, r, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI*2); ctx.stroke();
+      ctx.save();
+      ctx.beginPath(); ctx.arc(ax, cy, r, 0, Math.PI*2); ctx.clip();
+      ctx.beginPath(); ctx.arc(bx, cy, r, 0, Math.PI*2);
+      ctx.fillStyle = cor; ctx.fill();
+      ctx.restore();
+    }
+    ctx.restore();
+  };
+
+  desenha(1, 1, 'rgba(6,10,8,0.75)');     // sombra: sem ela o emblema some em capa clara
+  desenha(0, 0, 'rgba(236,242,238,0.95)');
+}
+
 function pintarFundo(ctx) {
   const f = FUNDOS[FUNDO];
   if (!f) { ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720); return; }
@@ -363,10 +436,37 @@ const imgs = {};
 const CHAVE = 'collectionui.previa';
 let cols = [];
 try { cols = JSON.parse(localStorage.getItem(CHAVE)) || []; } catch(e) { cols = []; }
+
+// Coleção agora tem TIPO, e são três:
+//
+//     jogos       você escolhe os jogos, um a um
+//     uniao       tudo o que estiver em qualquer uma das origens
+//     intersecao  só o que estiver em TODAS as origens
+//
+// E uma escada que decide quem pode ser origem de quem:
+//
+//     jogos  <  uniao  <  intersecao
+//
+// União só aceita coleção de jogos (é o que o C++ já faz). Cruzamento aceita jogos
+// OU união, nunca outro cruzamento. Como é ordem estrita, ciclo é impossível por
+// construção e não existe detecção em lugar nenhum -- mesmo raciocínio do
+// colecoes.h, só com um degrau a mais.
+//
+// O que ficou guardado antes desta mudança não tem tipo: vira 'jogos'.
+cols.forEach((c, i) => {
+  if (!c.tipo) c.tipo = 'jogos';
+  if (!c.origens) c.origens = [];
+  if (!c.ids) c.ids = [];
+  if (!c.id) c.id = 1000 + i;
+});
 const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(cols)); } catch(e){} };
 
-let tela = 'colecoes';      // colecoes | jogos | escolher
+let tela = 'colecoes';      // colecoes | jogos | adicionar | origens
 let iCol = 0, iJogo = 0, primeiraLinha = 0, atual = null, editando = null;
+
+// Montando uma composta: a coleção em edição e o RASCUNHO das origens. Rascunho pelo
+// mesmo motivo do escolhedor de jogos -- sem ele o B não teria o que desfazer.
+let editandoComposta = null, origens = null, nomeNovo = '';
 
 // Ao adicionar jogos trabalhamos numa CÓPIA. É o que dá sentido ao B: sem rascunho,
 // "cancelar" não teria o que desfazer, porque cada marcação já estaria gravada.
@@ -377,9 +477,86 @@ const semArtigo = s => (s||'').replace(/^(the|a|an|o|os|as|um|uma)\s+/i,'').trim
 const cmp = (a,b) => semArtigo(a).localeCompare(semArtigo(b),'pt',{sensitivity:'base'});
 const inicial = s => { const c = semArtigo(s).toUpperCase()[0] || '#'; return /[A-Z]/.test(c) ? c : '#'; };
 const ordenadas = () => cols.slice().sort((a,b)=>cmp(a.nome,b.nome));
-const colFoco = () => ordenadas()[iCol];
+const colFoco = () => listaDeColecoes()[iCol];
 const porNome = L => L.slice().sort((a,b)=>cmp(a.nome,b.nome));
-const jogosDe = c => { const s = new Set(c.ids); return porNome(JOGOS.filter(g=>s.has(g.id))); };
+const porId = id => cols.find(c => c.id === id) || null;
+
+// Id SORTEADO em 31 bits, não sequencial: o arquivo tem dois editores (o app e o
+// xbox-vault) e "maior + 1" nos dois lados dá o mesmo id para coleções diferentes.
+const proximoId = () => { let n; do { n = 1 + ((Math.random()*0x7FFFFFFE)|0); } while (porId(n)); return n; };
+
+// Responde "este jogo entra?" em vez de devolver a lista resolvida, igual ao C++:
+// quem chama varre a biblioteca e só quer o sim/não.
+function temJogo(c, gid){
+  if (!c) return false;
+
+  if (c.tipo === 'uniao'){
+    // Só desce em origem de JOGOS. Esse teste É o guarda de ciclo: um arquivo
+    // editado à mão com uma união apontando pra si mesma para aqui.
+    return c.origens.some(o => podeSerOrigem(porId(o), 'uniao') && temJogo(porId(o), gid));
+  }
+
+  if (c.tipo === 'intersecao'){
+    // Origem que não resolve derruba TUDO, em vez de ser ignorada: ignorar responde
+    // a pergunta com um fator a menos -- "co-op E não zerado" virando "co-op" -- e a
+    // resposta sai MAIOR que a certa, com cara de certa.
+    //
+    // E "para todo" sobre lista vazia é VERDADEIRO: sem o teste do fim, um
+    // cruzamento sem origem nenhuma conteria a biblioteca inteira.
+    if (!c.origens.every(o => podeSerOrigem(porId(o), 'intersecao'))) return false;
+    return c.origens.length > 0 &&
+           c.origens.every(o => temJogo(porId(o), gid));
+  }
+
+  return c.ids.indexOf(gid) >= 0;
+}
+
+const jogosDe = c => porNome(JOGOS.filter(g => temJogo(c, g.id)));
+const conta = c => { let n = 0; for (const g of JOGOS) if (temJogo(c, g.id)) n++; return n; };
+const composta = c => !!c && c.tipo !== 'jogos';
+
+// A fórmula que o cabeçalho mostra. É o que responde "por que este jogo está aqui?"
+// sem precisar abrir nada.
+//
+// Por EXTENSO, e não com ∩ e ∪: o atlas Arial_16.xpr do console vai só até U+20AC, e
+// a tabela de tradução manda tudo acima disso para o glifo 0, o "desconhecido". Os
+// dois símbolos sairiam como quadradinho na TV. Aqui no navegador apareceriam
+// certinho, que é exatamente o tipo de mentira que a prévia existe para não contar.
+// (As reticências continuam valendo: o ATGFONT_TRUNCATED monta as dele com três
+// pontos de verdade, não com o U+2026, que também está fora.)
+function formula(c){
+  if (!composta(c)) return '';
+  const nomes = c.origens.map(porId).filter(Boolean).map(x => x.nome);
+  if (!nomes.length) return '';
+  // As MESMAS palavras do menu que criou a coleção, de propósito: quem escolheu
+  // "só em todas elas" reencontra "em todas" aqui.
+  return (c.tipo === 'uniao' ? 'em qualquer uma: ' : 'em todas: ') + nomes.join(', ');
+}
+
+// O que a grade mostra. Escolhendo origens, entra só quem a escada permite -- e
+// nunca a própria coleção em edição.
+function listaDeColecoes(){
+  const todas = ordenadas();
+  if (tela !== 'origens' || !editandoComposta) return todas;
+  return todas.filter(c => c !== editandoComposta &&
+                           podeSerOrigem(c, editandoComposta.tipo));
+}
+const marcada = c => !!origens && origens.indexOf(c.id) >= 0;
+
+// A escada num lugar só, como no C++. Estava escrita inline em três lugares, que é o
+// oposto do que o lado C++ faz questão de fazer.
+function podeSerOrigem(candidata, tipoDoAlvo){
+  if (!candidata) return false;
+  if (tipoDoAlvo === 'uniao')      return candidata.tipo === 'jogos';
+  if (tipoDoAlvo === 'intersecao') return candidata.tipo !== 'intersecao';
+  return false;
+}
+
+// Quantos jogos o rascunho daria SE fosse concluído agora. Um cruzamento esvazia
+// fácil, e descobrir isso só depois de gravar é o pior jeito de descobrir.
+const contaRascunho = () =>
+  conta({tipo: editandoComposta.tipo, ids: [], origens: origens});
+
 const lista = () => tela === 'adicionar' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
 
 // ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres
@@ -476,8 +653,15 @@ function cabecalho(titulo, sub){
 
 // ---- tela de coleções ------------------------------------------------------
 function telaColecoes(){
-  const L = ordenadas();
+  const escolhendo = tela === 'origens';
+  const L = listaDeColecoes();
   pintarFundo(ctx);
+
+  if (escolhendo){
+    cabecalho(editandoComposta.nome,
+              editandoComposta.tipo === 'uniao' ? 'em qualquer uma delas'
+                                                : 'só em todas elas');
+  }
   // Sem título nem contagem: o rodapé já diz "1 de 4", e o quadrado em foco já diz
   // onde se está. Cabeçalho aqui seria repetir o que a tela toda já mostra.
   ctx.textBaseline = 'top';
@@ -485,24 +669,48 @@ function telaColecoes(){
   if (!L.length){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
     ctx.fillStyle = COR_APAGADO; ctx.textAlign = 'center';
-    ctx.fillText('Nenhuma coleção ainda', 640, 330);
+    // Cruzamento exige ter o que cruzar. Sem nada elegível a tela precisa dizer o
+    // que falta, senão parece quebrada.
+    // Cruzamento aceita junção como origem, junção não aceita -- a frase tem de
+    // dizer o que FALTA, e não a mesma coisa para os dois.
+    ctx.fillText(!escolhendo ? 'Nenhuma coleção ainda'
+               : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
+               :                                     'Nenhuma coleção para cruzar', 640, 330);
     ctx.textAlign = 'left';
-    rodape([['X','Nova coleção']], '');
+    rodape(escolhendo ? [['B','Cancelar']] : [['X','Nova coleção']], '');
     return;
   }
 
   iCol = Math.min(iCol, L.length-1);
   const inicio = Math.max(0, Math.floor(iCol/COL_POR_LINHA) - (COL_LINHAS-1)) * COL_POR_LINHA;
 
+  // A grade de coleções não tem cabeçalho e por isso sobe até 64. Escolhendo origens
+  // ele existe, e sem descer a grade o título ficaria por cima da primeira linha.
+  const topo = escolhendo ? 104 : COL_TOPO;
+
   for (let k = 0; k < COL_POR_LINHA*COL_LINHAS; k++){
     const i = inicio + k;
     if (i >= L.length) break;
     const x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-    const y = COL_TOPO + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
+    const y = topo + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
     zona(x, y, COL_LADO, COL_LADO, 'colecao', i);
 
     const sel = (i === iCol);
+    const apaga = escolhendo && !marcada(L[i]);
+
     pintarCard(ctx, x, y, COL_LADO, COL_LADO, sel, L[i]);
+    emblema(ctx, x, y, COL_LADO, L[i].tipo);
+
+    // Apagar a não-marcada é um VÉU ESCURO por cima, não globalAlpha.
+    //
+    // Com alpha o card clareia em vez de escurecer: o que segura o nome é o véu de
+    // legibilidade que já está pintado dentro do card, e baixar a opacidade apaga o
+    // véu junto com a arte -- a colagem some, mas o nome some mais. O véu some com a
+    // arte e deixa o texto por cima, que é desenhado depois.
+    if (apaga){
+      caminhoArredondado(ctx, x, y, COL_LADO, COL_LADO, 10);
+      ctx.fillStyle = 'rgba(8,13,10,0.70)'; ctx.fill();
+    }
 
     // Texto como no card da Steam: o bloco inteiro (nome + contagem) CENTRALIZADO NA
     // VERTICAL, não colado embaixo. A contagem entre parênteses e sem a palavra
@@ -527,13 +735,39 @@ function telaColecoes(){
     ctx.fillStyle = sel ? COR_TEXTO : COR_APAGADO;
     linhas.forEach(ln => { ctx.fillText(ln, cx, yLinha); yLinha += LINHA_ALT; });
 
+    // A contagem é a RESOLVIDA, não ids.length: numa composta esse número é zero.
     ctx.font = `${F_MINI}px var(--mono), monospace`;
     ctx.fillStyle = COR_FRACO;
-    ctx.fillText(`( ${L[i].ids.length} )`, cx, yLinha + 3);
+    ctx.fillText(`( ${conta(L[i])} )`, cx, yLinha + 3);
     ctx.textAlign = 'left';
+
+    // Marca de escolhida, no canto de CIMA À ESQUERDA: o de cima à direita é do
+    // emblema de tipo, e uma união pode ser origem de um cruzamento -- os dois
+    // apareceriam no mesmo card.
+    // O tique é DESENHADO, dois traços -- não um '✓' da fonte, que é U+2713 e
+    // também está fora do atlas. No console isso é a mesma textura procedural do
+    // raio, gerada uma vez no arranque.
+    if (escolhendo && marcada(L[i])){
+      ctx.beginPath(); ctx.arc(x + 20, y + 20, 12, 0, Math.PI*2);
+      ctx.fillStyle = COR_ANEL; ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x + 14, y + 20); ctx.lineTo(x + 18.5, y + 25); ctx.lineTo(x + 26.5, y + 15);
+      ctx.strokeStyle = '#0B1004'; ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    }
   }
-  rodape([['A','Abrir'],['X','Nova coleção'],['menu','Opções']],
-         `${iCol+1} de ${L.length}`);
+
+  if (escolhendo){
+    // O resultado AO VIVO enquanto se marca. É a razão de ser desta linha: um
+    // cruzamento esvazia fácil, e "( 0 )" descoberto depois de gravar é tarde.
+    const n = origens.length, r = contaRascunho();
+    rodape([['A','Marcar'],['B','Cancelar'],['menu','Concluir']],
+           `${n} ${n === 1 ? 'escolhida' : 'escolhidas'} · ${r} ${r === 1 ? 'jogo' : 'jogos'}`);
+  } else {
+    rodape([['A','Abrir'],['X','Nova coleção'],['menu','Opções']],
+           `${iCol+1} de ${L.length}`);
+  }
 }
 
 // ---- grade de jogos --------------------------------------------------------
@@ -545,15 +779,22 @@ function telaJogos(){
   // O nome da coleção fica: diz ONDE você está. A contagem sai, que o rodapé já
   // traz "1 de 23". Ao adicionar, a contagem de marcados fica, porque essa não
   // está em lugar nenhum.
+  // Numa composta o subtítulo é a FÓRMULA ("Co-op ∩ Não zerado"). É o que responde
+  // "por que este jogo está aqui?", que numa coleção de jogos nunca se pergunta.
   cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
-            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados` : '');
+            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados` : formula(atual));
 
   if (!total){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
     ctx.fillStyle = COR_APAGADO; ctx.textAlign='center';
-    ctx.fillText('Nenhum jogo nesta coleção', 640, 330);
+    // Composta vazia não se resolve adicionando jogos -- não há o que adicionar nela.
+    // O cruzamento vazio é o caso que mais vai acontecer, então ele diz o porquê.
+    ctx.fillText(atual.tipo === 'intersecao' ? 'Nenhum jogo está em todas elas'
+               : atual.tipo === 'uniao'      ? 'Nenhum jogo nas coleções escolhidas'
+               :                               'Nenhum jogo nesta coleção', 640, 330);
     ctx.textAlign='left';
-    rodape([['B','Voltar'],['X','Adicionar jogos']], '');
+    rodape(composta(atual) ? [['B','Voltar'],['menu','Opções']]
+                           : [['B','Voltar'],['X','Adicionar jogos']], '');
     return;
   }
 
@@ -610,6 +851,10 @@ function telaJogos(){
 
   if (escolhendo)
     rodape([['A','Marcar'],['B','Cancelar'],['menu','Concluir']], `${selecao.length} marcados`);
+  else if (composta(atual))
+    // Sem "Adicionar jogos": numa composta o jogo está aqui por causa de uma origem,
+    // e para tirá-lo tira-se da origem. Oferecer o botão seria oferecer um que não faz nada.
+    rodape([['A','Jogar'],['B','Voltar'],['menu','Opções']], `${iJogo+1} de ${total}`);
   else
     rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar jogos'],['menu','Opções']],
            `${iJogo+1} de ${total}`);
@@ -652,11 +897,17 @@ function rotuloExperimento(ctx){
 
 function desenhar(){
   zonas = [];
-  if (tela === 'colecoes') telaColecoes(); else telaJogos();
-  const L = lista();
-  $('#estado').textContent = tela === 'colecoes'
-    ? `${cols.length} coleções`
-    : `${iJogo+1}/${L.length} · linha ${primeiraLinha} · ${L[iJogo] ? L[iJogo].nome : ''}`;
+  if (tela === 'colecoes' || tela === 'origens') telaColecoes(); else telaJogos();
+
+  if (tela === 'origens')
+    $('#estado').textContent = `${origens.length} origens · ${contaRascunho()} jogos`;
+  else if (tela === 'colecoes')
+    $('#estado').textContent = `${cols.length} coleções`;
+  else {
+    const L = lista();
+    $('#estado').textContent =
+      `${iJogo+1}/${L.length} · linha ${primeiraLinha} · ${L[iJogo] ? L[iJogo].nome : ''}`;
+  }
   rotuloExperimento(ctx);
 }
 
@@ -695,6 +946,51 @@ function concluirAdicionar(){
 function cancelarAdicionar(){
   selecao = null; tela = 'jogos'; iJogo = 0; primeiraLinha = 0; desenhar();
 }
+// Entra na escolha de origens, com o rascunho partindo do que a composta já tem.
+function abrirOrigens(c){
+  editandoComposta = c;
+  origens = c.origens.slice();
+  tela = 'origens'; iCol = 0; primeiraLinha = 0;
+  desenhar();
+}
+
+function alternaOrigem(){
+  const c = listaDeColecoes()[iCol]; if (!c) return;
+  const i = origens.indexOf(c.id);
+  i >= 0 ? origens.splice(i,1) : origens.push(c.id);
+  desenhar();                         // só no rascunho; nada é gravado ainda
+}
+
+function fecharOrigens(gravar){
+  const c = editandoComposta;
+  let sobreviveu = null;
+
+  if (gravar) c.origens = origens.slice();
+
+  // Composta sem origem não é coleção vazia, é coleção sem sentido -- e o C++ apaga
+  // na leitura seguinte. Então aqui ela nem chega a existir: vale para o Concluir
+  // com zero marcadas E para o Cancelar de uma recém-criada.
+  if (!c.origens.length){
+    cols.splice(cols.indexOf(c), 1);
+  } else {
+    sobreviveu = c;
+  }
+  salvar();
+
+  editandoComposta = null; origens = null;
+  tela = 'colecoes';
+
+  // Reacha por IDENTIDADE, não por nome nem por índice: a grade de origens é uma
+  // lista filtrada, e o mesmo iCol cai noutra coleção na grade completa.
+  iCol = 0;
+  if (sobreviveu){
+    const L = ordenadas();
+    const i = L.indexOf(sobreviveu);
+    if (i >= 0) iCol = i;
+  }
+  desenhar();
+}
+
 function removerDaColecao(){
   const g = lista()[iJogo]; if (!g || !atual) return;
   const i = atual.ids.indexOf(g.id);
@@ -711,6 +1007,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter'){ confirmaNome(); e.preventDefault(); }
     return;
   }
+  if (!$('#dlg-tipo').hidden){ if (e.key === 'Escape') cancelarTipo(); return; }
   if (!$('#dlg-menu').hidden){ if (e.key === 'Escape') $('#dlg-menu').hidden = true; return; }
   if (!$('#dlg-ajuda').hidden){ if (e.key === 'Escape' || e.key === 'Enter') $('#dlg-ajuda').hidden = true; return; }
 
@@ -726,15 +1023,21 @@ document.addEventListener('keydown', e => {
     desenhar(); return;
   }
 
-  if (tela === 'colecoes'){
-    const L = ordenadas();
+  if (tela === 'colecoes' || tela === 'origens'){
+    const escolhendo = tela === 'origens';
+    const L = listaDeColecoes();
     if (k === 'ArrowRight') iCol = Math.min(L.length-1, iCol+1);
     else if (k === 'ArrowLeft') iCol = Math.max(0, iCol-1);
     else if (k === 'ArrowDown') iCol = Math.min(L.length-1, iCol+COL_POR_LINHA);
     else if (k === 'ArrowUp') iCol = Math.max(0, iCol-COL_POR_LINHA);
-    else if (k === 'Enter'){ if (L[iCol]) abrir(L[iCol]); return; }
-    else if (k === 'x' || k === 'X') { abrirNome(null); return; }
-    else if (k === 'm' || k === 'M') { if (L[iCol]) abrirMenu(); return; }
+    else if (k === 'Enter'){ if (escolhendo) alternaOrigem(); else if (L[iCol]) abrir(L[iCol]); return; }
+    else if (k === 'Escape' || k === 'b' || k === 'B'){ if (escolhendo) fecharOrigens(false); return; }
+    else if (k === 'x' || k === 'X') { if (!escolhendo) abrirNome(null); return; }
+    else if (k === 'm' || k === 'M') {
+      if (escolhendo) fecharOrigens(true);
+      else if (L[iCol]) abrirMenu();
+      return;
+    }
     else return;
     desenhar(); e.preventDefault();
   } else {
@@ -750,11 +1053,12 @@ document.addEventListener('keydown', e => {
       else { tela='colecoes'; desenhar(); }
     }
     else if (k === 'x' || k === 'X'){
-      if (tela === 'jogos') abrirAdicionar();
+      // Numa composta não há o que adicionar: o conteúdo vem das origens.
+      if (tela === 'jogos' && !composta(atual)) abrirAdicionar();
     }
     else if (k === 'm' || k === 'M'){
       if (tela === 'adicionar') concluirAdicionar();
-      else if (lista().length) abrirOpcoesJogo();
+      else if (lista().length && !composta(atual)) abrirOpcoesJogo();
     }
     else return;
     e.preventDefault();
@@ -771,17 +1075,51 @@ function abrirNome(col){
 }
 function confirmaNome(){
   const t = $('#dn-txt').value.trim(); if (!t) return;
-  if (editando) editando.nome = t.slice(0,28);
-  else cols.push({nome:t.slice(0,28), ids:[]});
-  salvar(); $('#dlg-nome').hidden = true;
-  const alvo = editando ? editando.nome : t.slice(0,28);
-  editando = null;
-  iCol = Math.max(0, ordenadas().findIndex(c => c.nome === alvo));
-  desenhar();
+  $('#dlg-nome').hidden = true;
+
+  if (editando){
+    editando.nome = t.slice(0,28);
+    salvar();
+    const alvo = editando; editando = null;
+    iCol = Math.max(0, ordenadas().indexOf(alvo));
+    desenhar();
+    return;
+  }
+
+  // Criar virou DUAS etapas: nome, depois tipo. Nada é criado entre uma e outra --
+  // uma composta sem origem seria apagada na leitura seguinte.
+  nomeNovo = t.slice(0,28);
+  $('#dt-tit').textContent = nomeNovo;
+  $('#dlg-tipo').hidden = false;
 }
+
+function cancelarTipo(){ $('#dlg-tipo').hidden = true; nomeNovo = ''; }
+
+function criarDoTipo(tipo){
+  $('#dlg-tipo').hidden = true;
+  const c = {id: proximoId(), tipo: tipo, nome: nomeNovo, ids: [], origens: []};
+  cols.push(c);
+  nomeNovo = '';
+
+  if (tipo === 'jogos'){
+    salvar();
+    iCol = Math.max(0, ordenadas().indexOf(c));
+    desenhar();
+  } else {
+    // Ainda NÃO grava: quem escolhe as origens é que decide se ela sobrevive.
+    abrirOrigens(c);
+  }
+}
+
 function abrirMenu(){
-  $('#dm-tit').textContent = colFoco().nome;
+  const c = colFoco();
+  $('#dm-tit').textContent = c.nome;
   $('#dm-colecao').hidden = false; $('#dm-jogo').hidden = true;
+  // Trocar as origens só existe para composta; coleção de jogos não tem o que
+  // escolher ali.
+  $('#dm-origens').hidden = !composta(c);
+  $('#dm-origens').textContent = c.tipo === 'uniao' ? 'Escolher coleções (junção)'
+                                                    : 'Escolher coleções (cruzamento)';
   $('#dlg-menu').hidden = false;
 }
 function abrirOpcoesJogo(){
@@ -794,12 +1132,44 @@ function abrirOpcoesJogo(){
 $('#dn-cancelar').onclick = () => { $('#dlg-nome').hidden = true; editando = null; };
 $('#dn-ok').onclick = confirmaNome;
 $('#dm-fechar').onclick = () => $('#dlg-menu').hidden = true;
+$('#dt-cancelar').onclick = cancelarTipo;
+$('#dt-jogos').onclick = () => criarDoTipo('jogos');
+$('#dt-uniao').onclick = () => criarDoTipo('uniao');
+$('#dt-inter').onclick = () => criarDoTipo('intersecao');
+$('#dm-origens').onclick = () => { $('#dlg-menu').hidden = true; abrirOrigens(colFoco()); };
 $('#dm-renomear').onclick = () => { $('#dlg-menu').hidden = true; abrirNome(colFoco()); };
 $('#dm-remover').onclick = () => { $('#dlg-menu').hidden = true; removerDaColecao(); };
 $('#dm-apagar').onclick = () => {
-  const c = colFoco(); cols.splice(cols.indexOf(c),1); salvar();
+  const c = colFoco(); cols.splice(cols.indexOf(c),1);
+  limparCompostas();
+  salvar();
   $('#dlg-menu').hidden = true; iCol = Math.max(0, iCol-1); desenhar();
 };
+
+// Tira das compostas as origens que não existem mais, e APAGA a que ficou sem
+// nenhuma. Repete até estabilizar, e aqui isso DEIXOU de ser teórico: apagar uma
+// coleção de jogos pode esvaziar a união, e a união apagada pode esvaziar o
+// cruzamento que apontava para ela. Com dois níveis, duas voltas.
+function limparCompostas(){
+  let mexeu = true;
+  while (mexeu){
+    mexeu = false;
+    for (let i = 0; i < cols.length; i++){
+      const c = cols[i];
+      if (!composta(c)) continue;
+      // A PODA SÓ VALE PARA A JUNÇÃO: tirar uma origem dela só encolhe o conjunto.
+      // Num cruzamento tirar um fator ALARGA o resultado, e "co-op não zerado" que
+      // perdesse o "não zerado" viraria a lista de co-op com o nome mentindo. Então
+      // o cruzamento não é podado -- fica vazio e visível, até alguém arrumar.
+      if (c.tipo === 'uniao'){
+        const antes = c.origens.length;
+        c.origens = c.origens.filter(o => podeSerOrigem(porId(o), 'uniao'));
+        if (c.origens.length !== antes) mexeu = true;
+      }
+      if (!c.origens.length){ cols.splice(i,1); mexeu = true; break; }
+    }
+  }
+}
 document.querySelectorAll('.dlg').forEach(d => d.onclick = e => {
   if (e.target === d){ d.hidden = true; editando = null; }
 });
@@ -813,10 +1183,11 @@ cv.addEventListener('click', e => {
     if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) continue;
 
     if (z.tipo === 'colecao'){
-      // Clicar no que já está em foco abre; clicar em outro só move o foco. É o mesmo
-      // gesto de duas etapas do protótipo, e evita abrir sem querer.
-      if (z.dado === iCol) abrir(ordenadas()[iCol]);
-      else { iCol = z.dado; desenhar(); }
+      // Clicar no que já está em foco abre (ou marca); clicar em outro só move o
+      // foco. É o mesmo gesto de duas etapas do protótipo, e evita abrir sem querer.
+      if (z.dado !== iCol){ iCol = z.dado; desenhar(); }
+      else if (tela === 'origens') alternaOrigem();
+      else abrir(listaDeColecoes()[iCol]);
     }
     else if (z.tipo === 'jogo'){
       if (tela === 'adicionar' && z.dado === iJogo) alterna();
@@ -836,18 +1207,29 @@ $('#da-fechar').onclick = () => $('#dlg-ajuda').hidden = true;
 
 $('#bt-exemplos').onclick = () => {
   const porGenero = g => JOGOS.filter(j => j.genero === g).map(j => j.id);
+  const fatia = (a,b) => JOGOS.slice(a,b).map(j=>j.id);
+  const J = (id,nome,ids) => ({id, tipo:'jogos', nome, ids, origens:[]});
+
+  // Os três co-op se sobrepõem de propósito, e "Não zerado" cobre do 6 ao 40: assim
+  // o cruzamento dá 6..28 em vez de zero, que é o que se quer ver.
   cols = [
-    {nome:'Tiro', ids:porGenero('Shooter')},
-    {nome:'Aventura', ids:porGenero('Action & Adventure')},
-    {nome:'Para jogar em dois', ids:JOGOS.slice(0,14).map(j=>j.id)},
-    {nome:'Terminar algum dia', ids:[]},
+    J(11,'Co-op 2 jogadores', fatia(0,14)),
+    J(12,'Co-op 3 jogadores', fatia(12,20)),
+    J(13,'Co-op 4 jogadores', fatia(18,28)),
+    J(14,'Não zerado',        fatia(6,40)),
+    {id:15, tipo:'uniao',      nome:'Co-op',            ids:[], origens:[11,12,13]},
+    {id:16, tipo:'intersecao', nome:'Co-op não zerado', ids:[], origens:[15,14]},
+    J(17,'Tiro', porGenero('Shooter')),
+    J(18,'Terminar algum dia', []),
     // Nome proposital de teste: duas linhas + reticências, para ver o limite.
-    {nome:'Jogos para terminar numa tarde chuvosa de domingo', ids:JOGOS.slice(20,26).map(j=>j.id)},
-    {nome:'Supercalifragilisticexpialidocious', ids:JOGOS.slice(30,33).map(j=>j.id)}
+    J(19,'Jogos para terminar numa tarde chuvosa de domingo', fatia(20,26)),
   ];
   salvar(); tela='colecoes'; iCol=0; desenhar();
 };
-$('#bt-zerar').onclick = () => { cols=[]; salvar(); tela='colecoes'; iCol=0; desenhar(); };
+$('#bt-zerar').onclick = () => {
+  cols=[]; salvar(); tela='colecoes'; iCol=0;
+  editandoComposta=null; origens=null; desenhar();
+};
 
 for (let i = 0; i < POR_PAGINA + COLUNAS; i++) capa(i);
 desenhar();

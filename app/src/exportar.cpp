@@ -83,8 +83,16 @@ namespace exportar
         fprintf(f, "#         COLECAO|id|tipo|nome|conteudo. E a linha do colecoes.txt\n");
         fprintf(f, "#         com o prefixo na frente, para o vault reusar o parser.\n");
         fprintf(f, "#         tipo 'jogos': conteudo e TitleId em hexa, e casa com o\n");
-        fprintf(f, "#         id das linhas JOGO e ROM acima. tipo 'uniao': conteudo e\n");
-        fprintf(f, "#         id de COLECAO, em decimal. Uniao nunca contem uniao.\n");
+        fprintf(f, "#         id das linhas JOGO e ROM acima. tipos 'uniao' e\n");
+        fprintf(f, "#         'intersecao': conteudo e id de COLECAO, em decimal.\n");
+        fprintf(f, "#         'uniao' e o que esta em QUALQUER UMA das origens;\n");
+        fprintf(f, "#         'intersecao' e o que esta em TODAS. Quem pode ser origem\n");
+        fprintf(f, "#         de quem segue uma escada: jogos < uniao < intersecao --\n");
+        fprintf(f, "#         uniao so tem origem 'jogos', intersecao tem 'jogos' ou\n");
+        fprintf(f, "#         'uniao', e nenhuma contem o proprio tipo. Logo nao ha\n");
+        fprintf(f, "#         ciclo, e resolver e so descer no maximo dois degraus.\n");
+        fprintf(f, "#         TIPO QUE O VAULT NAO CONHECER: ignore a linha, nao tente\n");
+        fprintf(f, "#         ler o conteudo como TitleId -- pode vir tipo novo aqui.\n");
 
         int nJogos = 0, nRoms = 0;
         for (size_t i = 0; i < jogos.size(); i++)
@@ -122,10 +130,10 @@ namespace exportar
         for (size_t c = 0; c < cols.size(); c++)
         {
             const colecoes::Colecao *col = cols[c];
-            fprintf(f, "COLECAO|%d|%s|%s|", col->id, col->uniao ? "uniao" : "jogos",
+            fprintf(f, "COLECAO|%d|%s|%s|", col->id, colecoes::Palavra(col->tipo),
                     SemBarra(col->nome).c_str());
 
-            if (col->uniao)
+            if (colecoes::Composta(col))
                 for (size_t k = 0; k < col->origens.size(); k++)
                     fprintf(f, "%s%d", k ? "," : "", col->origens[k]);
             else

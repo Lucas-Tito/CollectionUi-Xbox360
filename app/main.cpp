@@ -139,7 +139,7 @@ namespace
     int    g_menuFoco = 0, g_menuQtd = 0;
     const char *g_menuItens[4];
 
-    // O menu de coleção tem layout VARIÁVEL -- união ganha uma linha a mais, e sem
+    // O menu de coleção tem layout VARIÁVEL -- composta ganha uma linha a mais, e sem
     // coleção nenhuma só sobra o export. Deduzir a ação do índice já quase deu errado
     // uma vez; aqui cada linha diz o que faz. Os outros menus têm layout fixo e
     // continuam decidindo pelo índice.
@@ -157,10 +157,11 @@ namespace
     // Entre o teclado e a escolha do tipo, o nome fica aqui.
     char g_nomeNovo[64] = "";
 
-    // Rascunho da união em edição, e a união sendo editada. Mesma ideia do g_selecao
-    // dos jogos: só vira arquivo quando se conclui.
+    // Rascunho da composta em edição, e a composta sendo editada. Mesma ideia do
+    // g_selecao dos jogos: só vira arquivo quando se conclui.
     std::vector<int>    g_origens;
-    colecoes::Colecao  *g_editandoUniao = NULL;
+    colecoes::Colecao  *g_editandoComposta = NULL;
+
 
     bool  g_anelMarcado = true;      // ver config::Ligado("anel")
 
@@ -369,20 +370,58 @@ namespace
                 saida[(*quantas)++] = &g_jogos[i];
     }
 
-    // O que a grade de coleções mostra. Escolhendo origens, só entram coleções DE
-    // JOGOS, e nunca a própria união em edição -- é o que impede união dentro de união
-    // sem precisar detectar ciclo.
+    // O que a grade de coleções mostra. Escolhendo origens, entra só quem a escada
+    // permite -- junção aceita jogos, cruzamento aceita jogos e junção -- e nunca a
+    // própria composta em edição. É o que impede ciclo sem precisar detectar.
     std::vector<colecoes::Colecao *> ListaDeColecoes()
     {
         std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
         if (g_tela != TELA_ORIGENS)
             return todas;
 
+        // Na tela de origens SEM composta em edicao o seguro e a lista VAZIA, nao a
+        // completa: a grade cheia ali deixaria marcar origem para ninguem. Estado
+        // inalcancavel hoje; o ponto e que, se virar alcancavel, erre para o lado que
+        // nao estraga nada.
+        if (g_editandoComposta == NULL)
+            return std::vector<colecoes::Colecao *>();
+
         std::vector<colecoes::Colecao *> saida;
         for (size_t i = 0; i < todas.size(); i++)
-            if (!todas[i]->uniao && todas[i] != g_editandoUniao)
+            if (todas[i] != g_editandoComposta &&
+                colecoes::PodeSerOrigem(todas[i], g_editandoComposta->tipo))
                 saida.push_back(todas[i]);
         return saida;
+    }
+
+    // "em todas: Co-op, Não zerado" -- o que responde "por que este jogo está aqui?".
+    //
+    // Por EXTENSO, e não com os símbolos de conjunto: o atlas Arial_16.xpr vai só até
+    // U+20AC e a tabela de tradução manda tudo acima disso para o glifo 0, o
+    // "desconhecido". Um '∩' sairia como quadradinho na TV. O mesmo vale para o '✓' e
+    // para as reticências U+2026 -- as do ATGFONT_TRUNCATED são três pontos de
+    // verdade, montados a partir do L'.', então essas continuam valendo.
+    std::string Formula(const colecoes::Colecao *c)
+    {
+        if (!colecoes::Composta(c)) return std::string();
+
+        // O MESMO PodeSerOrigem que o Tem() usa, nao so "existe": o rotulo e o
+        // calculo tem de concordar, senao o subtitulo cita uma origem que o resultado
+        // ignora. Hoje a poda roda antes e os dois dariam igual -- mas depender disso
+        // e depender de ordem de chamada, e o resto deste commit faz questao de nao.
+        std::string s;
+        for (size_t i = 0; i < c->origens.size(); i++)
+        {
+            const colecoes::Colecao *o = colecoes::PorId(c->origens[i]);
+            if (!colecoes::PodeSerOrigem(o, c->tipo)) continue;
+            if (!s.empty()) s += ", ";
+            s += o->nome;
+        }
+        if (s.empty()) return std::string();
+
+        // As mesmas palavras do menu que criou a coleção, de propósito: quem escolheu
+        // "só o que estiver em todas elas" reencontra "em todas" aqui.
+        return (c->tipo == colecoes::TIPO_UNIAO ? "em qualquer uma: " : "em todas: ") + s;
     }
 
     bool OrigemMarcada(int id)
@@ -556,8 +595,11 @@ namespace
         g_fonte.SetScaleFactors(1.5f, 1.5f);
         g_fonte.DrawText((FLOAT)MARGEM_X, 34.0f, COR_TEXTO, titulo, 0);
         g_fonte.SetScaleFactors(1.0f, 1.0f);
+        // CORTADO por largura: o subtítulo de uma composta é a lista das origens, e
+        // com três nomes de 28 bytes ele passaria da borda direita da tela.
         if (sub != NULL && sub[0] != L'\0')
-            g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, sub, 0);
+            g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, sub,
+                             ATGFONT_TRUNCATED, 1180.0f - ((FLOAT)MARGEM_X + 260.0f));
     }
 
     void Rodape(const WCHAR *esquerda, const WCHAR *direita)
@@ -756,12 +798,13 @@ namespace
         return t;
     }
 
-    // Raio, para marcar a coleção que é junção de outras. Gerado como as máscaras de
-    // canto: nenhum arquivo novo. O desenho é um polígono de sete pontos, testado por
-    // cruzamento de borda -- em 24x24 isso sai com serrilha aceitável, e o contorno
-    // escuro por baixo é o que o faz aparecer sobre capa clara.
+    // Emblemas do canto do card: raio para a JUNÇÃO, duas lentes para o CRUZAMENTO.
+    // Gerados como as máscaras de canto -- nenhum arquivo novo. Em 24x24 a serrilha
+    // sai aceitável com quatro amostras por pixel, e o contorno escuro por baixo é o
+    // que os faz aparecer sobre capa clara.
     const int RAIO_N = 24;
-    D3DTexture *g_raio = NULL;
+    D3DTexture *g_raio = NULL;      // junção
+    D3DTexture *g_lentes = NULL;    // cruzamento
 
     bool DentroDoRaio(float x, float y)
     {
@@ -779,21 +822,38 @@ namespace
         return dentro;
     }
 
-    void CriarRaio()
+    // Dois circulos VAZADOS com a lente cheia -- a forma classica de intersecao.
+    // Vazados de proposito: dois discos cheios a 22 px na tela viram um borrao, e e a
+    // sobreposicao que carrega o significado.
+    bool DentroDasLentes(float x, float y)
     {
+        const float R = 0.27f, CY = 0.5f, AX = 0.35f, BX = 0.65f;
+        const float ESP = 0.055f;      // meia espessura do contorno
+
+        const float da = sqrtf((x - AX) * (x - AX) + (y - CY) * (y - CY));
+        const float db = sqrtf((x - BX) * (x - BX) + (y - CY) * (y - CY));
+
+        if (da <= R && db <= R) return true;               // a lente, cheia
+        if (da > R - ESP && da < R + ESP) return true;     // contorno do primeiro
+        if (db > R - ESP && db < R + ESP) return true;     // contorno do segundo
+        return false;
+    }
+
+    typedef bool (*Forma)(float, float);
+
+    D3DTexture *GerarEmblema(Forma dentroDaForma)
+    {
+        D3DTexture *t = NULL;
         if (FAILED(ATG::g_pd3dDevice->CreateTexture(RAIO_N, RAIO_N, 1, 0,
                                                     D3DFMT_LIN_A8R8G8B8,
-                                                    D3DPOOL_DEFAULT, &g_raio, NULL)))
-        {
-            g_raio = NULL;
-            return;
-        }
+                                                    D3DPOOL_DEFAULT, &t, NULL)))
+            return NULL;
 
         D3DLOCKED_RECT tr;
-        if (FAILED(g_raio->LockRect(0, &tr, NULL, 0)))
+        if (FAILED(t->LockRect(0, &tr, NULL, 0)))
         {
-            g_raio->Release(); g_raio = NULL;
-            return;
+            t->Release();
+            return NULL;
         }
 
         for (int y = 0; y < RAIO_N; y++)
@@ -802,18 +862,20 @@ namespace
             for (int x = 0; x < RAIO_N; x++)
             {
                 // Quatro amostras por pixel: sem isso a diagonal do raio fica em
-                // escada, e nesse tamanho a escada e o que mais se ve.
+                // escada, e nesse tamanho a escada e o que mais se ve. A curva dos
+                // circulos pede o mesmo.
                 int dentro = 0;
                 for (int sy = 0; sy < 2; sy++)
                     for (int sx = 0; sx < 2; sx++)
-                        if (DentroDoRaio(((float)x + 0.25f + sx * 0.5f) / RAIO_N,
-                                         ((float)y + 0.25f + sy * 0.5f) / RAIO_N))
+                        if (dentroDaForma(((float)x + 0.25f + sx * 0.5f) / RAIO_N,
+                                          ((float)y + 0.25f + sy * 0.5f) / RAIO_N))
                             dentro++;
 
                 linha[x] = ((DWORD)(dentro * 255 / 4) << 24) | 0x00FFFFFF;
             }
         }
-        g_raio->UnlockRect(0);
+        t->UnlockRect(0);
+        return t;
     }
 
     void CriarCanto()
@@ -826,12 +888,15 @@ namespace
             diario::Escrever("AVISO: sem a mascara de canto, os cards ficam retos");
         if (g_arco[0] == NULL || g_arco[1] == NULL)
             diario::Escrever("AVISO: sem o arco, o contorno do card fica cortado no canto");
-        CriarRaio();
+        g_raio   = GerarEmblema(DentroDoRaio);
+        g_lentes = GerarEmblema(DentroDasLentes);
         if (g_raio == NULL)
-            diario::Escrever("AVISO: sem o raio, a uniao nao se distingue no card");
+            diario::Escrever("AVISO: sem o raio, a juncao nao se distingue no card");
+        if (g_lentes == NULL)
+            diario::Escrever("AVISO: sem as lentes, o cruzamento nao se distingue no card");
 
         if (g_canto != NULL)
-            diario::Escrever("texturas de canto %dx%d e raio %dx%d geradas",
+            diario::Escrever("texturas de canto %dx%d e emblemas %dx%d geradas",
                              CANTO_N, CANTO_N, RAIO_N, RAIO_N);
     }
 
@@ -1049,9 +1114,17 @@ namespace
                       D3DCOLOR_ARGB(0, 18, 27, 21), D3DCOLOR_ARGB(240, 18, 27, 21), false);
         }
 
-        // Raio no canto superior direito: marca que esta colecao e juncao de outras.
-        // Vai ANTES do contorno e dos cantos, para ser recortado junto se encostar.
-        if (col != NULL && col->uniao && g_raio != NULL)
+        // Emblema no canto superior direito: marca que esta colecao e composta, e
+        // QUAL das duas. Vai ANTES do contorno e dos cantos, para ser recortado junto
+        // se encostar.
+        D3DTexture *emb = NULL;
+        if (col != NULL)
+        {
+            if      (col->tipo == colecoes::TIPO_UNIAO)      emb = g_raio;
+            else if (col->tipo == colecoes::TIPO_INTERSECAO) emb = g_lentes;
+        }
+
+        if (emb != NULL)
         {
             const int M = 22, folga = 10;
             XMFLOAT2 pos[4], uvr[4];
@@ -1066,11 +1139,11 @@ namespace
             uvr[3] = XMFLOAT2(0.0f, 1.0f);
 
             Mistura(true);
-            // Sombra um pixel abaixo, para o raio nao sumir sobre capa clara.
+            // Sombra um pixel abaixo, para o emblema nao sumir sobre capa clara.
             XMFLOAT2 sombra[4];
             for (int c = 0; c < 4; c++) sombra[c] = XMFLOAT2(pos[c].x + 1.0f, pos[c].y + 1.0f);
-            QuadTex(sombra, uvr, g_raio, D3DCOLOR_ARGB(170, 0, 0, 0), true);
-            QuadTex(pos,    uvr, g_raio, COR_ANEL, true);
+            QuadTex(sombra, uvr, emb, D3DCOLOR_ARGB(170, 0, 0, 0), true);
+            QuadTex(pos,    uvr, emb, COR_ANEL, true);
             Mistura(false);
         }
 
@@ -1148,11 +1221,14 @@ namespace
         {
             g_fonte.Begin();
             g_fonte.SetScaleFactors(1.3f, 1.3f);
-            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
-                             (g_tela == TELA_ORIGENS)
-                                 ? L"Nenhuma coleção de jogos para juntar"
-                                 : L"Nenhuma coleção ainda",
-                             ATGFONT_CENTER_X);
+            // Cruzamento aceita junção como origem, junção não aceita -- então a
+            // frase tem de dizer o que FALTA, e não a mesma coisa para os dois.
+            const WCHAR *vazia = L"Nenhuma coleção ainda";
+            if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
+                vazia = (g_editandoComposta->tipo == colecoes::TIPO_UNIAO)
+                      ? L"Nenhuma coleção de jogos para juntar"
+                      : L"Nenhuma coleção para cruzar";
+            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, vazia, ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
             Rodape((g_tela == TELA_ORIGENS) ? GLYPH_B_BUTTON L" Cancelar"
                                             : GLYPH_X_BUTTON L" Nova coleção", L"");
@@ -1230,8 +1306,28 @@ namespace
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
         if (g_tela == TELA_ORIGENS)
         {
+            // Quantos jogos o rascunho daria SE fosse concluido agora. E a razao de
+            // ser desta linha: um cruzamento esvazia facil, e descobrir o ( 0 ) so
+            // depois de gravar e tarde. O '·' e U+00B7, que ESTA no atlas Arial_16
+            // (glifo 107) -- o '•' de U+2022 nao estaria, e sairia quadradinho.
+            //
+            // Uma colecao de pilha, so para perguntar: o rascunho ainda nao esta na
+            // composta de verdade, e escrever nela antes do Concluir tiraria do B o
+            // que ele tem para desfazer.
+            colecoes::Colecao rascunho;
+            rascunho.id = 0;
+            rascunho.tipo = (g_editandoComposta != NULL) ? g_editandoComposta->tipo
+                                                         : colecoes::TIPO_UNIAO;
+            rascunho.origens = g_origens;
+
+            int quantos = 0;
+            for (size_t j = 0; j < g_jogos.size(); j++)
+                if (colecoes::Tem(&rascunho, g_jogos[j].titleId))
+                    quantos++;
+
             WCHAR sub[64];
-            swprintf_s(sub, 64, L"%d escolhidas", (int)g_origens.size());
+            swprintf_s(sub, 64, L"%d escolhidas · %d jogos",
+                       (int)g_origens.size(), quantos);
             Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
                    GLYPH_START_BUTTON L" Concluir", sub);
         }
@@ -1304,14 +1400,24 @@ namespace
         {
             g_fonte.Begin();
             g_fonte.SetScaleFactors(1.3f, 1.3f);
+            // Composta vazia nao se resolve adicionando jogos -- nao ha o que
+            // adicionar nela. O cruzamento vazio e o caso que mais vai acontecer,
+            // entao ele diz o porque em vez de so dizer que esta vazio.
+            const WCHAR *vazia = L"Nenhum jogo nesta coleção";
+            if (!adicionando && g_atual != NULL)
+            {
+                if      (g_atual->tipo == colecoes::TIPO_INTERSECAO) vazia = L"Nenhum jogo está em todas elas";
+                else if (g_atual->tipo == colecoes::TIPO_UNIAO)      vazia = L"Nenhum jogo nas coleções escolhidas";
+            }
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
-                             adicionando ? L"A biblioteca está vazia"
-                                         : L"Nenhum jogo nesta coleção",
+                             adicionando ? L"A biblioteca está vazia" : vazia,
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
             Rodape(adicionando
                    ? GLYPH_B_BUTTON L" Cancelar"
-                   : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos",
+                   : (colecoes::Composta(g_atual)
+                      ? GLYPH_B_BUTTON L" Voltar     " GLYPH_START_BUTTON L" Opções"
+                      : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos"),
                    L"");
             g_fonte.End();
             return;
@@ -1398,7 +1504,14 @@ namespace
         else
         {
             Larga(g_atual->nome, texto, 256);
-            Cabecalho(texto, L"");
+
+            // Numa composta o subtítulo é a lista das origens; numa de jogos não há o
+            // que dizer, e o cabeçalho fica como sempre foi.
+            WCHAR formula[256];
+            formula[0] = L'\0';
+            const std::string f = Formula(g_atual);
+            if (!f.empty()) Larga(f, formula, 256);
+            Cabecalho(texto, formula);
         }
 
         for (int k = 0; k < qtdNomes; k++)
@@ -1418,8 +1531,15 @@ namespace
         else
         {
             swprintf_s(texto, 256, L"%d de %d", g_iJogo + 1, total);
-            Rodape(GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
-                   GLYPH_X_BUTTON L" Adicionar jogos     " GLYPH_START_BUTTON L" Opções", texto);
+            // Sem "Adicionar jogos" numa composta: o jogo está ali por causa de uma
+            // origem, e para tirá-lo tira-se da origem. Oferecer o botão seria
+            // oferecer um que não faz nada.
+            Rodape(colecoes::Composta(g_atual)
+                   ? GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
+                     GLYPH_START_BUTTON L" Opções"
+                   : GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
+                     GLYPH_X_BUTTON L" Adicionar jogos     " GLYPH_START_BUTTON L" Opções",
+                   texto);
         }
         g_fonte.End();
 
@@ -1688,10 +1808,14 @@ namespace
             g_nomeNovo[sizeof(g_nomeNovo) - 1] = '\0';
 
             CopiarTitulo(g_nomeNovo);
+            // O que decide entre junção e cruzamento NÃO é a palavra, é a frase: a
+            // linha diz o nome e o subtítulo diz o efeito, e ninguém precisa saber o
+            // que é união nem interseção para escolher certo.
             g_menuDe = MENU_TIPO;
             g_menuItens[0] = "Coleção de jogos";
-            g_menuItens[1] = "Junção de coleções";
-            g_menuQtd = 2; g_menuFoco = 0; g_menuAberto = true;
+            g_menuItens[1] = "Junção: em qualquer uma delas";
+            g_menuItens[2] = "Cruzamento: só em todas elas";
+            g_menuQtd = 3; g_menuFoco = 0; g_menuAberto = true;
         }
         else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
         {
@@ -1733,9 +1857,9 @@ namespace
             g_menuItens[g_menuQtd] = "Renomear";
             g_menuAcao [g_menuQtd] = ACAO_RENOMEAR;  g_menuQtd++;
 
-            // União ganha a opção de trocar as origens; coleção de jogos não tem o
-            // que escolher ali.
-            if (L[g_iCol]->uniao)
+            // Composta ganha a opção de trocar as origens; coleção de jogos não tem
+            // o que escolher ali.
+            if (colecoes::Composta(L[g_iCol]))
             {
                 g_menuItens[g_menuQtd] = "Escolher coleções";
                 g_menuAcao [g_menuQtd] = ACAO_ORIGENS;   g_menuQtd++;
@@ -1759,9 +1883,9 @@ namespace
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         if (L.empty()) return;
-        // Numa união o jogo está ali por causa de uma origem; para tirar, tira-se da
-        // origem. Sem "Remover" aqui, então o menu não tem o que oferecer.
-        if (g_atual != NULL && g_atual->uniao)
+        // Numa composta o jogo está ali por causa de uma origem; para tirar, tira-se
+        // da origem. Sem "Remover" aqui, então o menu não tem o que oferecer.
+        if (colecoes::Composta(g_atual))
         {
             som::Tocar(som::SOM_VOLTA);   // sem isto o botão parece quebrado
             return;
@@ -1786,11 +1910,11 @@ namespace
         g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
     }
 
-    // Entra na escolha de origens, com o rascunho partindo do que a união já tem.
-    void AbrirOrigens(colecoes::Colecao *uniao)
+    // Entra na escolha de origens, com o rascunho partindo do que a composta já tem.
+    void AbrirOrigens(colecoes::Colecao *composta)
     {
-        g_editandoUniao = uniao;
-        g_origens = uniao->origens;
+        g_editandoComposta = composta;
+        g_origens = composta->origens;
         g_tela = TELA_ORIGENS;
         g_iCol = 0;
         g_primeiraLinhaCol = 0;
@@ -1802,38 +1926,39 @@ namespace
     {
         colecoes::Colecao *sobreviveu = NULL;
 
-        if (gravar && g_editandoUniao != NULL)
+        if (gravar && g_editandoComposta != NULL)
         {
-            g_editandoUniao->origens = g_origens;
+            const char *palavra = colecoes::Palavra(g_editandoComposta->tipo);
+            g_editandoComposta->origens = g_origens;
 
             if (g_origens.empty())
             {
-                // União sem origem não é coleção vazia, é coleção sem sentido.
-                diario::Escrever("uniao '%s' concluida sem origem: apagada",
-                                 g_editandoUniao->nome.c_str());
-                colecoes::Apagar(g_editandoUniao);
+                // Composta sem origem não é coleção vazia, é coleção sem sentido.
+                diario::Escrever("%s '%s' concluida sem origem: apagada",
+                                 palavra, g_editandoComposta->nome.c_str());
+                colecoes::Apagar(g_editandoComposta);
             }
             else
             {
                 colecoes::Gravar();
-                diario::Escrever("uniao '%s' com %d origens",
-                                 g_editandoUniao->nome.c_str(), (int)g_origens.size());
-                sobreviveu = g_editandoUniao;
+                diario::Escrever("%s '%s' com %d origens", palavra,
+                                 g_editandoComposta->nome.c_str(), (int)g_origens.size());
+                sobreviveu = g_editandoComposta;
             }
         }
-        else if (g_editandoUniao != NULL && g_editandoUniao->origens.empty())
+        else if (g_editandoComposta != NULL && g_editandoComposta->origens.empty())
         {
-            // Cancelou a criação: a união nunca chegou a existir de verdade.
-            colecoes::Apagar(g_editandoUniao);
+            // Cancelou a criação: a composta nunca chegou a existir de verdade.
+            colecoes::Apagar(g_editandoComposta);
         }
 
-        g_editandoUniao = NULL;
+        g_editandoComposta = NULL;
         g_origens.clear();
         g_tela = TELA_COLECOES;
 
-        // O g_iCol que sobrou e indice da lista FILTRADA da escolha de origens (so
-        // coleções de jogos); na grade completa ele cai em outra coleção. Reacha a
-        // união por PONTEIRO, como o Renomear faz -- dois nomes iguais focariam errado.
+        // O g_iCol que sobrou e indice da lista FILTRADA da escolha de origens; na
+        // grade completa ele cai em outra coleção. Reacha a composta por PONTEIRO,
+        // como o Renomear faz -- dois nomes iguais focariam errado.
         g_iCol = 0;
         if (sobreviveu != NULL)
         {
@@ -1866,7 +1991,10 @@ namespace
             }
             else
             {
-                AbrirOrigens(colecoes::CriarUniao(g_nomeNovo));
+                // 1 = junção, 2 = cruzamento, na ordem em que o menu monta.
+                const colecoes::Tipo t = (g_menuFoco == 1) ? colecoes::TIPO_UNIAO
+                                                           : colecoes::TIPO_INTERSECAO;
+                AbrirOrigens(colecoes::CriarComposta(g_nomeNovo, t));
             }
         }
         else if (g_menuDe == MENU_APAGAR)
@@ -2388,8 +2516,8 @@ void __cdecl main()
             else if (novos & XINPUT_GAMEPAD_B) Voltar();
             else if (novos & XINPUT_GAMEPAD_X)
             {
-                // União não guarda jogos próprios: não há o que acrescentar nela.
-                if (g_tela == TELA_JOGOS && g_atual != NULL && !g_atual->uniao)
+                // Composta não guarda jogos próprios: não há o que acrescentar nela.
+                if (g_tela == TELA_JOGOS && g_atual != NULL && !colecoes::Composta(g_atual))
                     AbrirAdicionar();
             }
             else if (novos & XINPUT_GAMEPAD_START)

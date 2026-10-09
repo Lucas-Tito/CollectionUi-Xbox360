@@ -41,6 +41,33 @@ O que está aqui e ainda não está no console: a tela de coleções, o índice 
 escolher jogos, o menu do `☰`. O que está no console e é fiel aqui: a grade de 5 por linha, a
 geometria toda, o corte de nome por largura e o rodapé.
 
+### Coleções compostas
+
+A prévia tem os três tipos de coleção e a escada que decide quem pode ser origem de quem:
+
+```
+jogos  <  uniao  <  intersecao
+```
+
+União só aceita coleção de jogos — é o que o C++ já faz. **Cruzamento** aceita jogos ou união,
+nunca outro cruzamento. Sendo ordem estrita, ciclo é impossível por construção e não há detecção
+em lugar nenhum. O botão "Criar coleções de exemplo" monta o caso que motivou tudo: três coleções
+de co-op, uma junção delas, e o cruzamento dessa junção com "Não zerado".
+
+Duas coisas que a prévia existe para não deixar passar:
+
+- **Nada de `∩` nem `∪`.** O atlas `Arial_16.xpr` vai até U+20AC e manda todo o resto para o glifo
+  "desconhecido" — os símbolos sairiam como quadradinho na TV, mas apareceriam certinho aqui. A
+  fórmula sai por extenso: *em todas: Co-op, Não zerado*. Vale para o `✓` (U+2713), e o `•` de
+  U+2022 também está fora; o `·` de U+00B7, que o rodapé usa, está dentro (glifo 107).
+- **A contagem ao vivo enquanto se escolhe.** O rodapé mostra `2 escolhidas · 22 jogos`. Um
+  cruzamento esvazia fácil, e descobrir o `( 0 )` só depois de gravar é tarde demais. Nasceu
+  aqui e **já está no C++**.
+
+O que aqui ainda é proposta: a marca da coleção escolhida é um **tique** desenhado, e no console
+hoje é o anel verde do `DrawScreenSpaceRect`. O tique se distingue melhor do anel de foco, que
+também é verde — mas ainda não foi para o C++, e por isso vive só nesta página.
+
 ## Navegação
 
 | tecla | botão | o que faz |

@@ -1345,3 +1345,82 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      -- retrato velho ao lado do novo, e o vault importando o errado em silêncio -- mas é de
      uma vez só: depois da primeira gravação o arquivo nunca mais existe, e a chamada ficaria
      ali para sempre sem fazer nada. Tarefa de migração não mora no caminho quente.
+
+143. **Coleção ganhou um terceiro tipo, o cruzamento, e o `bool uniao` virou `enum Tipo`.**
+     O pedido foi "co-op não zerado": só os jogos que estão, ao mesmo tempo, em alguma das
+     coleções de co-op e na de não zerados. São **duas** operações, não uma -- uma junção e um
+     cruzamento -- e o desenho tinha de deixar isso visível sem virar álgebra na tela.
+
+     A regra é uma escada, e é ela que carrega o peso todo:
+
+         JOGOS  <  UNIAO  <  INTERSECAO
+
+     Junção só aceita coleção de jogos, como já era. Cruzamento aceita jogos **ou** junção,
+     nunca outro cruzamento. Sendo ordem **estrita**, nenhum tipo aceita o próprio tipo, e daí
+     saem de graça três coisas: ciclo é impossível por construção (não há detecção em lugar
+     nenhum, nem precisa), a recursão de `Tem()` desce no máximo dois degraus, e o
+     `PodeSerOrigem` que filtra a grade de escolha é o **mesmo** teste que guarda a recursão
+     contra um `colecoes.txt` editado à mão. Uma regra, um lugar.
+
+     Trocar `bool uniao` por `enum Tipo` não foi cosmético, foi o mecanismo de segurança. São
+     19 usos do campo, e **todo `!uniao` significava "é de jogos"** -- depois do terceiro tipo
+     passaria a significar "jogos ou cruzamento", em silêncio. Três teriam ficado errados: a
+     grade de origens deixaria marcar um cruzamento como origem de junção; o menu do jogo
+     ofereceria "Remover da coleção" num cruzamento, mexendo num `ids` que ninguém lê; e o
+     `Alternar` empurraria TitleId para esse mesmo `ids`. Com o enum, o compilador enumerou os
+     19. O `Composta()` virou o nome do teste que quase todo chamador realmente queria.
+
+     A armadilha que custou um teste dedicado: **"para toda origem" sobre lista vazia é
+     verdadeiro**. Um cruzamento sem origem viva responderia "sim" para todo jogo e conteria a
+     biblioteca inteira. O `Tem()` conta as origens válidas e devolve `vivas > 0`.
+
+     Na tela, o que decide não é a palavra: o menu diz "Junção: em qualquer uma delas" e
+     "Cruzamento: só em todas elas", e o cabeçalho da coleção repete as mesmas palavras ("em
+     todas: Co-op, Não zerado"). Ninguém precisa saber o que é interseção. **Nada de `∩` nem
+     `∪`** -- o atlas `Arial_16.xpr` vai até U+20AC e manda todo o resto para o glifo 0, o
+     "desconhecido"; os símbolos sairiam como quadradinho na TV. Vale para o `✓` (U+2713)
+     também, e foi por isso que o emblema do card é textura procedural, como o raio da junção:
+     dois círculos vazados com a lente cheia, vazados porque dois discos cheios a 22 px viram
+     um borrão. E escolhendo origens o rodapé mostra o resultado **ao vivo** ("2 escolhidas ·
+     22 jogos"): cruzamento esvazia fácil, e descobrir o `( 0 )` depois de gravar é tarde.
+
+     O que **não** tem conserto, e ficou registrado por isso: o `Carregar` das versões já
+     lançadas só conhece `jogos` e `uniao`, e joga qualquer outra palavra no ramo do formato
+     antigo. A linha `7314|intersecao|Co-op não zerado|15,14` lida pela v1.3.0 vira uma coleção
+     chamada **"7314"** com um TitleId de lixo, e como o `Gravar` reescreve o arquivo inteiro,
+     o estrago entra no disco na primeira gravação seguinte. Quem criar um cruzamento e voltar
+     para um build antigo perde o cruzamento. Dá para parar de cavar, e paramos: o loader novo
+     guarda linha de tipo desconhecido **verbatim** e devolve igual no `Gravar`, com o id dela
+     reservado contra o sorteio. A v1.4 sobrevive ao que a v1.6 inventar; as anteriores não.
+
+     **A interseção não é podada, e essa é a regra mais importante daqui.** Tirar uma origem
+     morta de uma junção só *encolhe* o conjunto, e o nome continua honesto. Numa interseção
+     faz o contrário: tirar um fator a **alarga**. Uma revisão achou o caminho, e ele é
+     alcançável só pela interface -- apague a coleção que era a única origem da junção "Co-op"
+     e o cruzamento "Co-op não zerado" passa a listar os jogos zerados também, com o nome
+     mentindo na tela e nada avisando. Então a interseção guarda a origem morta onde está, o
+     `Tem()` devolve vazio enquanto ela estiver lá, e o card mostra `( 0 )` até alguém arrumar
+     pelo "Escolher coleções". Vazio é visível e tem conserto; conjunto errado passa
+     despercebido. Pela mesma razão, origem que não resolve derruba a interseção inteira em vez
+     de ser ignorada: perdeu um fator, a resposta é desconhecida, e desconhecido aqui se mostra
+     como nada.
+
+     Dois consertos no parser vieram da mesma revisão. O teste de "é formato novo?" exigia que
+     a palavra do tipo fosse **só letras**, e isso fazia a preservação verbatim falhar
+     justamente onde ela importa: um `diferenca_simetrica` reprovava, caía no formato antigo e
+     era destruído. O discriminante passou a ser a **segunda barra**, que o formato antigo
+     nunca tem. E uma linha de composta **cortada no meio** -- queda de energia durante o
+     `Gravar` -- ficava sem origem e era apagada pelo `LimparCompostas`, contrariando o guarda
+     em maiúsculas logo acima dela; agora é preservada inteira. Junto, o `Carregar` passou a
+     detectar id repetido entre uma coleção viva e uma linha preservada: renumera a viva e leva
+     as origens junto, porque aqui, ao contrário do caso de duas vivas, dá para saber qual era
+     a intenção -- o `PorId` só enxerga coleção viva.
+
+     O que a mesma revisão apontou e **não** era problema: o índice da grade não fica fora dos
+     limites depois de uma cascata (o `ClampFoco`, `main.cpp:1635`, roda todo quadro antes do
+     `Desenhar`), e os três ponteiros guardados entre quadros estão protegidos.
+
+     Validado compilando o `colecoes.cpp` **de verdade** no PC, com um `xtl.h` de mentira: 39
+     testes cobrindo o caso do co-op, ida e volta pelo disco, cruzamento vazio e órfão, ciclo
+     escrito à mão, tipo desconhecido preservado, migração do formato antigo, e um caso por
+     achado da revisão.

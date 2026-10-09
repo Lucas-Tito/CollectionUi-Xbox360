@@ -1,4 +1,4 @@
-﻿#include "colecoes.h"
+#include "colecoes.h"
 #include "diario.h"
 #include <xtl.h>
 #include <stdio.h>
@@ -14,6 +14,21 @@ namespace
     // push_back. Guardando ponteiros, o endereço de cada coleção é estável.
     std::vector<colecoes::Colecao *> g_lista;
 
+    // Linhas de um tipo que ESTA versão não conhece, guardadas inteiras e devolvidas
+    // ao arquivo como vieram.
+    //
+    // Sem isto, uma versão futura que invente um quarto tipo perderia a coleção ao ser
+    // lida por esta: a linha cairia na migração do formato antigo, viraria uma coleção
+    // chamada com o número do id e com TitleIds de lixo, e o Gravar -- que reescreve o
+    // arquivo INTEIRO a partir do que foi lido -- gravaria o estrago por cima do
+    // original. Guardar o texto cru custa quase nada e corta essa classe de perda de
+    // uma vez.
+    //
+    // É só meia solução, e a metade que falta não tem conserto: as versões JÁ
+    // LANÇADAS não fazem isto. Quem criar um cruzamento e depois voltar para a v1.3.0
+    // perde o cruzamento do mesmo jeito.
+    std::vector<std::string> g_desconhecidas;
+
     const char *SemArtigo(const char *s)
     {
         static const char *ARTIGOS[] = { "the ", "a ", "an ", "o ", "os ", "as ", "um ", "uma " };
@@ -25,6 +40,16 @@ namespace
         }
         return s;
     }
+
+    // O id de uma linha preservada, para o sorteio não colidir com ele. A linha é
+    // opaca para nós, mas o id dela não é: ele abre a linha, em decimal.
+    bool IdPreservado(int id)
+    {
+        for (size_t i = 0; i < g_desconhecidas.size(); i++)
+            if (atoi(g_desconhecidas[i].c_str()) == id)
+                return true;
+        return false;
+    }
 }
 
 namespace colecoes
@@ -32,6 +57,51 @@ namespace colecoes
     // Definida depois do Carregar, que a usa: é ela que sorteia id para a linha do
     // formato antigo e para a que vier com id repetido.
     int ProximoId();
+
+    bool Composta(const Colecao *c)
+    {
+        return c != NULL && c->tipo != TIPO_JOGOS;
+    }
+
+    bool PodeSerOrigem(const Colecao *candidata, Tipo tipoDoAlvo)
+    {
+        if (candidata == NULL) return false;
+
+        // Junção só aceita coleção de jogos; cruzamento aceita jogos ou junção.
+        // Coleção de jogos não tem origem nenhuma.
+        //
+        // Este teste é também o GUARDA DE CICLO do Tem(): como nenhum tipo aceita o
+        // próprio tipo, a recursão desce no máximo dois degraus e para. Um
+        // colecoes.txt editado à mão com um cruzamento apontando para si mesmo bate
+        // aqui em vez de recorrer sem fim.
+        switch (tipoDoAlvo)
+        {
+        case TIPO_UNIAO:      return candidata->tipo == TIPO_JOGOS;
+        case TIPO_INTERSECAO: return candidata->tipo == TIPO_JOGOS ||
+                                     candidata->tipo == TIPO_UNIAO;
+        case TIPO_JOGOS:      return false;
+        }
+        return false;
+    }
+
+    const char *Palavra(Tipo t)
+    {
+        switch (t)
+        {
+        case TIPO_UNIAO:      return "uniao";
+        case TIPO_INTERSECAO: return "intersecao";
+        case TIPO_JOGOS:      return "jogos";
+        }
+        return "jogos";
+    }
+
+    bool PorPalavra(const std::string &s, Tipo *saida)
+    {
+        if      (s == "jogos")      { *saida = TIPO_JOGOS;      return true; }
+        else if (s == "uniao")      { *saida = TIPO_UNIAO;      return true; }
+        else if (s == "intersecao") { *saida = TIPO_INTERSECAO; return true; }
+        return false;
+    }
 
     Colecao *PorId(int id)
     {
@@ -41,11 +111,14 @@ namespace colecoes
         return NULL;
     }
 
-    // Tira das unioes os ids que nao existem mais, e APAGA a uniao que ficou sem
-    // nenhuma origem: uniao sem origem nao e colecao vazia, e colecao que perdeu o
-    // sentido. Repete ate estabilizar, porque apagar uma pode esvaziar outra -- nao
-    // acontece hoje (uniao nao contem uniao), mas custa nada ficar certo.
-    void LimparUnioes()
+    // Tira das compostas os ids que nao existem mais ou que a escada nao permite, e
+    // APAGA a composta que ficou sem nenhuma origem: composta sem origem nao e colecao
+    // vazia, e colecao que perdeu o sentido.
+    //
+    // Repete ate estabilizar, e com o cruzamento isso DEIXOU de ser teorico: apagar
+    // uma colecao de jogos pode esvaziar a juncao, e a juncao apagada pode esvaziar o
+    // cruzamento que apontava para ela. Sao duas voltas, nao uma.
+    void LimparCompostas()
     {
         bool mexeu = true;
         while (mexeu)
@@ -54,26 +127,38 @@ namespace colecoes
             for (size_t i = 0; i < g_lista.size(); i++)
             {
                 Colecao *c = g_lista[i];
-                if (!c->uniao) continue;
+                if (!Composta(c)) continue;
 
-                for (size_t k = 0; k < c->origens.size(); )
+                // A PODA SO VALE PARA A JUNCAO.
+                //
+                // Tirar uma origem de uma juncao so ENCOLHE o conjunto, e o nome
+                // continua honesto. Numa INTERSECCAO faz o contrario: tirar um fator
+                // ALARGA o resultado. "Co-op nao zerado" que perdesse o "nao zerado"
+                // viraria a lista inteira de co-op, zerados inclusive, com o nome
+                // mentindo na tela e nada avisando -- e isso se alcanca so pela
+                // interface, apagando a colecao que era a unica origem da juncao.
+                //
+                // Entao a interseccao NAO e podada: a origem morta fica onde esta, o
+                // Tem() devolve vazio enquanto ela estiver la, e o card mostra ( 0 )
+                // ate alguem arrumar pelo "Escolher colecoes". Vazio e visivel e tem
+                // conserto; o conjunto errado passa despercebido.
+                if (c->tipo == TIPO_UNIAO)
                 {
-                    // Fora id morto E origem que e uniao: a grade de escolha nao
-                    // mostra uniao, entao uma dessas so entra por arquivo editado a
-                    // mao -- e ficaria contada no rodape sem haver como desmarcar.
-                    const Colecao *o = PorId(c->origens[k]);
-                    if (o == NULL || o->uniao)
+                    for (size_t k = 0; k < c->origens.size(); )
                     {
-                        c->origens.erase(c->origens.begin() + k);
-                        mexeu = true;
+                        if (!PodeSerOrigem(PorId(c->origens[k]), c->tipo))
+                        {
+                            c->origens.erase(c->origens.begin() + k);
+                            mexeu = true;
+                        }
+                        else k++;
                     }
-                    else k++;
                 }
 
                 if (c->origens.empty())
                 {
-                    diario::Escrever("uniao '%s' ficou sem origem e foi apagada",
-                                     c->nome.c_str());
+                    diario::Escrever("%s '%s' ficou sem origem e foi apagada",
+                                     Palavra(c->tipo), c->nome.c_str());
                     delete c;
                     g_lista.erase(g_lista.begin() + i);
                     mexeu = true;
@@ -117,6 +202,7 @@ namespace colecoes
         for (size_t i = 0; i < g_lista.size(); i++)
             delete g_lista[i];
         g_lista.clear();
+        g_desconhecidas.clear();
 
         FILE *f = fopen(ARQUIVO, "r");
         if (f == NULL)
@@ -140,10 +226,6 @@ namespace colecoes
             if (barra == std::string::npos)
                 continue;
 
-            Colecao *c = new Colecao();
-            c->id = 0;
-            c->uniao = false;
-
             // Formato NOVO:   id|tipo|nome|conteudo
             // Formato ANTIGO: nome|TitleIds
             //
@@ -153,22 +235,59 @@ namespace colecoes
             //
             // So abrir com numero NAO basta para dizer que a linha e do formato novo:
             // "1942|FFED0707,..." e do antigo, e uma colecao chamada 1942 nao e
-            // esquisitice nenhuma num app de jogos. O segundo campo e que decide --
-            // no formato antigo ali vao TitleIds em hexa, nunca a palavra jogos nem
-            // uniao.
+            // esquisitice nenhuma num app de jogos. O segundo campo e que decide -- no
+            // formato antigo ali vao TitleIds em hexa, que tem digito, e o nome nunca
+            // chega la porque Sanear tira a barra dele.
             std::string ids;
             size_t b2 = linha.find('|', barra + 1);
-            std::string tipo = (b2 == std::string::npos)
-                             ? std::string()
-                             : linha.substr(barra + 1, b2 - barra - 1);
+            std::string tipoTxt = (b2 == std::string::npos)
+                                ? std::string()
+                                : linha.substr(barra + 1, b2 - barra - 1);
+            // O que decide e a SEGUNDA BARRA, nao o formato da palavra.
+            //
+            // Exigir que o tipo fosse so letras parecia mais seguro e era pior: um
+            // tipo futuro com digito ou sublinhado -- "diferenca_simetrica" --
+            // reprovava aqui, caia no ramo do formato antigo e era DESTRUIDO, que e
+            // exatamente a perda que o g_desconhecidas existe para fechar. O formato
+            // antigo nunca tem segunda barra: o Sanear tira a barra do nome, e o que
+            // vem depois e hexa com virgulas.
             bool novo = (barra > 0
                          && linha.find_first_not_of("0123456789") == barra
-                         && (tipo == "jogos" || tipo == "uniao"));
+                         && b2 != std::string::npos);
+
+            Tipo tipo = TIPO_JOGOS;
+            if (novo && !PorPalavra(tipoTxt, &tipo))
+            {
+                // Linha bem formada com um tipo que esta versao nao conhece. Guarda
+                // inteira e devolve igual no Gravar -- ver g_desconhecidas.
+                diario::Escrever("linha de tipo '%s' desconhecido preservada como esta",
+                                 tipoTxt.c_str());
+                g_desconhecidas.push_back(linha);
+                continue;
+            }
+
+            // Linha de COMPOSTA cortada no meio (queda de energia durante o Gravar).
+            // Sem o quarto campo ela fica sem origem, e o LimparCompostas a apaga
+            // logo abaixo -- justo o que o guarda do "NUNCA descartar" promete nao
+            // fazer. Entao ela e preservada inteira, como as de tipo desconhecido.
+            // Para colecao de jogos continua valendo o combinado: o nome sobrevive,
+            // o conteudo se perde, e o usuario ve a colecao vazia e refaz.
+            if (novo && tipo != TIPO_JOGOS &&
+                linha.find('|', b2 + 1) == std::string::npos)
+            {
+                diario::Escrever("linha de '%s' cortada no meio preservada como esta",
+                                 tipoTxt.c_str());
+                g_desconhecidas.push_back(linha);
+                continue;
+            }
+
+            Colecao *c = new Colecao();
+            c->id = 0;
+            c->tipo = tipo;
 
             if (novo)
             {
                 c->id = atoi(linha.substr(0, barra).c_str());
-                c->uniao = (tipo == "uniao");
 
                 size_t b3 = linha.find('|', b2 + 1);
                 if (b3 == std::string::npos)
@@ -199,7 +318,7 @@ namespace colecoes
                 // strtoul e base 16, não atoi. TitleId usa os 32 bits: o do Snes360 é
                 // 0xFFED0707, que estoura int e voltaria negativo -- e a validação
                 // antiga ("> 0") o descartaria em silêncio a cada releitura.
-                if (c->uniao)
+                if (Composta(c))
                 {
                     // Origem e id de colecao, em DECIMAL.
                     int origem = atoi(p);
@@ -222,12 +341,12 @@ namespace colecoes
             if (g_lista[i]->id == 0) g_lista[i]->id = ProximoId();
 
         // Id repetido no arquivo: até agora o PorId devolvia o primeiro e seguia em
-        // SILÊNCIO, e uma união que apontasse para aquele id ficava presa na coleção
+        // SILÊNCIO, e uma composta que apontasse para aquele id ficava presa na coleção
         // errada para sempre. Com dois editores isso deixou de ser teórico, então
         // vale detectar, renumerar a segunda e registrar.
         //
         // Renumerar a SEGUNDA, não a primeira, porque é a primeira que o PorId já
-        // devolvia -- as uniões que existem hoje continuam apontando para onde
+        // devolvia -- as compostas que existem hoje continuam apontando para onde
         // apontavam.
         for (size_t i = 0; i < g_lista.size(); i++)
         {
@@ -237,37 +356,67 @@ namespace colecoes
                     continue;
 
                 const int repetido = g_lista[i]->id;
-                const int novo = ProximoId();
+                const int novoId = ProximoId();
                 diario::Escrever("colecao '%s' tinha o id %d repetido com '%s'; "
                                  "virou %d NESTA SESSAO (o disco so muda na proxima "
                                  "gravacao)",
                                  g_lista[i]->nome.c_str(), repetido,
-                                 g_lista[k]->nome.c_str(), novo);
+                                 g_lista[k]->nome.c_str(), novoId);
 
-                // Qual das duas a uniao queria e INDECIDIVEL: o arquivo guarda o
+                // Qual das duas a composta queria e INDECIDIVEL: o arquivo guarda o
                 // numero, nao a intencao. Fica com a primeira, que e quem o PorId ja
                 // devolvia -- mas a ambiguidade tem de deixar rastro, senao a
                 // renumeracao apaga a evidencia e o vinculo errado vira definitivo
                 // sem ninguem nunca saber que houve escolha.
                 for (size_t u = 0; u < g_lista.size(); u++)
                 {
-                    if (!g_lista[u]->uniao) continue;
+                    if (!Composta(g_lista[u])) continue;
                     for (size_t o = 0; o < g_lista[u]->origens.size(); o++)
                         if (g_lista[u]->origens[o] == repetido)
-                            diario::Escrever("  AVISO: a uniao '%s' aponta para o id "
+                            diario::Escrever("  AVISO: a composta '%s' aponta para o id "
                                              "%d e ficou com '%s'; confira",
                                              g_lista[u]->nome.c_str(), repetido,
                                              g_lista[k]->nome.c_str());
                 }
 
-                g_lista[i]->id = novo;
+                g_lista[i]->id = novoId;
                 break;
             }
         }
 
-        LimparUnioes();
+        // Id que colide com uma LINHA PRESERVADA tambem e repetido -- so que a outra
+        // metade do par nao esta no g_lista, e sim no g_desconhecidas, e por isso o
+        // laco acima nunca a ve. Sem isto o arquivo sai com dois registros de mesmo
+        // id, em silencio.
+        //
+        // Aqui a composta ambigua PODE ser consertada, ao contrario do caso de cima:
+        // o PorId so enxerga coleção viva, entao toda origem que aponta para este id
+        // queria a viva. Renumera-se a viva e levam-se as origens junto; a linha
+        // preservada fica intocada, que e o que "preservada" quer dizer.
+        for (size_t i = 0; i < g_lista.size(); i++)
+        {
+            if (!IdPreservado(g_lista[i]->id)) continue;
 
-        diario::Escrever("colecoes carregadas: %d", (int)g_lista.size());
+            const int repetido = g_lista[i]->id;
+            const int novoId = ProximoId();
+            diario::Escrever("colecao '%s' tinha o id %d repetido com uma linha "
+                             "preservada; virou %d, e as origens foram junto",
+                             g_lista[i]->nome.c_str(), repetido, novoId);
+
+            for (size_t u = 0; u < g_lista.size(); u++)
+            {
+                if (!Composta(g_lista[u])) continue;
+                for (size_t o = 0; o < g_lista[u]->origens.size(); o++)
+                    if (g_lista[u]->origens[o] == repetido)
+                        g_lista[u]->origens[o] = novoId;
+            }
+            g_lista[i]->id = novoId;
+        }
+
+        LimparCompostas();
+
+        diario::Escrever("colecoes carregadas: %d (%d linhas preservadas)",
+                         (int)g_lista.size(), (int)g_desconhecidas.size());
     }
 
     void Gravar()
@@ -282,14 +431,15 @@ namespace colecoes
         // Sem barra nestas linhas, de proposito: e o que as distingue de uma colecao.
         fprintf(f, "# CollectionUI: uma colecao por linha, no formato\n");
         fprintf(f, "#   id, tipo, nome, conteudo -- separados por barra vertical\n");
-        fprintf(f, "#   tipo jogos: TitleIds em hexa. tipo uniao: ids de colecao\n");
+        fprintf(f, "#   tipo jogos: TitleIds em hexa\n");
+        fprintf(f, "#   tipo uniao e intersecao: ids de colecao, em decimal\n");
 
         for (size_t i = 0; i < g_lista.size(); i++)
         {
             const Colecao *c = g_lista[i];
-            fprintf(f, "%d|%s|%s|", c->id, c->uniao ? "uniao" : "jogos", c->nome.c_str());
+            fprintf(f, "%d|%s|%s|", c->id, Palavra(c->tipo), c->nome.c_str());
 
-            if (c->uniao)
+            if (Composta(c))
                 for (size_t k = 0; k < c->origens.size(); k++)
                     fprintf(f, "%s%d", k ? "," : "", c->origens[k]);
             else
@@ -298,6 +448,11 @@ namespace colecoes
 
             fputc('\n', f);
         }
+
+        // E as de tipo desconhecido, iguais ao que entrou.
+        for (size_t i = 0; i < g_desconhecidas.size(); i++)
+            fprintf(f, "%s\n", g_desconhecidas[i].c_str());
+
         fclose(f);
     }
 
@@ -347,7 +502,7 @@ namespace colecoes
     // O arquivo tem dois editores -- este app e o xbox-vault, no PC -- e os dois
     // criavam id como "maior + 1" sobre as coleções vivas. Apagar a de maior id
     // devolvia aquele número ao estoque, e criar uma de cada lado antes de
-    // sincronizar dava o MESMO id para coleções diferentes. A partir daí uma união
+    // sincronizar dava o MESMO id para coleções diferentes. A partir daí uma composta
     // aponta para a errada, em silêncio.
     //
     // Sortear em 31 bits resolve sem os dois lados combinarem nada, que é a única
@@ -379,7 +534,10 @@ namespace colecoes
             g_semente ^= g_semente << 5;
 
             int id = (int)(g_semente & 0x7FFFFFFF);
-            if (id > 0 && PorId(id) == NULL)
+            // As linhas preservadas contam como ocupadas: o id delas nao esta no
+            // g_lista, mas esta no ARQUIVO, e reusa-lo criaria duas linhas com o mesmo
+            // id -- exatamente o que a renumeracao do Carregar existe para evitar.
+            if (id > 0 && PorId(id) == NULL && !IdPreservado(id))
                 return id;
         }
 
@@ -389,9 +547,10 @@ namespace colecoes
         // volta negativo. Id negativo no arquivo não passa no teste de formato novo
         // (o '-' não é dígito), a linha cai na migração do formato antigo e a coleção
         // perde todos os jogos. Procurando de baixo isso não tem como acontecer, e o
-        // laço termina sempre: há no máximo g_lista.size() ids ocupados.
-        for (int id = 1; id <= (int)g_lista.size() + 1; id++)
-            if (PorId(id) == NULL) return id;
+        // laço termina sempre: há no máximo g_lista.size() + g_desconhecidas.size()
+        // ids ocupados.
+        for (int id = 1; id <= (int)(g_lista.size() + g_desconhecidas.size()) + 1; id++)
+            if (PorId(id) == NULL && !IdPreservado(id)) return id;
         return 1;       // inalcançável: o laço acima só sai achando
     }
 
@@ -401,22 +560,22 @@ namespace colecoes
     {
         Colecao *c = new Colecao();
         c->id = ProximoId();
-        c->uniao = false;
+        c->tipo = TIPO_JOGOS;
         c->nome = Sanear(nome);
         g_lista.push_back(c);
         Gravar();
         return c;
     }
 
-    Colecao *CriarUniao(const std::string &nome)
+    Colecao *CriarComposta(const std::string &nome, Tipo tipo)
     {
         Colecao *c = new Colecao();
         c->id = ProximoId();
-        c->uniao = true;
+        c->tipo = tipo;
         c->nome = Sanear(nome);
         g_lista.push_back(c);
-        // NAO grava aqui: uniao sem origem seria apagada na proxima leitura. Quem chama
-        // grava depois de escolher as origens.
+        // NAO grava aqui: composta sem origem seria apagada na proxima leitura. Quem
+        // chama grava depois de escolher as origens.
         return c;
     }
 
@@ -428,12 +587,13 @@ namespace colecoes
             {
                 delete g_lista[i];
                 g_lista.erase(g_lista.begin() + i);
-                // Antes de gravar: senao o id apagado fica pendurado em alguma uniao
+                // Antes de gravar: senao o id apagado fica pendurado em alguma composta
                 // no disco. O motivo original era pior -- o ProximoId sequencial podia
-                // devolver esse mesmo id a uma colecao nova, que entraria na uniao sem
-                // ninguem ter pedido. Com id sorteado em 31 bits o reuso deixou de
-                // preocupar, mas uniao com origem morta continua sendo lixo no arquivo.
-                LimparUnioes();
+                // devolver esse mesmo id a uma colecao nova, que entraria na composta
+                // sem ninguem ter pedido. Com id sorteado em 31 bits o reuso deixou de
+                // preocupar, mas composta com origem morta continua sendo lixo no
+                // arquivo.
+                LimparCompostas();
                 Gravar();
                 return;
             }
@@ -442,24 +602,44 @@ namespace colecoes
 
     bool Tem(const Colecao *c, unsigned int titleId)
     {
-        if (c->uniao)
+        if (c == NULL) return false;
+
+        // Responde por PERGUNTA em vez de devolver a lista toda porque os chamadores
+        // varrem a biblioteca e so querem saber "este jogo entra?". Montar o vetor
+        // resolvido a cada um deles seria alocacao dentro do laco de desenho.
+        //
+        // A recursao desce no maximo dois degraus -- cruzamento, juncao, jogos -- e o
+        // PodeSerOrigem e o que garante isso: nenhum tipo aceita o proprio tipo.
+        if (c->tipo == TIPO_UNIAO)
         {
-            // Pergunta a cada origem. A chamada de baixo NAO volta a entrar neste ramo:
-            // so se desce em origem que nao e uniao, e esse teste e o guarda de ciclo --
-            // um colecoes.txt editado a mao com uma uniao apontando pra si mesma para
-            // aqui em vez de recorrer sem fim.
-            //
-            // Responde por pergunta em vez de devolver a lista toda porque os tres
-            // chamadores varrem a biblioteca e so querem saber "este jogo entra?".
-            // Montar o vetor resolvido a cada um deles seria alocacao dentro do laco
-            // de desenho.
             for (size_t i = 0; i < c->origens.size(); i++)
             {
                 const Colecao *o = PorId(c->origens[i]);
-                if (o != NULL && !o->uniao && Tem(o, titleId))
+                if (PodeSerOrigem(o, TIPO_UNIAO) && Tem(o, titleId))
                     return true;
             }
             return false;
+        }
+
+        if (c->tipo == TIPO_INTERSECAO)
+        {
+            // Origem que nao resolve derruba TUDO, em vez de ser ignorada. Ignorar
+            // seria responder a uma pergunta com um fator a menos -- "co-op E nao
+            // zerado" virando "co-op" -- e a resposta sairia MAIOR que a certa, com
+            // cara de certa. Perdeu um fator, o resultado e desconhecido, e
+            // desconhecido aqui se mostra como vazio.
+            for (size_t i = 0; i < c->origens.size(); i++)
+            {
+                const Colecao *o = PorId(c->origens[i]);
+                if (!PodeSerOrigem(o, TIPO_INTERSECAO))
+                    return false;
+                if (!Tem(o, titleId))
+                    return false;
+            }
+            // "PARA TODA origem" sobre lista VAZIA e verdadeiro -- em logica e aqui
+            // tambem, se deixarmos. Sem isto, um cruzamento sem origem nenhuma
+            // responderia "sim" para todo jogo e conteria a biblioteca inteira.
+            return !c->origens.empty();
         }
 
         for (size_t i = 0; i < c->ids.size(); i++)
@@ -470,6 +650,11 @@ namespace colecoes
 
     void Alternar(Colecao *c, unsigned int titleId)
     {
+        // Numa composta o ids fica vazio para sempre, e empurrar aqui dentro gravaria
+        // um TitleId que ninguem le -- some da tela e reaparece se a colecao um dia
+        // virar de jogos. Ver colecoes.h.
+        if (Composta(c)) return;
+
         for (size_t i = 0; i < c->ids.size(); i++)
         {
             if (c->ids[i] == titleId)
@@ -483,6 +668,8 @@ namespace colecoes
 
     void Remover(Colecao *c, unsigned int titleId)
     {
+        if (Composta(c)) return;
+
         for (size_t i = 0; i < c->ids.size(); i++)
         {
             if (c->ids[i] == titleId)

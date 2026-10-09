@@ -1,4 +1,4 @@
-﻿// As coleções do usuário: nome e a lista de jogos que estão nela.
+// As coleções do usuário: nome e a lista de jogos que estão nela.
 //
 // Guardadas em game:\colecoes.txt, ao lado do .xex, uma coleção por linha:
 //     Para jogar em dois|4156081C,4D530910,555308B6
@@ -26,16 +26,52 @@
 
 namespace colecoes
 {
-    // Uma coleção é de JOGOS ou é UNIÃO de outras, nunca as duas. União não contém
-    // união -- isso elimina ciclo por construção, sem precisar detectar.
+    // Uma coleção é de JOGOS, é JUNÇÃO de outras, ou é CRUZAMENTO de outras.
+    //
+    //     TIPO_JOGOS       você escolhe os jogos, um a um
+    //     TIPO_UNIAO       tudo o que estiver em QUALQUER UMA das origens
+    //     TIPO_INTERSECAO  só o que estiver em TODAS as origens
+    //
+    // Quem pode ser origem de quem segue uma escada:
+    //
+    //     JOGOS  <  UNIAO  <  INTERSECAO
+    //
+    // Junção só aceita coleção de jogos. Cruzamento aceita jogos OU junção, nunca
+    // outro cruzamento. Sendo ordem ESTRITA, ciclo é impossível por construção -- não
+    // existe detecção de ciclo em lugar nenhum, e não precisa existir.
+    //
+    // A escada é também o que torna útil o caso que motivou tudo isto: "co-op não
+    // zerado" é o cruzamento de "não zerado" com a JUNÇÃO de co-op 2, 3 e 4 jogadores.
+    // Sem o degrau do meio, cruzar os três co-op direto daria os jogos que são de 2 E
+    // de 3 E de 4 ao mesmo tempo, que é outra pergunta e quase sempre vazia.
+    enum Tipo
+    {
+        TIPO_JOGOS = 0,
+        TIPO_UNIAO,
+        TIPO_INTERSECAO
+    };
+
     struct Colecao
     {
-        int                       id;      // estável; é por ele que uma união referencia
-        bool                      uniao;
+        int                       id;      // estável; é por ele que uma composta referencia
+        Tipo                      tipo;
         std::string               nome;
         std::vector<unsigned int> ids;     // TitleId, se for de jogos
-        std::vector<int>          origens; // ids de coleção, se for união
+        std::vector<int>          origens; // ids de coleção, se for composta
     };
+
+    // Composta = tem origens em vez de jogos próprios. Vale para junção e cruzamento,
+    // e é o teste que quase todo chamador quer -- o `!uniao` de antes virou isto.
+    bool Composta(const Colecao *c);
+
+    // A escada, num lugar só. Chamar isto em vez de comparar tipos na mão é o que
+    // impede que a regra se espalhe por três arquivos e se contradiga num deles.
+    bool PodeSerOrigem(const Colecao *candidata, Tipo tipoDoAlvo);
+
+    // A palavra que vai no arquivo, e a volta. O arquivo é o contrato com o
+    // xbox-vault, então as duas moram aqui e não no exportar.
+    const char *Palavra(Tipo t);
+    bool        PorPalavra(const std::string &s, Tipo *saida);
 
     // Corta em 28 bytes SEM partir uma sequência UTF-8 ao meio, e troca o '|' e as
     // quebras de linha por espaço -- o arquivo separa nome e ids por '|'.
@@ -48,15 +84,19 @@ namespace colecoes
     std::vector<Colecao *> Ordenadas();
 
     Colecao *Criar(const std::string &nome);
-    Colecao *CriarUniao(const std::string &nome);
+    Colecao *CriarComposta(const std::string &nome, Tipo tipo);
 
     Colecao *PorId(int id);
 
     void     Apagar(Colecao *c);
 
-    // Vale para os dois tipos: numa união, pergunta a cada origem. É por ela que a
-    // união sabe o que mostrar -- não há lista resolvida guardada em lugar nenhum.
+    // Vale para os três tipos: numa composta, pergunta a cada origem. É por ela que a
+    // composta sabe o que mostrar -- não há lista resolvida guardada em lugar nenhum.
     bool Tem(const Colecao *c, unsigned int titleId);
+
+    // Estas duas mexem em ids próprios, então NÃO valem para composta: numa delas o
+    // jogo está por causa de uma origem, e é de lá que se tira. Chamar com uma
+    // composta não faz nada -- e quem chama já não deveria ter oferecido a opção.
     void Alternar(Colecao *c, unsigned int titleId);
     void Remover(Colecao *c, unsigned int titleId);
 }
