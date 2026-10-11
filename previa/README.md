@@ -170,6 +170,26 @@ Os outros quatro ficam no `T`, de registro do que foi comparado:
 As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `Arial_16` não garante
 `‹`/`›` (U+2039/U+203A), e o que ele não tem vira quadradinho na TV.
 
+## Desenhos de modal — `modais.html`
+
+Página **avulsa**, abre direto no navegador, sem `montar.py` e sem dados: `previa/modais.html`.
+Compara o modal de hoje com quatro alternativas, nos quatro casos em que ele aparece de verdade
+(opções da coleção, opções do jogo, a confirmação de apagar e a escolha do tipo). Setas trocam o
+caso e o foco, `C` liga a confirmação em botões lado a lado, clicar amplia.
+
+O modal é uma função só no C++ — o `DesenharMenu` — servindo os quatro casos, e é daí que vêm as
+queixas: 460 px fixos (um item só sobra caixa vazia, um nome comprido é cortado), título do mesmo
+tamanho dos itens, foco por contorno fino, e **"Apagar esta coleção" com exatamente a aparência de
+"Renomear"**.
+
+Duas coisas tornam esta página mais fiel que a prévia:
+
+- **Mede com o atlas de verdade.** Os avanços de cada caractere saem do `app/media/Arial_16.xpr`,
+  que é o arquivo que o app carrega. A sans do navegador é ~25% mais estreita, e com ela um nome
+  comprido parece caber quando no console seria cortado. Caractere sem glifo no atlas aparece
+  denunciado num aviso na própria página.
+- **Nada é negrito**, porque o atlas tem um peso só.
+
 ## Navegação
 
 | tecla | botão | o que faz |
