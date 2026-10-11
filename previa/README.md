@@ -80,6 +80,11 @@ também é verde — mas ainda não foi para o C++, e por isso vive só nesta p�
 **Proposta; nada disto está no C++.** A tela de coleções ganha uma barra de categorias, e `LB`/`RB`
 andam por ela. A primeira é sempre **Todos**, que é a tela de hoje, sem nenhuma mudança.
 
+**O app sempre abre em Todos.** A categoria ativa mora na memória e em lugar nenhum além dela: não
+vai para o `colecoes.txt`, não vai para a configuração, não sobrevive a sair do app. Voltar e
+encontrar metade do acervo sumido, sem lembrar de ter apertado `RB` na sessão passada, parece
+defeito — e o jeito de nunca pagar esse preço é não ter onde guardar.
+
 A categoria **não muda o que a coleção tem**: ela encolhe o *universo* sobre o qual se pergunta.
 A mesma "Co-op" tem 28 jogos em Todos e 15 em Xbox 360, e a contagem no card acompanha.
 
@@ -138,18 +143,24 @@ Onde a aba **não** vale, de propósito:
 
 Coleção nova é vazia, e vazia não está em aba nenhuma: criar volta para Todos.
 
-#### Os cinco desenhos (tecla `T`)
+#### O desenho (tecla `T` ainda cicla os que ficaram para trás)
 
-| nome | o que é | custo no console |
+**Escolhido: `pilula`** — fileira de rótulos com a categoria ativa num bloco verde preenchido. É o
+que se lê do sofá sem depender de uma barra de 3 px.
+
+O canto arredondado **não custa nada de novo**: o `g_canto` do `main.cpp` já é uma máscara de
+16×16 gerada no arranque, e é com ela que os cards de coleção já são arredondados hoje. A pílula
+tem 32 px de altura e raio 16 — exatamente o `CANTO_N` —, então as duas pontas são a mesma textura,
+virada.
+
+Os outros quatro ficam no `T`, de registro do que foi comparado:
+
+| nome | o que é | por que não |
 |---|---|---|
-| `steam` | fileira de rótulos, o ativo sublinhado pela barra verde | texto + um `fillRect` de 3 px |
-| `pilula` | fileira de pílulas, a ativa preenchida | canto arredondado = textura 9-slice |
-| `seletor` | um rótulo só, entre setas, com os pontinhos embaixo | o mais barato; nunca estoura a largura |
+| `steam` | fileira de rótulos, o ativo sublinhado pela barra verde | o sublinhado some a três metros |
+| `seletor` | um rótulo só, entre setas, com os pontinhos embaixo | não dá panorama |
 | `coluna` | trilho vertical à esquerda | a grade cai de 5 para 4 por linha |
 | `nenhuma` | a tela de hoje, para comparar | — |
-
-O `steam` é o desenho da biblioteca da Steam no Big Picture e é o **default da prévia**: é o que dá
-panorama e o único que não cobra nem textura nem layout.
 
 As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `Arial_16` não garante
 `‹`/`›` (U+2039/U+203A), e o que ele não tem vira quadradinho na TV.

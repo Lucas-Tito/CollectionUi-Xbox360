@@ -305,13 +305,19 @@ JOGOS.forEach(g => {
 const nomeAba = id => (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
 
 // --- os desenhos em prova. T cicla. -----------------------------------------
+//   pilula   fileira de pilulas, a ativa preenchida -- O ESCOLHIDO
 //   steam    fileira de rotulos, o ativo sublinhado -- o da Steam
-//   pilula   fileira de pilulas, o ativo preenchido
 //   seletor  um rotulo so, entre setas, com os pontinhos embaixo
 //   coluna   trilho vertical a esquerda; a grade cai para 4 por linha
 //   nenhuma  a tela de hoje, para comparar
-const ESTILOS_ABA = ['steam', 'pilula', 'seletor', 'coluna', 'nenhuma'];
-let ABA_ESTILO = 'steam';
+const ESTILOS_ABA = ['pilula', 'steam', 'seletor', 'coluna', 'nenhuma'];
+let ABA_ESTILO = 'pilula';                      // ESCOLHIDO. Os outros ficam de registro.
+
+// O APP SEMPRE ABRE EM "TODOS". Esta variável mora na memória e em lugar nenhum
+// além dela: não vai para o colecoes.txt, não vai para o config, não sobrevive a
+// sair do app. Voltar e encontrar metade do acervo sumido, sem lembrar de ter
+// apertado RB na sessão passada, parece defeito -- e o jeito de nunca pagar esse
+// preço é não ter onde guardar.
 let aba = 0;                                    // TabId ativo; 0 = Todos
 
 // id do jogo -> indice em JOGOS, para achar a capa a partir do que a coleção guarda
@@ -815,10 +821,13 @@ function abasSteam(A){
   bumper(x - GAP + 16, Y + 3, 'RB');
 }
 
-// 2) PILULA -- a ativa e um bloco preenchido. Le melhor de longe que o sublinhado,
-// e COBRA: canto arredondado no console e textura 9-slice. De canto reto, vira um
-// retangulo chapado atras do texto, que e a mesma coisa de graca -- esta opcao
-// existe para a gente olhar e decidir se o arredondado vale uma textura.
+// 2) PILULA -- O ESCOLHIDO. A ativa e um bloco preenchido, que le de longe sem
+// depender de uma barra de 3 px enxergada do sofa.
+//
+// O canto arredondado NAO custa nada de novo: o g_canto do main.cpp ja e uma
+// mascara de 16x16 gerada no arranque, e e com ela que os cards de colecao ja sao
+// arredondados hoje. A pilula tem 32 px de altura e raio 16 -- exatamente o
+// CANTO_N --, entao as duas pontas sao a mesma textura, virada.
 function abasPilula(A){
   const Y = 36, ALT = 32, GAP = 10;
   let x = MARGEM_X;
