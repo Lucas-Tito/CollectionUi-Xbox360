@@ -253,6 +253,11 @@ namespace emuladores
             r.titleIdEmulador = emu.titleId;
             r.arquivoRom      = rotulo + nome;   // exatamente o que semeia o id acima
 
+            // A aba NAO vem do emulador: o banco da FreeStyle o cataloga em Emulator,
+            // mas isso e sorte de instalacao -- um emulador numa pasta rotulada como
+            // Xbox 360 levaria as ROMs junto. ROM e ROM, e a aba dela e esta.
+            r.aba             = biblioteca::ABA_EMULADOR;
+
             // A arte e um arquivo solto com o nome da ROM. Nada de casamento
             // aproximado aqui: isso acontece no PC, uma vez. Ver a decisao 115.
             if (!pastaDoApp.empty())

@@ -129,6 +129,20 @@ namespace
     std::vector<unsigned int> g_selecao;   // rascunho ao adicionar; TitleIds
     int g_iCol = 0, g_iJogo = 0, g_primeiraLinha = 0, g_primeiraLinhaCol = 0;
 
+    // ---- a aba de categoria ----------------------------------------------------
+    //
+    // A aba NAO muda o que a colecao tem: ela encolhe o UNIVERSO sobre o qual se
+    // pergunta. Por isso o colecoes.cpp nao sabe que abas existem -- o filtro entra
+    // so onde se VARRE g_jogos, que sao tres lugares: ListaAtual, a contagem do card
+    // e a do rodape de origens.
+    //
+    // O APP SEMPRE ABRE EM "TODOS". Esta variavel mora na memoria e em lugar nenhum
+    // alem dela: nao vai para o colecoes.txt, nao vai para a config, nao sobrevive a
+    // sair do app. Voltar e encontrar metade do acervo sumido, sem lembrar de ter
+    // apertado RB na sessao passada, parece defeito -- e o jeito de nunca pagar esse
+    // preco e nao ter onde guardar.
+    int g_aba = biblioteca::ABA_AUTOMATICA;   // 0 = Todos
+
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
     // anterior do mesmo quadro tivesse mudado de tela, executava o item do outro menu.
@@ -247,12 +261,81 @@ namespace
 
     // ---- listas ----------------------------------------------------------------
     // Ponteiros para g_jogos, que não muda depois de carregada.
+    // O rotulo na tela e NOSSO, em portugues. O TabName do settings.db diz "Xbox
+    // Classic" e "Emulator", e o resto do app fala portugues -- o que vem da
+    // FreeStyle e o NUMERO, que e o que precisa concordar com ela.
+    const WCHAR *NomeDaAba(int aba)
+    {
+        switch (aba)
+        {
+        case biblioteca::ABA_XBLA:     return L"XBLA";
+        case biblioteca::ABA_X360:     return L"Xbox 360";
+        case biblioteca::ABA_CLASSICO: return L"Xbox Clássico";
+        case biblioteca::ABA_HOMEBREW: return L"Homebrew";
+        case biblioteca::ABA_EMULADOR: return L"Emulador";
+        case biblioteca::ABA_OUTROS:   return L"Outros";
+        }
+        return L"Todos";
+    }
+
+    bool NaAba(const biblioteca::Jogo &j)
+    {
+        return g_aba == biblioteca::ABA_AUTOMATICA || j.aba == g_aba;
+    }
+
+    // As abas com conteudo, em ordem, com o Todos na frente. Recalculada UMA VEZ por
+    // quadro, no ClampFoco: ela custa uma varredura da biblioteca por colecao, e
+    // chamar a cada uso sairia tres vezes mais cara pelo mesmo resultado.
+    std::vector<int> g_abas;
+
+    // A REGRA INTEIRA, num lugar so: uma aba existe quando ALGUMA colecao tem jogo
+    // nela.
+    //
+    // Nao e "o console tem jogo de 360": e "alguma colecao tem". A diferenca aparece
+    // num acervo com 215 jogos de 360 e nenhum deles marcado -- a aba existiria e
+    // levaria a uma tela vazia. Do jeito daqui, aba que existe tem conteudo, e por
+    // construcao NAO DA para parar numa tela vazia.
+    //
+    // E no limite: com UMA categoria so, "Todos" e ela sao a mesma lista, e a barra
+    // viraria dois botoes que fazem a mesma coisa. Ai nao ha barra nenhuma, e um
+    // console so de Xbox 360 fica com a tela de sempre, sem saber que isto existe.
+    void AtualizarAbas()
+    {
+        bool tem[biblioteca::ABA_QUANTAS];
+        for (int a = 0; a < biblioteca::ABA_QUANTAS; a++) tem[a] = false;
+
+        // UMA passada por colecao, contando as abas de quem casou -- e nao uma
+        // passada por aba. O resultado e o mesmo e custa seis vezes menos.
+        std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
+        for (size_t i = 0; i < todas.size(); i++)
+            for (size_t j = 0; j < g_jogos.size(); j++)
+                if (colecoes::Tem(todas[i], g_jogos[j].titleId))
+                    tem[g_jogos[j].aba] = true;
+
+        g_abas.clear();
+        for (int a = biblioteca::ABA_XBLA; a < biblioteca::ABA_QUANTAS; a++)
+            if (tem[a]) g_abas.push_back(a);
+
+        if (g_abas.size() < 2) g_abas.clear();
+        g_abas.insert(g_abas.begin(), biblioteca::ABA_AUTOMATICA);
+    }
+
+    int IndiceDaAba()
+    {
+        for (size_t i = 0; i < g_abas.size(); i++)
+            if (g_abas[i] == g_aba) return (int)i;
+        return 0;
+    }
+
     std::vector<const biblioteca::Jogo *> ListaAtual()
     {
         std::vector<const biblioteca::Jogo *> saida;
 
         if (g_tela == TELA_ADICIONAR)
         {
+            // Ao ADICIONAR a aba nao filtra: marcar so o que a aba corrente mostra e
+            // marcar as cegas -- o jogo entraria na coleção e sumiria da tela ao
+            // voltar para Todos. O escolhedor mostra a biblioteca inteira.
             for (size_t i = 0; i < g_jogos.size(); i++)
                 saida.push_back(&g_jogos[i]);
         }
@@ -261,7 +344,7 @@ namespace
             for (size_t i = 0; i < g_jogos.size(); i++)
                 // Casa por TitleId: é o que fica gravado. Itens que compartilham
                 // TitleId (multi-disco, instalação duplicada) entram juntos.
-                if (colecoes::Tem(g_atual, g_jogos[i].titleId))
+                if (NaAba(g_jogos[i]) && colecoes::Tem(g_atual, g_jogos[i].titleId))
                     saida.push_back(&g_jogos[i]);
         }
         return saida;      // g_jogos já vem ordenada de biblioteca::Ler
@@ -365,8 +448,10 @@ namespace
         *quantas = 0;
         if (c == NULL) return;
 
+        // Na aba, a colagem mostra o que a colecao mostra. Sem isto o card de uma
+        // coleção filtrada estamparia capas que a grade de dentro nao tem.
         for (size_t i = 0; i < g_jogos.size() && *quantas < 3; i++)
-            if (colecoes::Tem(c, g_jogos[i].titleId))
+            if (NaAba(g_jogos[i]) && colecoes::Tem(c, g_jogos[i].titleId))
                 saida[(*quantas)++] = &g_jogos[i];
     }
 
@@ -377,7 +462,30 @@ namespace
     {
         std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
         if (g_tela != TELA_ORIGENS)
-            return todas;
+        {
+            // A OUTRA metade da regra: numa aba, coleção que não tem nada dela sai da
+            // tela. Junto com o AtualizarAbas, as duas garantem que nenhuma tecla
+            // leva a uma tela vazia.
+            if (g_aba == biblioteca::ABA_AUTOMATICA)
+                return todas;
+
+            std::vector<colecoes::Colecao *> naAba;
+            for (size_t i = 0; i < todas.size(); i++)
+            {
+                for (size_t j = 0; j < g_jogos.size(); j++)
+                    if (g_jogos[j].aba == g_aba &&
+                        colecoes::Tem(todas[i], g_jogos[j].titleId))
+                    {
+                        naAba.push_back(todas[i]);
+                        break;
+                    }
+            }
+            return naAba;
+        }
+
+        // Daqui para baixo e a tela de ORIGENS, onde a aba NAO vale. Ali se escolhe
+        // coleção, e sumir com uma porque a aba corrente a esvazia esconderia uma
+        // origem legítima -- a composta resultante vale para as outras abas também.
 
         // Na tela de origens SEM composta em edicao o seguro e a lista VAZIA, nao a
         // completa: a grade cheia ali deixaria marcar origem para ninguem. Estado
@@ -392,6 +500,26 @@ namespace
                 colecoes::PodeSerOrigem(todas[i], g_editandoComposta->tipo))
                 saida.push_back(todas[i]);
         return saida;
+    }
+
+    // Poe o foco numa coleção pelo PONTEIRO, voltando para Todos se a aba corrente
+    // não a mostrar. Quem acabou de criar ou editar uma coleção tem de VÊ-LA: sumir
+    // com ela porque a aba a esvazia é a pior forma de ensinar a regra -- e coleção
+    // recém-criada é vazia, logo não está em aba nenhuma.
+    //
+    // Por ponteiro e não por nome: dois nomes iguais focariam a coleção errada.
+    void FocarColecao(colecoes::Colecao *c)
+    {
+        g_iCol = 0;
+        if (c == NULL) return;
+
+        for (int tentativa = 0; tentativa < 2; tentativa++)
+        {
+            std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+            for (size_t i = 0; i < L.size(); i++)
+                if (L[i] == c) { g_iCol = (int)i; return; }
+            g_aba = biblioteca::ABA_AUTOMATICA;
+        }
     }
 
     // "em todas: Co-op, Não zerado" -- o que responde "por que este jogo está aqui?".
@@ -1212,6 +1340,111 @@ namespace
                                             focada ? COR_ANEL : COR_LINHA);
     }
 
+    // ---- a barra de categorias -------------------------------------------------
+    //
+    // Mora no alto da tela, que NESTA tela sempre foi vazio: a grade de coleções não
+    // tem cabeçalho. A grade desce de COL_TOPO para COL_TOPO_ABA quando a barra
+    // existe, e volta sozinha quando não existe.
+    //
+    // 96 + 244 + 32 + 244 = 616, e o rodapé só começa em 656. Cabe sem apertar nada.
+    const int ABA_Y = 26, ABA_ALT = 32, ABA_PAD = 14, ABA_GAP = 10;
+    const int COL_TOPO_ABA = 96;
+    const int CHIP_L = 34, CHIP_ALT = 22;          // a caixinha do LB e do RB
+    const D3DCOLOR COR_SOBRE_ANEL = D3DCOLOR_XRGB(11, 16, 4);
+
+    struct PilulaAba { int x, l, aba; };
+
+    // Mede e posiciona a fileira. SEPARADO do desenho porque as pílulas são
+    // retângulos e os rótulos são texto: o Begin/End da fonte salva e restaura estado
+    // de render, e intercalar os dois embaralha o D3D -- a mesma razão pela qual a
+    // grade de capas desenha as imagens primeiro e os nomes todos depois.
+    int MedirAbas(PilulaAba *p, int capacidade, int *xRB)
+    {
+        int n = 0, x = MARGEM_X + CHIP_L + 16;
+
+        for (size_t i = 0; i < g_abas.size() && n < capacidade; i++)
+        {
+            FLOAT w = 0.0f, h = 0.0f;
+            g_fonte.GetTextExtent(NomeDaAba(g_abas[i]), &w, &h);
+            p[n].aba = g_abas[i];
+            p[n].x   = x;
+            p[n].l   = (int)w + ABA_PAD * 2;
+            x += p[n].l + ABA_GAP;
+            n++;
+        }
+        *xRB = x - ABA_GAP + 16;
+        return n;
+    }
+
+    // A pílula cheia. O canto arredondado NÃO custa textura nova: o g_canto é um
+    // quarto de círculo de 16x16 em alfa, pintado na cor do FUNDO para "comer" o
+    // canto -- o mesmo truque dos cards. Com 32 de altura e 16 de raio, as duas
+    // pontas saem como semicírculos exatos.
+    void PilulaCheia(int x, int y, int l, int a, D3DCOLOR cor)
+    {
+        D3DRECT r;
+        r.x1 = x; r.y1 = y; r.x2 = x + l; r.y2 = y + a;
+        Preencher(r, cor);
+
+        if (g_canto == NULL) return;      // sem a máscara, fica reta e pronto
+
+        const int R = CANTO_N;
+        const float u[2] = { 0.0f, 1.0f };
+        const int px[4] = { x, x + l - R, x,         x + l - R };
+        const int py[4] = { y, y,         y + a - R, y + a - R };
+        const int fx[4] = { 0, 1, 0, 1 };
+        const int fy[4] = { 0, 0, 1, 1 };
+
+        for (int c = 0; c < 4; c++)
+        {
+            XMFLOAT2 pos[4], uvc[4];
+            pos[0] = XMFLOAT2((float)px[c],     (float)py[c]);
+            pos[1] = XMFLOAT2((float)px[c] + R, (float)py[c]);
+            pos[2] = XMFLOAT2((float)px[c] + R, (float)py[c] + R);
+            pos[3] = XMFLOAT2((float)px[c],     (float)py[c] + R);
+
+            const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
+            const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
+            uvc[0] = XMFLOAT2(u0, v0);
+            uvc[1] = XMFLOAT2(u1, v0);
+            uvc[2] = XMFLOAT2(u1, v1);
+            uvc[3] = XMFLOAT2(u0, v1);
+
+            Mistura(true);
+            QuadTex(pos, uvc, g_canto, CorDoFundo((float)px[c], (float)py[c]), true);
+            Mistura(false);
+        }
+    }
+
+    void AbasFundo(const PilulaAba *p, int n, int xRB)
+    {
+        Caixa(MARGEM_X, ABA_Y + 5, CHIP_L, CHIP_ALT, false);
+        Caixa(xRB,      ABA_Y + 5, CHIP_L, CHIP_ALT, false);
+
+        for (int i = 0; i < n; i++)
+            if (p[i].aba == g_aba)
+                PilulaCheia(p[i].x, ABA_Y, p[i].l, ABA_ALT, COR_ANEL);
+    }
+
+    // Dentro do Begin da fonte.
+    void AbasTexto(const PilulaAba *p, int n, int xRB)
+    {
+        g_fonte.SetScaleFactors(0.72f, 0.72f);
+        g_fonte.DrawText((FLOAT)MARGEM_X + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
+                         COR_FRACO, L"LB", ATGFONT_CENTER_X);
+        g_fonte.DrawText((FLOAT)xRB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
+                         COR_FRACO, L"RB", ATGFONT_CENTER_X);
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
+
+        for (int i = 0; i < n; i++)
+        {
+            const bool ativa = (p[i].aba == g_aba);
+            g_fonte.DrawText((FLOAT)(p[i].x + ABA_PAD), (FLOAT)ABA_Y + 3.0f,
+                             ativa ? COR_SOBRE_ANEL : COR_APAGADO,
+                             NomeDaAba(p[i].aba), 0);
+        }
+    }
+
     void TelaColecoes()
     {
         std::vector<colecoes::Colecao *> L = ListaDeColecoes();
@@ -1236,6 +1469,16 @@ namespace
             return;
         }
 
+        // A barra de categorias, quando houver categoria para escolher. Na tela de
+        // origens ela não aparece: ali a aba não vale.
+        PilulaAba pilulas[biblioteca::ABA_QUANTAS];
+        int xRB = 0, nAbas = 0;
+        if (g_tela != TELA_ORIGENS && g_abas.size() >= 2)
+            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS, &xRB);
+        if (nAbas >= 2) AbasFundo(pilulas, nAbas, xRB);
+
+        const int topo = (nAbas >= 2) ? COL_TOPO_ABA : COL_TOPO;
+
         // Rola de uma linha por vez, como a tela de jogos -- não troca a página
         // inteira. Paginar fazia a tela mudar de uma vez ao passar do 8º item, e com
         // tudo saindo junto perde-se a referência de onde se estava.
@@ -1247,7 +1490,7 @@ namespace
             if (i >= (int)L.size()) break;
 
             int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int y = topo + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
             DesenharCard(x, y, COL_LADO, L[i], i == g_iCol);
 
             // Escolhendo origens, a não marcada recebe o mesmo véu dos jogos não
@@ -1264,13 +1507,15 @@ namespace
         }
 
         g_fonte.Begin();
+        if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
+
         for (int k = 0; k < COL_POR_PAGINA; k++)
         {
             int i = paginaInicio + k;
             if (i >= (int)L.size()) break;
 
             int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            int y = COL_TOPO + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            int y = topo + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
 
             // Nome e contagem centrados na HORIZONTAL, e o bloco ancorado pela base a
             // 86% da altura do card, crescendo para cima quando o nome ocupa duas
@@ -1295,7 +1540,7 @@ namespace
             // palavra "jogos" -- vazia vira "( 0 )".
             int quantos = 0;
             for (size_t j = 0; j < g_jogos.size(); j++)
-                if (colecoes::Tem(L[i], g_jogos[j].titleId))
+                if (NaAba(g_jogos[j]) && colecoes::Tem(L[i], g_jogos[j].titleId))
                     quantos++;
 
             swprintf_s(texto, 256, L"( %d )", quantos);
@@ -1511,6 +1756,25 @@ namespace
             formula[0] = L'\0';
             const std::string f = Formula(g_atual);
             if (!f.empty()) Larga(f, formula, 256);
+
+            // A ABA tem de aparecer aqui. Ela foi escolhida na tela anterior, e uma
+            // coleção de 40 jogos mostrando 6 sem dizer por quê parece defeito. Entra
+            // junto da fórmula, que responde a mesma pergunta pelo outro lado. O '·'
+            // é U+00B7, que ESTÁ no atlas Arial_16 (glifo 107).
+            if (g_aba != biblioteca::ABA_AUTOMATICA)
+            {
+                // A fórmula entra CORTADA em 199, e não inteira: swprintf_s com
+                // buffer curto não trunca -- chama o invalid parameter handler, que
+                // por padrão derruba o processo. Um colecoes.txt editado à mão com
+                // muitas origens basta para chegar lá. 199 + 5 + 13 + 1 cabe nos 256.
+                WCHAR curto[200], tudo[256];
+                wcsncpy(curto, formula, 199);
+                curto[199] = L'\0';
+                swprintf_s(tudo, 256, L"%s%s%s", curto,
+                           (curto[0] != L'\0') ? L"  ·  " : L"", NomeDaAba(g_aba));
+                wcsncpy(formula, tudo, 255);
+                formula[255] = L'\0';
+            }
             Cabecalho(texto, formula);
         }
 
@@ -1667,6 +1931,14 @@ namespace
     // rodava ao desenhar deixava g_iCol fora de faixa para quem lesse antes.
     void ClampFoco()
     {
+        // As abas primeiro: a lista de coleções depende da aba ativa, e apagar a
+        // última coleção de uma categoria apaga a aba em que se está.
+        AtualizarAbas();
+        bool abaVive = false;
+        for (size_t i = 0; i < g_abas.size(); i++)
+            if (g_abas[i] == g_aba) abaVive = true;
+        if (!abaVive) g_aba = biblioteca::ABA_AUTOMATICA;
+
         int nCol = (int)ListaDeColecoes().size();
         if (g_iCol >= nCol) g_iCol = nCol - 1;
         if (g_iCol < 0)     g_iCol = 0;
@@ -1715,10 +1987,34 @@ namespace
         }
     }
 
+    // LB/RB na tela de coleções. É o ÚNICO lugar onde eles estão livres: na grade de
+    // jogos são o salto por letra, e escolhendo origens a aba não vale.
+    void TrocarAba(int dir)
+    {
+        if (g_abas.size() < 2) return;
+
+        int i = IndiceDaAba() + dir;
+        // SEM dar a volta. O ombro repete sozinho quando segurado, e com a volta
+        // segurar passa reto pelo Todos -- perde-se a referência de onde a lista
+        // inteira está, que é justamente a âncora da tela.
+        if (i < 0 || i >= (int)g_abas.size()) return;
+
+        g_aba = g_abas[i];
+        g_iCol = 0; g_primeiraLinhaCol = 0;
+        som::Tocar(som::SOM_FOCO);
+
+        // Troca a tela inteira de conteúdo: o que estava a caminho já não serve,
+        // como ao abrir uma coleção.
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
+
     void AbrirColecao()
     {
-        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-        if (L.empty()) return;
+        // A lista da TELA, não a completa: com uma aba ativa as duas divergem, e
+        // g_iCol é índice da que está à vista.
+        std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+        if (L.empty() || g_iCol >= (int)L.size()) return;
 
         som::Tocar(som::SOM_CONFIRMA);
         g_atual = L[g_iCol];
@@ -1767,8 +2063,8 @@ namespace
 
     void Renomear()
     {
-        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-        if (L.empty()) return;
+        std::vector<colecoes::Colecao *> L = ListaDeColecoes();   // a da tela
+        if (L.empty() || g_iCol >= (int)L.size()) return;
 
         // Guarda o PONTEIRO, não o índice: até o teclado voltar, g_iCol pode não
         // apontar mais para esta coleção.
@@ -1834,16 +2130,15 @@ namespace
 
             // A lista sai ordenada por nome: renomear muda o lugar. Sem reachar, o
             // foco fica sobre outra coleção.
-            std::vector<colecoes::Colecao *> depois = colecoes::Ordenadas();
-            for (size_t i = 0; i < depois.size(); i++)
-                if (depois[i] == alvo) { g_iCol = (int)i; break; }
+            FocarColecao(alvo);
         }
     }
 
 
     void AbrirMenuColecao()
     {
-        std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
+        // A lista da TELA: g_iCol é índice dela, não da completa.
+        std::vector<colecoes::Colecao *> L = ListaDeColecoes();
 
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
@@ -1961,13 +2256,7 @@ namespace
         // O g_iCol que sobrou e indice da lista FILTRADA da escolha de origens; na
         // grade completa ele cai em outra coleção. Reacha a composta por PONTEIRO,
         // como o Renomear faz -- dois nomes iguais focariam errado.
-        g_iCol = 0;
-        if (sobreviveu != NULL)
-        {
-            std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-            for (size_t i = 0; i < L.size(); i++)
-                if (L[i] == sobreviveu) { g_iCol = (int)i; break; }
-        }
+        FocarColecao(sobreviveu);
 
         carregador::DescartarPendentes();
         g_emVoo.clear();
@@ -1986,9 +2275,7 @@ namespace
             {
                 // Compara por PONTEIRO: dois nomes iguais focariam a coleção errada.
                 colecoes::Colecao *nova = colecoes::Criar(g_nomeNovo);
-                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-                for (size_t i = 0; i < L.size(); i++)
-                    if (L[i] == nova) { g_iCol = (int)i; break; }
+                FocarColecao(nova);   // vazia: isto volta para Todos sozinho
                 diario::Escrever("colecao criada: %s", nova->nome.c_str());
             }
             else
@@ -2005,8 +2292,11 @@ namespace
             // destroi algo sem volta, e estava a um A de distancia.
             if (g_menuFoco == 1)
             {
-                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-                if (!L.empty())
+                // A lista da TELA. Apagar pela lista completa apagaria OUTRA coleção
+                // sempre que uma aba estivesse ativa -- a pior consequência possível
+                // dessa divergência, e a razão de ela ter sido caçada uma por uma.
+                std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+                if (!L.empty() && g_iCol < (int)L.size())
                 {
                     diario::Escrever("apagando colecao: %s", L[g_iCol]->nome.c_str());
                     colecoes::Apagar(L[g_iCol]);
@@ -2016,7 +2306,7 @@ namespace
         }
         else if (g_menuDe == MENU_COLECAO)
         {
-            std::vector<colecoes::Colecao *> Lc = colecoes::Ordenadas();
+            std::vector<colecoes::Colecao *> Lc = ListaDeColecoes();   // a da tela
             const AcaoCol acao = g_menuAcao[g_menuFoco];
 
             if (acao == ACAO_EXPORTAR)
@@ -2041,8 +2331,8 @@ namespace
             else if (acao == ACAO_APAGAR)
             {
                 // Nao apaga aqui: abre a confirmacao.
-                std::vector<colecoes::Colecao *> L = colecoes::Ordenadas();
-                if (!L.empty())
+                std::vector<colecoes::Colecao *> L = ListaDeColecoes();   // a da tela
+                if (!L.empty() && g_iCol < (int)L.size())
                 {
                     CopiarTitulo(L[g_iCol]->nome);
                     g_menuDe = MENU_APAGAR;
@@ -2352,6 +2642,9 @@ void __cdecl main()
     }
 
     colecoes::Carregar();
+    // As abas já no arranque: o ClampFoco as recalcula a cada quadro, mas o primeiro
+    // desenho não pode sair sem elas.
+    AtualizarAbas();
     diario::Escrever("  [%u ms] colecoes / [%u ms] ARRANQUE TOTAL",
                      (unsigned)(GetTickCount() - tm), (unsigned)(GetTickCount() - t0));
     carregador::Iniciar();
@@ -2502,6 +2795,7 @@ void __cdecl main()
         }
         else if (g_tela == TELA_COLECOES)
         {
+            if (salto) TrocarAba(salto);
             if (dx) MoverColecao(dx);
             if (dy) MoverColecao(dy * COL_POR_LINHA);
             if      (novos & XINPUT_GAMEPAD_A)     AbrirColecao();

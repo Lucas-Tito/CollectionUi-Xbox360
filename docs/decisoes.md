@@ -1424,3 +1424,64 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      testes cobrindo o caso do co-op, ida e volta pelo disco, cruzamento vazio e órfão, ciclo
      escrito à mão, tipo desconhecido preservado, migração do formato antigo, e um caso por
      achado da revisão.
+
+144. **A tela de coleções ganhou as abas da FreeStyle no LB/RB, e a aba não sobrevive a sair
+     do app.** A primeira é sempre **Todos**, que é a tela de antes; as outras encolhem o
+     acervo a uma categoria — XBLA, Xbox 360, Xbox Clássico, Homebrew, Emulador.
+
+     **A aba não muda o que a coleção tem: ela encolhe o universo sobre o qual se pergunta.**
+     Por isso o `colecoes.cpp` não sabe que abas existem — o filtro entra só onde se *varre* a
+     biblioteca, que são quatro lugares (`ListaAtual`, `TresDaColecao`, a contagem do card e a
+     lista de coleções). A mesma "Co-op" tem 115 jogos em Todos e 59 em Xbox 360.
+
+     **De onde sai a categoria, e o caminho errado que quase foi tomado.** A primeira versão
+     deste desenho ia juntar `ContentItemScanPathId` com `ScanPaths` → `Tabs` no `settings.db`:
+     funcionava, mas deduzia da raiz da varredura o que o banco já diz do item. O `content.db`
+     tem **`ContentItems.ContentItemTab`**, uma coluna por item, e é o banco que o
+     `biblioteca.cpp` já abre — virou **uma coluna a mais no `SELECT`**. Nem `settings.db`, nem
+     nome de pasta: a pasta pode se chamar qualquer coisa. O `ContentType` entra **só** no caso
+     `0`, que é a FreeStyle pedindo a dedução (5 itens em 120 neste dump); sozinho ele erraria
+     feio, porque os seis homebrews têm `0x7000`, o mesmo de um jogo de varejo. Duas coisas
+     vêm da FreeStyle e não de nós: os indies caem em **XBLA** (ela não tem aba "Indie") e a
+     ordem é a da tabela, com **XBLA antes de Xbox 360**. O `SELECT` tem duas tentativas: se a
+     coluna não existir, lê sem ela — coluna ausente derruba o `prepare`, e o `prepare` falhando
+     não tira a categoria da tela, tira a **biblioteca inteira**.
+
+     **A regra, inteira: uma aba existe quando alguma coleção tem jogo nela, e numa aba coleção
+     sem nada dela sai da tela.** As duas metades são uma coisa só, e juntas garantem que
+     nenhuma tecla leva a uma tela vazia. Não é "o console tem jogo de 360": é "alguma coleção
+     tem" — com 215 jogos de 360 e nenhum marcado, a aba existiria e levaria a nada. E no
+     limite, com **uma** categoria só, "Todos" e ela são a mesma lista: aí não há barra nenhuma,
+     e um console só de Xbox 360 fica com a tela de sempre. Onde a aba **não** vale, de
+     propósito: escolhendo origens (esconder uma coleção porque a aba a esvazia tiraria uma
+     origem legítima, e a composta vale para as outras abas) e adicionando jogos (marcar só o
+     que a aba mostra é marcar às cegas). Dentro da coleção o LB/RB continua sendo o salto por
+     letra — a aba é herdada, e por isso aparece no subtítulo: 40 jogos mostrando 6 sem dizer
+     por quê parece defeito.
+
+     **A aba mora na memória e em lugar nenhum além dela.** Não vai para o `colecoes.txt`, não
+     vai para a config. Voltar e encontrar metade do acervo sumido, sem lembrar de ter apertado
+     RB na sessão passada, parece defeito — e o jeito de nunca pagar esse preço é não ter onde
+     guardar. Pelo mesmo motivo, criar ou editar uma coleção volta para Todos: coleção nova é
+     vazia, logo não está em aba nenhuma, e sumir com o que a pessoa acabou de fazer é a pior
+     forma de ensinar a regra.
+
+     **O custo escondido estava nos índices, não no desenho.** `g_iCol` é índice da lista da
+     TELA, e havia seis lugares indexando `colecoes::Ordenadas()` — a lista completa. Enquanto
+     as duas eram iguais, ninguém notava; com uma aba ativa elas divergem, e um desses lugares
+     era o **apagar**. Todos passaram a usar `ListaDeColecoes()`, e reachar uma coleção depois
+     de criar, renomear ou editar virou uma função só, o `FocarColecao`, que volta para Todos
+     quando a aba corrente não a mostra.
+
+     Desenho: fileira de rótulos com o ativo numa **pílula preenchida**, escolhida contra o
+     sublinhado da Steam porque o sublinhado some a três metros da TV. O canto arredondado não
+     custou textura nova — o `g_canto` já é uma máscara de 16×16 gerada no arranque, e a pílula
+     tem 32 de altura com raio 16, exatamente o `CANTO_N`. A barra ocupa o alto, que nesta tela
+     sempre foi vazio, e a grade desce de 72 para 96: 96 + 244 + 32 + 244 = 616, e o rodapé só
+     começa em 656. Medido contra o atlas de verdade, as **sete** abas (o pior caso, com
+     "Outros") terminam em x=1087 com 93 px de sobra, e todo caractere dos rótulos existe no
+     `Arial_16` — o `á` de "Clássico" inclusive.
+
+     Quatro desenhos foram comparados na prévia e os outros três ficaram lá, no `T`: o da
+     Steam, um seletor de uma aba só entre setas, e um trilho vertical à esquerda que custava
+     uma coluna inteira da grade.

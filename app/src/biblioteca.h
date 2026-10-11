@@ -7,6 +7,33 @@
 
 namespace biblioteca
 {
+    // As abas da FreeStyle. Sao a tabela Tabs do settings.db, que e FIXA -- estes
+    // numeros sao os dela, nao nossos, e e por isso que o enum nao se reordena.
+    //
+    //     0 Automatic  1 XBLA  2 Xbox 360  3 Xbox Classic
+    //     4 Homebrew   5 Emulator          6 Other
+    //
+    // ABA_AUTOMATICA nunca sai daqui num Jogo: e a FreeStyle dizendo "deduza", e o
+    // Ler() ja deduziu antes de devolver. Ela existe no enum porque e o valor que o
+    // BANCO traz, e porque na tela ela vira o "Todos" -- a ausencia de filtro.
+    enum Aba
+    {
+        ABA_AUTOMATICA = 0,
+        ABA_XBLA,
+        ABA_X360,
+        ABA_CLASSICO,
+        ABA_HOMEBREW,
+        ABA_EMULADOR,
+        ABA_OUTROS,
+        ABA_QUANTAS
+    };
+
+    // Deducao para o caso ABA_AUTOMATICA. E o unico lugar onde o ContentType decide
+    // categoria, e de proposito: sozinho ele erra feio -- os seis homebrews deste
+    // console tem 0x7000, o mesmo de um jogo de varejo. Neste acervo sao 5 itens em
+    // 120 que caem aqui (Splinter Cell, MGS V, CoD World at War, The Cave).
+    int AbaPorContentType(int contentType);
+
     struct Jogo
     {
         int          id;            // ContentItemId; vira o nome da pasta de arte, em hex
@@ -44,8 +71,17 @@ namespace biblioteca
         // colecao, porque o colecoes::Carregar descarta o id zero. Ver IdDoApp.
         bool         idSintetico;
 
-        Jogo() : id(0), titleId(0), idSintetico(false), tipoArquivo(0), contentType(0),
-                 discos(0), titleIdEmulador(0) {}
+        // A aba da FreeStyle, do proprio banco: ContentItems.ContentItemTab.
+        //
+        // NAO e por pasta e NAO e por ContentType. A FreeStyle grava a aba em cada
+        // item, e o banco que este arquivo ja abre tem a resposta pronta -- e uma
+        // coluna a mais no SELECT. A pasta pode se chamar qualquer coisa.
+        //
+        // Nunca vale ABA_AUTOMATICA aqui: o Ler() ja resolveu o 0 pelo ContentType.
+        int          aba;
+
+        Jogo() : id(0), titleId(0), idSintetico(false), aba(ABA_OUTROS),
+                 tipoArquivo(0), contentType(0), discos(0), titleIdEmulador(0) {}
         // 1 = XEX solto, 2 = XBE (Xbox original), 3 = container STFS/GOD.
         // O 2 existe de verdade: sao os \ORIGINAL XBOX\...\default.xbe, e lancam
         // pela MESMA chamada do 1.

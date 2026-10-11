@@ -82,6 +82,22 @@ namespace
 
 namespace biblioteca
 {
+    int AbaPorContentType(int contentType)
+    {
+        // XCONTENTTYPE_*. Sao os quatro que aparecem neste acervo; qualquer outro vai
+        // para "Outros", que e onde a FreeStyle tambem o poria.
+        switch (contentType)
+        {
+        case 0x7000:  return ABA_X360;        // jogo de 360
+        case 0xD0000: return ABA_XBLA;        // arcade / XBLA
+        case 0x5000:  return ABA_CLASSICO;    // Xbox original
+        // Indie do marketplace. A FreeStyle nao tem aba "Indie": os 32 desta casa
+        // estao gravados com Tab 1, XBLA, e inventar uma aba seria divergir dela.
+        case 0x2:     return ABA_XBLA;
+        }
+        return ABA_OUTROS;
+    }
+
     unsigned int IdDoApp(const std::string &caminho)
     {
         unsigned int h = 2166136261u;
@@ -178,14 +194,31 @@ namespace biblioteca
             return false;
         }
 
-        const char *SQL =
+        const char *COMUM =
             "select ContentItemId, ContentItemTitleId, ContentItemName, ContentItemGenre,"
             " ContentItemDeveloper, ContentItemPublisher, ContentItemRating,"
             " ContentItemReleaseDate, ContentItemPath, ContentItemFileType,"
-            " ContentItemDiscsInSet, ContentItemContentType from ContentItems";
+            " ContentItemDiscsInSet, ContentItemContentType";
 
+        const std::string COM_ABA = std::string(COMUM) + ", ContentItemTab from ContentItems";
+        const std::string SEM_ABA = std::string(COMUM) + " from ContentItems";
+
+        // DUAS tentativas, e a segunda nao e preciosismo: coluna que nao existe faz o
+        // prepare falhar, e o prepare falhando nao tira a categoria da tela -- tira a
+        // BIBLIOTECA INTEIRA. Preferir ler sem a aba a nao ler nada.
+        //
+        // A ContentItemTab existe na FreeStyle 3 desta casa; o que nao se sabe e o que
+        // ha fora dela, e o jeito de nao precisar saber e perguntar ao banco.
+        bool temColunaAba = true;
         sqlite3_stmt *stmt = NULL;
-        r = sqlite3_prepare_v2(bd, SQL, -1, &stmt, NULL);
+        r = sqlite3_prepare_v2(bd, COM_ABA.c_str(), -1, &stmt, NULL);
+        if (r != SQLITE_OK)
+        {
+            diario::Escrever("AVISO: sem ContentItemTab (%s); a aba sai do ContentType",
+                             sqlite3_errmsg(bd));
+            temColunaAba = false;
+            r = sqlite3_prepare_v2(bd, SEM_ABA.c_str(), -1, &stmt, NULL);
+        }
         if (r != SQLITE_OK)
         {
             diario::Escrever("ERRO: prepare = %d (%s)", r, sqlite3_errmsg(bd));
@@ -209,6 +242,12 @@ namespace biblioteca
             j.tipoArquivo    = sqlite3_column_int(stmt, 9);
             j.discos         = sqlite3_column_int(stmt, 10);
             j.contentType    = sqlite3_column_int(stmt, 11);
+
+            // A aba vem pronta do banco. O ContentType so entra quando ela e
+            // ABA_AUTOMATICA, que e a FreeStyle pedindo a deducao -- ver o cabecalho.
+            j.aba = temColunaAba ? sqlite3_column_int(stmt, 12) : ABA_AUTOMATICA;
+            if (j.aba <= ABA_AUTOMATICA || j.aba >= ABA_QUANTAS)
+                j.aba = AbaPorContentType(j.contentType);
 
             // TitleId zero vira id sintetico do caminho. Sem caminho nao da para
             // sintetizar nada estavel, e ai o zero fica -- quem marca ainda barra.
