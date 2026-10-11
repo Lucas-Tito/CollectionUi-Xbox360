@@ -118,6 +118,7 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Abrir a coleção</td></tr>
       <tr><td><i class="pad x">X</i></td><td class="kb">X</td><td>Nova coleção</td></tr>
       <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Opções: renomear ou apagar</td></tr>
+      <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Trocar de categoria (<b>proposta</b>)</td></tr>
       <tr class="grp"><td colspan="3">Dentro de uma coleção</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Jogar</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Voltar às coleções</td></tr>
@@ -135,6 +136,8 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar</td></tr>
       <tr class="grp"><td colspan="3">Só na prévia</td></tr>
       <tr><td><i class="pad menu">—</i></td><td class="kb">mouse</td><td>Clicar move o foco; clicar de novo confirma</td></tr>
+      <tr><td><i class="pad menu">—</i></td><td class="kb">T</td><td>Trocar o <b>desenho</b> da barra de categorias</td></tr>
+      <tr><td><i class="pad menu">—</i></td><td class="kb">F / C</td><td>Trocar o fundo da tela / o fundo do card</td></tr>
     </table>
     <div class="acoes"><button class="bt" id="da-fechar">Fechar</button></div>
   </div>
@@ -253,6 +256,63 @@ const CARDS = {
   chapado:  null,                                                  // o de hoje
 };
 let CARD = 'grupo30';
+
+// ===========================================================================
+// AS ABAS DE CATEGORIA (proposta; NAO esta no C++)
+// ===========================================================================
+// A FreeStyle tem uma tabela FIXA de abas, no settings.db:
+//
+//     Tabs(TabId, TabName)
+//       0 Automatic   1 XBLA      2 Xbox 360   3 Xbox Classic
+//       4 Homebrew    5 Emulator  6 Other
+//
+// e cada RAIZ DE VARREDURA aponta para uma delas:
+//
+//     ScanPaths(ScanPathPath, ScanPathRetailTabId)
+//       \JOGOS\ -> 2    \XBLA\ -> 1    \ORIGINAL XBOX\ -> 3
+//       \EMULADORES\ -> 5    \Content\0000000000000000\584E07D2\ -> 1
+//
+// Quem decide a aba e a RAIZ, nao o ContentType. Os seis homebrews deste console
+// tem ContentType 0x7000 -- o mesmo de um jogo de varejo --, e so a raiz \HOMEBREW\
+// os separa. Entao a conta certa no C++ e content.db (ContentItemScanPathId)
+// JUNTADO com settings.db (ScanPaths -> Tabs); o ContentType sozinho erra.
+//
+// Repare tambem que os 32 indies (ContentType 0x2) caem em XBLA, porque e para la
+// que a raiz \Content\...\ aponta. Nao ha aba "Indie" na FreeStyle, e inventar uma
+// seria divergir dela.
+//
+// A previa nao tem o settings.db, entao deriva do CAMINHO -- que e de onde a
+// varredura saiu, e da o mesmo resultado neste acervo.
+const ABAS_FSD = [
+  { id:0, nome:'Todos'   },   // sempre existe; e a tela de hoje
+  { id:1, nome:'XBLA'    },
+  { id:2, nome:'Xbox 360'},
+  { id:3, nome:'Xbox Clássico' },
+  { id:4, nome:'Homebrew'},
+  { id:5, nome:'Emulador'},
+  { id:6, nome:'Outros'  },
+];
+// A ORDEM e a da propria tabela Tabs, por TabId: XBLA vem ANTES de Xbox 360.
+// Nao e o que a intuicao pede, mas e o que a FreeStyle faz.
+
+const RAIZ_ABA = { 'JOGOS':2, 'XBLA':1, 'Content':1, 'ORIGINAL XBOX':3,
+                   'HOMEBREW':4, 'EMULADORES':5 };
+JOGOS.forEach(g => {
+  const raiz = (g.caminho || '').split('\\')[1] || '';
+  g.cat = g.rom ? 5 : (RAIZ_ABA[raiz] !== undefined ? RAIZ_ABA[raiz] : 6);
+});
+
+const nomeAba = id => (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
+
+// --- os desenhos em prova. T cicla. -----------------------------------------
+//   steam    fileira de rotulos, o ativo sublinhado -- o da Steam
+//   pilula   fileira de pilulas, o ativo preenchido
+//   seletor  um rotulo so, entre setas, com os pontinhos embaixo
+//   coluna   trilho vertical a esquerda; a grade cai para 4 por linha
+//   nenhuma  a tela de hoje, para comparar
+const ESTILOS_ABA = ['steam', 'pilula', 'seletor', 'coluna', 'nenhuma'];
+let ABA_ESTILO = 'steam';
+let aba = 0;                                    // TabId ativo; 0 = Todos
 
 // id do jogo -> indice em JOGOS, para achar a capa a partir do que a coleção guarda
 let PORID = null;
@@ -508,8 +568,45 @@ function temJogo(c, gid){
   return c.ids.indexOf(gid) >= 0;
 }
 
-const jogosDe = c => porNome(JOGOS.filter(g => temJogo(c, g.id)));
-const conta = c => { let n = 0; for (const g of JOGOS) if (temJogo(c, g.id)) n++; return n; };
+// A ABA NAO MUDA O QUE A COLECAO TEM -- ela encolhe o UNIVERSO sobre o qual se
+// pergunta. E por isso que o temJogo acima nao sabe que abas existem: a filtragem
+// entra so onde se VARRE a biblioteca, que no C++ sao os mesmos tres lacos.
+const naAba = (g, abaId) => abaId === 0 || g.cat === abaId;
+const universo = () => aba === 0 ? JOGOS : JOGOS.filter(g => naAba(g, aba));
+
+const jogosDe = c => porNome(universo().filter(g => temJogo(c, g.id)));
+const contaEm = (c, abaId) => {
+  let n = 0;
+  for (const g of JOGOS) if (naAba(g, abaId) && temJogo(c, g.id)) n++;
+  return n;
+};
+const conta = c => contaEm(c, aba);
+
+// A REGRA INTEIRA DA FUNCIONALIDADE, num lugar so: uma aba existe quando ALGUMA
+// colecao tem jogo nela.
+//
+// Nao e "o console tem jogo de 360": e "alguma colecao tem". A diferenca aparece
+// num acervo com 215 jogos de 360 e nenhum deles marcado -- a aba existiria e
+// levaria a uma tela vazia. Do jeito daqui, aba que existe tem conteudo, e por
+// construcao NAO DA para parar numa tela vazia.
+//
+// Custo: varrer a biblioteca por aba e por colecao a cada quadro. Sao 7 x 10 x 439
+// aqui, de contas inteiras -- mas no C++ isto se calcula UMA VEZ ao carregar e ao
+// gravar, nao a cada Desenhar().
+function abasPresentes(){
+  const todas = ordenadas();
+  const reais = ABAS_FSD.filter(a => a.id !== 0 && todas.some(c => contaEm(c, a.id) > 0));
+  // Com UMA categoria só, "Todos" e ela são a mesma lista, e a barra viraria dois
+  // botões que fazem a mesma coisa. Um acervo inteiro de Xbox 360 fica com a tela
+  // de hoje -- que é o que "a aba só aparece quando se aplica" quer dizer no limite.
+  return reais.length < 2 ? [ABAS_FSD[0]] : [ABAS_FSD[0]].concat(reais);
+}
+
+// Apagar uma colecao pode apagar a aba em que se esta. Sem isto o foco fica numa
+// aba que nao existe mais e a tela some.
+function clampAba(){
+  if (!abasPresentes().some(a => a.id === aba)) aba = 0;
+}
 const composta = c => !!c && c.tipo !== 'jogos';
 
 // A fórmula que o cabeçalho mostra. É o que responde "por que este jogo está aqui?"
@@ -534,9 +631,16 @@ function formula(c){
 // nunca a própria coleção em edição.
 function listaDeColecoes(){
   const todas = ordenadas();
-  if (tela !== 'origens' || !editandoComposta) return todas;
-  return todas.filter(c => c !== editandoComposta &&
-                           podeSerOrigem(c, editandoComposta.tipo));
+  if (tela === 'origens')
+    // A ABA NAO VALE AQUI. Escolher origem e escolher COLECAO, e sumir com uma
+    // porque a aba corrente a esvazia esconderia uma origem legitima -- a composta
+    // resultante vale para as OUTRAS abas tambem.
+    return !editandoComposta ? todas
+         : todas.filter(c => c !== editandoComposta &&
+                             podeSerOrigem(c, editandoComposta.tipo));
+  // Numa aba, colecao que nao tem nada dela SAI da tela. E o par do abasPresentes:
+  // junto, os dois garantem que nenhuma tecla leva a uma tela vazia.
+  return aba === 0 ? todas : todas.filter(c => conta(c) > 0);
 }
 const marcada = c => !!origens && origens.indexOf(c.id) >= 0;
 
@@ -554,6 +658,9 @@ function podeSerOrigem(candidata, tipoDoAlvo){
 const contaRascunho = () =>
   conta({tipo: editandoComposta.tipo, ids: [], origens: origens});
 
+// Ao ADICIONAR jogos a aba nao filtra: marcar o que a aba corrente mostra e
+// marcar as cegas -- o jogo entraria na colecao e sumiria da tela ao voltar para
+// Todos. O escolhedor mostra a biblioteca inteira, como hoje.
 const lista = () => tela === 'adicionar' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
 
 // ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres
@@ -648,6 +755,152 @@ function cabecalho(titulo, sub){
   }
 }
 
+// ---- as abas de categoria, desenhadas --------------------------------------
+// Geometria que MUDA com o estilo escolhido. O trilho da esquerda e o unico que
+// cobra alguma coisa: ele come 200 px de largura e a grade cai de 5 para 4 por
+// linha. Os de cima cabem na folga que ja existia -- a grade de colecoes termina
+// em y=454 e o rodape so comeca em 651.
+const colPorLinha = () => ABA_ESTILO === 'coluna' ? 4 : COL_POR_LINHA;
+const colX0       = () => ABA_ESTILO === 'coluna' ? 300 : MARGEM_X;
+const colTopoAba  = () => (ABA_ESTILO === 'coluna' || ABA_ESTILO === 'nenhuma')
+                          ? COL_TOPO : 124;
+
+// Caixinha do bumper, RETANGULAR de proposito: canto arredondado no console exige
+// textura 9-slice (ver o comentario dos CARDS), e um retangulo com contorno e duas
+// chamadas que o C++ ja faz no rodape.
+function bumper(x, y, txt){
+  ctx.font = `600 ${F_MINI}px var(--mono), monospace`;
+  const w = Math.ceil(ctx.measureText(txt).width) + 14;
+  ctx.fillStyle = '#1D2521'; ctx.fillRect(x, y, w, 20);
+  ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1; ctx.strokeRect(x+.5, y+.5, w-1, 19);
+  ctx.fillStyle = COR_FRACO;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(txt, x + w/2, y + 11);
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  return w;
+}
+
+// Seta DESENHADA, dois tracos -- nao um caractere. O atlas Arial_16 nao garante
+// U+2039/U+203A, e o que ele nao tem vira quadradinho na TV. Mesma saida do tique.
+function seta(x, y, dir, cor){
+  ctx.beginPath();
+  ctx.moveTo(x - 4*dir, y - 7); ctx.lineTo(x + 4*dir, y); ctx.lineTo(x - 4*dir, y + 7);
+  ctx.strokeStyle = cor; ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+}
+
+// 1) STEAM -- fileira de rotulos, o ativo sublinhado por uma barra da cor de foco.
+// E o desenho da biblioteca da Steam no Big Picture, e o mais barato de todos no
+// console: texto + um fillRect de 3 px. Zero textura.
+function abasSteam(A){
+  const Y = 40, GAP = 34;
+  let x = MARGEM_X;
+  x += bumper(x, Y + 3, 'LB') + 16;
+
+  ctx.textBaseline = 'top';
+  for (const a of A){
+    const ativa = a.id === aba;
+    ctx.font = `600 ${F_BASE+3}px sans-serif`;
+    const w = ctx.measureText(a.nome).width;
+    ctx.fillStyle = ativa ? COR_TEXTO : COR_FRACO;
+    ctx.fillText(a.nome, x, Y);
+    if (ativa){
+      ctx.fillStyle = COR_ANEL;
+      ctx.fillRect(x, Y + 28, w, 3);
+    }
+    zona(x - 8, Y - 8, w + 16, 44, 'aba', a.id);
+    x += w + GAP;
+  }
+  bumper(x - GAP + 16, Y + 3, 'RB');
+}
+
+// 2) PILULA -- a ativa e um bloco preenchido. Le melhor de longe que o sublinhado,
+// e COBRA: canto arredondado no console e textura 9-slice. De canto reto, vira um
+// retangulo chapado atras do texto, que e a mesma coisa de graca -- esta opcao
+// existe para a gente olhar e decidir se o arredondado vale uma textura.
+function abasPilula(A){
+  const Y = 36, ALT = 32, GAP = 10;
+  let x = MARGEM_X;
+  x += bumper(x, Y + 6, 'LB') + 14;
+
+  for (const a of A){
+    const ativa = a.id === aba;
+    ctx.font = `600 ${F_BASE}px sans-serif`;
+    const w = ctx.measureText(a.nome).width + 28;
+    if (ativa){
+      caminhoArredondado(ctx, x, Y, w, ALT, ALT/2);
+      ctx.fillStyle = COR_ANEL; ctx.fill();
+    }
+    ctx.fillStyle = ativa ? '#0B1004' : COR_APAGADO;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(a.nome, x + w/2, Y + ALT/2 + 1);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    zona(x, Y, w, ALT, 'aba', a.id);
+    x += w + GAP;
+  }
+  bumper(x - GAP + 14, Y + 6, 'RB');
+}
+
+// 3) SELETOR -- uma aba so, entre setas, com os pontinhos embaixo dizendo quantas
+// ha e onde se esta. Nao da panorama, mas nunca estoura a largura, nem com dez
+// abas e nome comprido -- e e o unico que continua legivel a tres metros da TV.
+function abasSeletor(A){
+  const Y = 34;
+  const i = Math.max(0, A.findIndex(a => a.id === aba));
+  ctx.font = `600 ${F_TITULO}px sans-serif`;
+  const nome = A[i].nome, w = ctx.measureText(nome).width;
+
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillStyle = COR_TEXTO;
+  ctx.fillText(nome, 640, Y);
+  ctx.textAlign = 'left';
+
+  // Seta apagada na ponta: LB no primeiro e RB no ultimo nao fazem nada, e a tela
+  // tem de dizer isso antes de a pessoa apertar.
+  seta(640 - w/2 - 28, Y + 16, -1, i > 0 ? COR_APAGADO : 'rgb(40,49,44)');
+  seta(640 + w/2 + 28, Y + 16, +1, i < A.length-1 ? COR_APAGADO : 'rgb(40,49,44)');
+  zona(640 - w/2 - 44, Y - 6, 32, 44, 'aba', A[Math.max(0,i-1)].id);
+  zona(640 + w/2 + 12, Y - 6, 32, 44, 'aba', A[Math.min(A.length-1,i+1)].id);
+
+  const PASSO = 16, x0 = 640 - (A.length - 1) * PASSO / 2;
+  for (let k = 0; k < A.length; k++){
+    ctx.beginPath(); ctx.arc(x0 + k*PASSO, Y + 46, k === i ? 4 : 3, 0, Math.PI*2);
+    ctx.fillStyle = k === i ? COR_ANEL : 'rgb(53,64,58)'; ctx.fill();
+    zona(x0 + k*PASSO - 8, Y + 38, 16, 16, 'aba', A[k].id);
+  }
+}
+
+// 4) COLUNA -- o trilho da esquerda, como a barra de colecoes da Steam no PC. E o
+// unico que mostra tudo de uma vez SEM competir com o titulo, e o unico que custa
+// layout: a grade perde uma coluna inteira.
+function abasColuna(A){
+  const X = MARGEM_X, Y0 = 72, PASSO = 40;
+  ctx.textBaseline = 'top';
+  for (let k = 0; k < A.length; k++){
+    const a = A[k], ativa = a.id === aba, y = Y0 + k*PASSO;
+    if (ativa){ ctx.fillStyle = COR_ANEL; ctx.fillRect(X, y - 2, 4, 26); }
+    ctx.font = `${ativa ? '600 ' : ''}${F_BASE+2}px sans-serif`;
+    ctx.fillStyle = ativa ? COR_TEXTO : COR_FRACO;
+    ctx.fillText(a.nome, X + 18, y);
+    zona(X, y - 6, 180, PASSO - 6, 'aba', a.id);
+  }
+  bumper(X, Y0 + A.length*PASSO + 6, 'LB');
+  bumper(X + 44, Y0 + A.length*PASSO + 6, 'RB');
+}
+
+const DESENHO_ABA = { steam:abasSteam, pilula:abasPilula,
+                      seletor:abasSeletor, coluna:abasColuna, nenhuma:null };
+
+// A barra so aparece quando ha o que escolher. Com uma aba so -- um acervo todo de
+// Xbox 360, ou nenhuma colecao ainda -- a tela e exatamente a de hoje.
+function desenharAbas(){
+  const A = abasPresentes();
+  if (A.length < 2) return;
+  const f = DESENHO_ABA[ABA_ESTILO];
+  if (f) f(A);
+}
+
 // ---- tela de coleções ------------------------------------------------------
 function telaColecoes(){
   const escolhendo = tela === 'origens';
@@ -658,6 +911,9 @@ function telaColecoes(){
     cabecalho(editandoComposta.nome,
               editandoComposta.tipo === 'uniao' ? 'em qualquer uma delas'
                                                 : 'só em todas elas');
+  } else {
+    // A barra de abas ocupa o lugar do cabecalho que esta tela nunca teve.
+    desenharAbas();
   }
   // Sem título nem contagem: o rodapé já diz "1 de 4", e o quadrado em foco já diz
   // onde se está. Cabeçalho aqui seria repetir o que a tela toda já mostra.
@@ -679,17 +935,19 @@ function telaColecoes(){
   }
 
   iCol = Math.min(iCol, L.length-1);
-  const inicio = Math.max(0, Math.floor(iCol/COL_POR_LINHA) - (COL_LINHAS-1)) * COL_POR_LINHA;
+  const PORLINHA = escolhendo ? COL_POR_LINHA : colPorLinha();
+  const X0 = escolhendo ? MARGEM_X : colX0();
+  const inicio = Math.max(0, Math.floor(iCol/PORLINHA) - (COL_LINHAS-1)) * PORLINHA;
 
   // A grade de coleções não tem cabeçalho e por isso sobe até 64. Escolhendo origens
   // ele existe, e sem descer a grade o título ficaria por cima da primeira linha.
-  const topo = escolhendo ? 104 : COL_TOPO;
+  const topo = escolhendo ? 104 : (abasPresentes().length > 1 ? colTopoAba() : COL_TOPO);
 
-  for (let k = 0; k < COL_POR_LINHA*COL_LINHAS; k++){
+  for (let k = 0; k < PORLINHA*COL_LINHAS; k++){
     const i = inicio + k;
     if (i >= L.length) break;
-    const x = MARGEM_X + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-    const y = topo + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
+    const x = X0 + (k % PORLINHA) * (COL_LADO + COL_GAP);
+    const y = topo + ((k / PORLINHA)|0) * (COL_LADO + COL_GAP);
     zona(x, y, COL_LADO, COL_LADO, 'colecao', i);
 
     const sel = (i === iCol);
@@ -778,8 +1036,14 @@ function telaJogos(){
   // está em lugar nenhum.
   // Numa composta o subtítulo é a FÓRMULA ("Co-op ∩ Não zerado"). É o que responde
   // "por que este jogo está aqui?", que numa coleção de jogos nunca se pergunta.
+  // A ABA TEM DE APARECER AQUI. Ela foi escolhida na tela anterior, e uma colecao
+  // de 40 jogos mostrando 6 sem dizer por que parece defeito. Entra no subtitulo,
+  // junto da formula -- que responde a mesma pergunta ("por que estes?") pelo outro
+  // lado. LB/RB aqui continuam sendo o salto por letra; a aba so troca na home.
+  const subAba = (!escolhendo && aba !== 0) ? nomeAba(aba) : '';
   cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
-            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados` : formula(atual));
+            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
+                       : [formula(atual), subAba].filter(Boolean).join('  ·  '));
 
   if (!total){
     ctx.font = `600 ${F_TITULO-3}px sans-serif`;
@@ -822,12 +1086,16 @@ function telaJogos(){
     if (escolhendo && tem.has(g.id)){
       ctx.strokeStyle = COR_ANEL; ctx.lineWidth = 2;
       ctx.strokeRect(x1+1, y1+1, CAPA_L-2, CAPA_A-2);
-      ctx.beginPath(); ctx.arc(x1+CAPA_L-18, y1+18, 12, 0, Math.PI*2);
+      // Tique DESENHADO, igual ao da tela de coleções: o '✓' é U+2713 e está fora
+      // do atlas Arial_16, então na TV sairia quadradinho. Era a única sobra.
+      const tx = x1+CAPA_L-18, ty = y1+18;
+      ctx.beginPath(); ctx.arc(tx, ty, 12, 0, Math.PI*2);
       ctx.fillStyle = COR_ANEL; ctx.fill();
-      ctx.font = `600 15px sans-serif`; ctx.fillStyle = '#0B1004';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('✓', x1+CAPA_L-18, y1+19);
-      ctx.textAlign='left'; ctx.textBaseline='top';
+      ctx.beginPath();
+      ctx.moveTo(tx-6, ty); ctx.lineTo(tx-1.5, ty+5); ctx.lineTo(tx+6.5, ty-5);
+      ctx.strokeStyle = '#0B1004'; ctx.lineWidth = 2.6;
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
     }
 
     if (indice === iJogo){
@@ -888,18 +1156,22 @@ function rotuloExperimento(ctx){
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = 'rgba(142,156,148,0.75)';
-  ctx.fillText('F fundo: ' + FUNDO + '    C card: ' + CARD, 1264, 700);
+  ctx.fillText('F fundo: ' + FUNDO + '    C card: ' + CARD + '    T abas: ' + ABA_ESTILO, 1264, 700);
   ctx.restore();
 }
 
 function desenhar(){
   zonas = [];
+  // Apagar coleção pode apagar a aba em que se está. Mesmo papel do ClampFoco do
+  // C++: um lugar só, antes de desenhar, em vez de espalhado por quem edita.
+  clampAba();
   if (tela === 'colecoes' || tela === 'origens') telaColecoes(); else telaJogos();
 
   if (tela === 'origens')
     $('#estado').textContent = `${origens.length} origens · ${contaRascunho()} jogos`;
   else if (tela === 'colecoes')
-    $('#estado').textContent = `${cols.length} coleções`;
+    $('#estado').textContent =
+      `${cols.length} coleções · aba ${nomeAba(aba)} (${abasPresentes().length} abas)`;
   else {
     const L = lista();
     $('#estado').textContent =
@@ -1019,14 +1291,35 @@ document.addEventListener('keydown', e => {
     const ns = Object.keys(CARDS); CARD = ns[(ns.indexOf(CARD)+1) % ns.length];
     desenhar(); return;
   }
+  // T cicla o DESENHO da barra de abas. É o experimento desta rodada.
+  if (k === 't' || k === 'T'){
+    ABA_ESTILO = ESTILOS_ABA[(ESTILOS_ABA.indexOf(ABA_ESTILO)+1) % ESTILOS_ABA.length];
+    if (ABA_ESTILO === 'nenhuma') aba = 0;
+    iCol = 0; desenhar(); return;
+  }
 
   if (tela === 'colecoes' || tela === 'origens'){
     const escolhendo = tela === 'origens';
     const L = listaDeColecoes();
+    const PL = escolhendo ? COL_POR_LINHA : colPorLinha();
     if (k === 'ArrowRight') iCol = Math.min(L.length-1, iCol+1);
     else if (k === 'ArrowLeft') iCol = Math.max(0, iCol-1);
-    else if (k === 'ArrowDown') iCol = Math.min(L.length-1, iCol+COL_POR_LINHA);
-    else if (k === 'ArrowUp') iCol = Math.max(0, iCol-COL_POR_LINHA);
+    else if (k === 'ArrowDown') iCol = Math.min(L.length-1, iCol+PL);
+    else if (k === 'ArrowUp') iCol = Math.max(0, iCol-PL);
+    // LB/RB: trocar de aba. A home é o ÚNICO lugar onde eles estão livres -- na
+    // grade de jogos são o salto por letra, e escolhendo origens a aba não vale.
+    else if ((k === 'q' || k === 'Q' || k === 'e' || k === 'E') && !escolhendo){
+      if (ABA_ESTILO === 'nenhuma') return;
+      const A = abasPresentes();
+      if (A.length < 2) return;
+      const d = (k === 'q' || k === 'Q') ? -1 : 1;
+      const i = Math.max(0, A.findIndex(a => a.id === aba));
+      // SEM dar a volta: com a volta, segurar o botão passa reto pelo Todos e a
+      // pessoa perde a referência de onde a lista inteira está.
+      const j = Math.min(A.length-1, Math.max(0, i + d));
+      if (j === i) return;
+      aba = A[j].id; iCol = 0;
+    }
     else if (k === 'Enter'){ if (escolhendo) alternaOrigem(); else if (L[iCol]) abrir(L[iCol]); return; }
     else if (k === 'Escape' || k === 'b' || k === 'B'){ if (escolhendo) fecharOrigens(false); return; }
     else if (k === 'x' || k === 'X') { if (!escolhendo) abrirNome(null); return; }
@@ -1078,7 +1371,7 @@ function confirmaNome(){
     editando.nome = t.slice(0,28);
     salvar();
     const alvo = editando; editando = null;
-    iCol = Math.max(0, ordenadas().indexOf(alvo));
+    iCol = Math.max(0, listaDeColecoes().indexOf(alvo));
     desenhar();
     return;
   }
@@ -1097,10 +1390,13 @@ function criarDoTipo(tipo){
   const c = {id: proximoId(), tipo: tipo, nome: nomeNovo, ids: [], origens: []};
   cols.push(c);
   nomeNovo = '';
+  // Coleção nova é VAZIA, e vazia não aparece em aba nenhuma. Criar numa aba e não
+  // ver o que se criou é o pior jeito de descobrir essa regra -- volta para Todos.
+  aba = 0;
 
   if (tipo === 'jogos'){
     salvar();
-    iCol = Math.max(0, ordenadas().indexOf(c));
+    iCol = Math.max(0, listaDeColecoes().indexOf(c));
     desenhar();
   } else {
     // Ainda NÃO grava: quem escolhe as origens é que decide se ela sobrevive.
@@ -1190,6 +1486,9 @@ cv.addEventListener('click', e => {
       if (tela === 'adicionar' && z.dado === iJogo) alterna();
       else { moverJogo(z.dado - iJogo); }
     }
+    else if (z.tipo === 'aba'){
+      if (z.dado !== aba){ aba = z.dado; iCol = 0; desenhar(); }
+    }
     else if (z.tipo === 'letra'){
       const L = lista();
       const i = L.findIndex(g => inicial(g.nome) === z.dado);
@@ -1205,6 +1504,9 @@ $('#da-fechar').onclick = () => $('#dlg-ajuda').hidden = true;
 $('#bt-exemplos').onclick = () => {
   const porGenero = g => JOGOS.filter(j => j.genero === g).map(j => j.id);
   const fatia = (a,b) => JOGOS.slice(a,b).map(j=>j.id);
+  // Para as abas terem o que mostrar: n jogos de uma categoria. As fatias acima são
+  // alfabéticas e por isso nunca alcançam homebrew nem ROM, que entram no fim.
+  const daCat = (cat,n) => JOGOS.filter(j => j.cat === cat).slice(0,n).map(j=>j.id);
   const J = (id,nome,ids) => ({id, tipo:'jogos', nome, ids, origens:[]});
 
   // Os três co-op se sobrepõem de propósito, e "Não zerado" cobre do 6 ao 40: assim
@@ -1220,6 +1522,11 @@ $('#bt-exemplos').onclick = () => {
     J(18,'Terminar algum dia', []),
     // Nome proposital de teste: duas linhas + reticências, para ver o limite.
     J(19,'Jogos para terminar numa tarde chuvosa de domingo', fatia(20,26)),
+    // Estas duas existem para as abas Homebrew e Emulador aparecerem. Repare que
+    // elas SOMEM da tela em qualquer outra aba -- é a regra funcionando.
+    J(20,'Caseiros', daCat(4, 99)),
+    J(21,'Retrô',    daCat(5, 14)),
+    {id:22, tipo:'uniao', nome:'Fora do catálogo', ids:[], origens:[20,21]},
   ];
   salvar(); tela='colecoes'; iCol=0; desenhar();
 };

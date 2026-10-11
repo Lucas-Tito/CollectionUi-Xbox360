@@ -13,7 +13,14 @@ no lugar do `Clear`, mesmo retângulo texturizado, mesmo contorno de foco, mesmo
 ```bash
 python3 prototipo/extrair.py     # uma vez: lê content.db e recorta as capas
 python3 previa/montar.py         # gera previa/build/previa.html
+
+# com homebrew e ROM (sem capa), para as abas de categoria existirem:
+python3 previa/montar.py --vault ~/Downloads/vault.txt
 ```
+
+O `--vault` é opcional e existe por um motivo só: o `games.json` sai do `content.db`, que **não
+tem** homebrew nem ROM de emulador. Sem ele as abas "Homebrew" e "Emulador" não aparecem, e são
+justamente duas das que se quer olhar.
 
 Reaproveita a extração do protótipo de propósito: são os mesmos jogos e as mesmas capas já
 recortadas, e duplicar isso seria mais uma coisa para divergir.
@@ -68,6 +75,85 @@ O que aqui ainda é proposta: a marca da coleção escolhida é um **tique** des
 hoje é o anel verde do `DrawScreenSpaceRect`. O tique se distingue melhor do anel de foco, que
 também é verde — mas ainda não foi para o C++, e por isso vive só nesta página.
 
+### Categorias da FreeStyle, no `LB`/`RB`
+
+**Proposta; nada disto está no C++.** A tela de coleções ganha uma barra de categorias, e `LB`/`RB`
+andam por ela. A primeira é sempre **Todos**, que é a tela de hoje, sem nenhuma mudança.
+
+A categoria **não muda o que a coleção tem**: ela encolhe o *universo* sobre o qual se pergunta.
+A mesma "Co-op" tem 28 jogos em Todos e 15 em Xbox 360, e a contagem no card acompanha.
+
+#### De onde sai a categoria
+
+A FreeStyle tem uma tabela fixa de abas, no `settings.db`:
+
+| TabId | TabName |
+|---|---|
+| 0 | Automatic |
+| 1 | XBLA |
+| 2 | Xbox 360 |
+| 3 | Xbox Classic |
+| 4 | Homebrew |
+| 5 | Emulator |
+| 6 | Other |
+
+e cada **raiz de varredura** aponta para uma delas, em `ScanPaths.ScanPathRetailTabId`. Neste
+console: `\JOGOS\` → 2, `\XBLA\` → 1, `\ORIGINAL XBOX\` → 3, `\EMULADORES\` → 5,
+`\Content\0000000000000000\584E07D2\` → 1.
+
+**Quem decide é a raiz, não o `ContentType`.** Os seis homebrews deste console têm `ContentType`
+`0x7000`, o mesmo de um jogo de varejo; só a raiz `\HOMEBREW\` os separa. Então a conta certa no
+C++ é o `content.db` (`ContentItemScanPathId`, que o `SELECT` de hoje ainda não lê) **juntado** com
+o `settings.db` (`ScanPaths` → `Tabs`). O `ContentType` sozinho erra.
+
+Duas consequências que vêm da FreeStyle e não de nós: os 32 indies (`ContentType` `0x2`) caem em
+**XBLA**, porque é para lá que a raiz deles aponta — a FreeStyle não tem aba "Indie", e inventar
+uma seria divergir dela; e a **ordem** é a da tabela, por `TabId`, com **XBLA antes de Xbox 360**.
+
+A prévia não tem o `settings.db`, então deriva do **caminho** — que é de onde a varredura saiu, e
+dá o mesmo resultado neste acervo.
+
+#### A regra, inteira
+
+> Uma aba existe quando **alguma coleção tem jogo nela**. Numa aba, coleção sem nada dela sai da
+> tela.
+
+As duas metades são uma coisa só, e juntas garantem que **nenhuma tecla leva a uma tela vazia**.
+Repare que não é "o console tem jogo de 360": é "alguma coleção tem". A diferença aparece num
+acervo com 215 jogos de 360 e nenhum marcado — a aba existiria e levaria a nada.
+
+E no limite: com **uma** categoria só, "Todos" e ela são a mesma lista, então a barra inteira
+some. Um console que só tem jogo de Xbox 360 fica com a tela de hoje, sem saber que isto existe.
+
+Onde a aba **não** vale, de propósito:
+
+- **Escolhendo origens** de uma junção ou cruzamento. Ali se escolhe *coleção*, e esconder uma
+  porque a aba corrente a esvazia tiraria do usuário uma origem legítima — a composta vale para as
+  outras abas também.
+- **Adicionando jogos.** Marcar só o que a aba mostra é marcar às cegas: o jogo entraria e sumiria
+  ao voltar para Todos.
+- **Dentro da coleção**, `LB`/`RB` continuam sendo o salto por letra. A aba se escolhe na home e é
+  herdada; por isso ela aparece no **subtítulo** — uma coleção de 40 jogos mostrando 6 sem dizer
+  por quê parece defeito.
+
+Coleção nova é vazia, e vazia não está em aba nenhuma: criar volta para Todos.
+
+#### Os cinco desenhos (tecla `T`)
+
+| nome | o que é | custo no console |
+|---|---|---|
+| `steam` | fileira de rótulos, o ativo sublinhado pela barra verde | texto + um `fillRect` de 3 px |
+| `pilula` | fileira de pílulas, a ativa preenchida | canto arredondado = textura 9-slice |
+| `seletor` | um rótulo só, entre setas, com os pontinhos embaixo | o mais barato; nunca estoura a largura |
+| `coluna` | trilho vertical à esquerda | a grade cai de 5 para 4 por linha |
+| `nenhuma` | a tela de hoje, para comparar | — |
+
+O `steam` é o desenho da biblioteca da Steam no Big Picture e é o **default da prévia**: é o que dá
+panorama e o único que não cobra nem textura nem layout.
+
+As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `Arial_16` não garante
+`‹`/`›` (U+2039/U+203A), e o que ele não tem vira quadradinho na TV.
+
 ## Navegação
 
 | tecla | botão | o que faz |
@@ -77,7 +163,8 @@ também é verde — mas ainda não foi para o C++, e por isso vive só nesta p�
 | `Esc` | `B` | voltar |
 | `X` | `X` | nova coleção |
 | `M` | `☰` | renomear/apagar, ou escolher jogos de dentro da coleção |
-| `Q` / `E` | `LB`/`RB` | pular por letra |
+| `Q` / `E` | `LB`/`RB` | trocar de categoria (na home) ou pular por letra (dentro) |
+| `T` | — | trocar o desenho da barra de categorias (só na prévia) |
 | segurar `↓` | segurar `↓` | pular por letra |
 
 ## O que é da prévia e não do app
