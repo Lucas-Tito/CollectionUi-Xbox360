@@ -149,18 +149,27 @@ namespace
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
     // anterior do mesmo quadro tivesse mudado de tela, executava o item do outro menu.
-    enum MenuDe { MENU_COLECAO, MENU_JOGO, MENU_APAGAR, MENU_TIPO };
+    enum MenuDe { MENU_COLECAO, MENU_JOGO, MENU_APAGAR, MENU_TIPO, MENU_EXPORTAR };
 
     bool   g_menuAberto = false;
     MenuDe g_menuDe = MENU_COLECAO;
     int    g_menuFoco = 0, g_menuQtd = 0;
     const char *g_menuItens[4];
 
-    // O menu de coleção tem layout VARIÁVEL -- composta ganha uma linha a mais, e sem
-    // coleção nenhuma só sobra o export. Deduzir a ação do índice já quase deu errado
-    // uma vez; aqui cada linha diz o que faz. Os outros menus têm layout fixo e
-    // continuam decidindo pelo índice.
-    enum AcaoCol { ACAO_RENOMEAR, ACAO_ORIGENS, ACAO_APAGAR, ACAO_EXPORTAR };
+    // O cabecalho do modal tem DUAS linhas: um rotulo pequeno dizendo de que se trata
+    // e, embaixo, o nome. Sem o rotulo, "Co-op de sofa" sozinho no alto de uma caixa
+    // nao diz se aquilo vai renomear, apagar ou exportar.
+    const char *g_menuRotulo = "";
+
+    // Qual linha e a destrutiva, ou -1. Ela NAO tem cor propria parada: fica igual as
+    // outras ate receber o foco. Cor parada em item de menu vira enfeite; o que o
+    // vermelho precisa marcar e o instante em que o A faria aquilo.
+    int    g_menuPerigo = -1;
+
+    // O menu de coleção tem layout VARIÁVEL -- composta ganha uma linha a mais.
+    // Deduzir a ação do índice já quase deu errado uma vez; aqui cada linha diz o que
+    // faz. Os outros menus têm layout fixo e continuam decidindo pelo índice.
+    enum AcaoCol { ACAO_RENOMEAR, ACAO_ORIGENS, ACAO_APAGAR };
     AcaoCol g_menuAcao[4];
     char   g_menuTitulo[128] = "";   // CÓPIA: o c_str() de uma coleção apagada morre
     char   g_menuItemBuf[64] = "";   // item de menu com texto montado na hora
@@ -904,7 +913,10 @@ namespace
     D3DTexture *g_canto = NULL;        // mascara do lado de FORA da curva
     D3DTexture *g_arco[2] = { NULL, NULL };   // [0] fino (1 px), [1] grosso (3 px)
 
-    // 'arco' negativo gera a mascara externa; positivo gera uma faixa sobre a curva.
+    D3DTexture *g_cantoInt = NULL;     // mascara do lado de DENTRO da curva
+
+    // 'arco' negativo gera a mascara externa; positivo gera uma faixa sobre a curva;
+    // ZERO gera a mascara interna, que PINTA o canto em vez de come-lo.
     D3DTexture *GerarCanto(float arco)
     {
         D3DTexture *t = NULL;
@@ -931,10 +943,16 @@ namespace
                 float dist = sqrtf(dx * dx + dy * dy);
                 float a;
 
-                if (arco < 0.0f)
+                if (arco <= 0.0f)
                 {
                     float d = dist - R + 0.5f;                  // >0 fora da curva
                     a = d < 0.0f ? 0.0f : (d > 1.0f ? 1.0f : d);
+                    // A interna e o complemento da externa, e e com ela que o modal
+                    // se arredonda: o painel e desenhado POR DENTRO da curva, por cima
+                    // do veu. A externa nao serviria -- ela pinta na cor do fundo, e
+                    // sobre o veu essa cor nao e uniforme (ha capa por baixo), entao o
+                    // canto sairia como um entalhe escuro sobre as capas claras.
+                    if (arco == 0.0f) a = 1.0f - a;
                 }
                 else
                 {
@@ -1033,9 +1051,13 @@ namespace
 
     void CriarCanto()
     {
-        g_canto   = GerarCanto(-1.0f);
-        g_arco[0] = GerarCanto(1.0f);
-        g_arco[1] = GerarCanto(3.0f);
+        g_canto    = GerarCanto(-1.0f);
+        g_cantoInt = GerarCanto(0.0f);
+        g_arco[0]  = GerarCanto(1.0f);
+        g_arco[1]  = GerarCanto(3.0f);
+
+        if (g_cantoInt == NULL)
+            diario::Escrever("AVISO: sem a mascara interna, o modal fica de canto reto");
 
         if (g_canto == NULL)
             diario::Escrever("AVISO: sem a mascara de canto, os cards ficam retos");
@@ -1365,6 +1387,66 @@ namespace
                                             focada ? COR_ANEL : COR_LINHA);
     }
 
+    // Painel do modal, arredondado POR DENTRO: o corpo sai em dois retangulos e os
+    // quatro cantos sao a mascara interna pintada na cor do painel. Assim o canto e
+    // desenhado SOBRE o que ja esta na tela, sem depender de adivinhar a cor do fundo
+    // -- que sob o veu varia, porque ha card e capa por baixo. E por isso que aqui a
+    // mascara e a interna e nao a dos cards.
+    void PainelRedondo(int x, int y, int l, int a, D3DCOLOR cor, D3DCOLOR contorno)
+    {
+        const int R = (g_cantoInt != NULL) ? CANTO_N : 0;
+        D3DRECT r;
+
+        r.x1 = x + R; r.y1 = y;     r.x2 = x + l - R; r.y2 = y + a;      Preencher(r, cor);
+        if (R == 0)
+        {
+            if (contorno != 0) ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, contorno);
+            return;
+        }
+        r.x1 = x;     r.y1 = y + R; r.x2 = x + l;     r.y2 = y + a - R;  Preencher(r, cor);
+
+        const float u[2] = { 0.0f, 1.0f };
+        const int px[4] = { x, x + l - R, x,         x + l - R };
+        const int py[4] = { y, y,         y + a - R, y + a - R };
+        const int fx[4] = { 0, 1, 0, 1 };      // espelha em U
+        const int fy[4] = { 0, 0, 1, 1 };      // espelha em V
+
+        Mistura(true);
+        for (int c = 0; c < 4; c++)
+        {
+            XMFLOAT2 pos[4], uvc[4];
+            pos[0] = XMFLOAT2((float)px[c],           (float)py[c]);
+            pos[1] = XMFLOAT2((float)(px[c] + R),     (float)py[c]);
+            pos[2] = XMFLOAT2((float)(px[c] + R),     (float)(py[c] + R));
+            pos[3] = XMFLOAT2((float)px[c],           (float)(py[c] + R));
+
+            const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
+            const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
+            uvc[0] = XMFLOAT2(u0, v0);
+            uvc[1] = XMFLOAT2(u1, v0);
+            uvc[2] = XMFLOAT2(u1, v1);
+            uvc[3] = XMFLOAT2(u0, v1);
+
+            QuadTex(pos, uvc, g_cantoInt, cor, true);
+            // O contorno vem no MESMO laço, por cima do canto já pintado: separado,
+            // seria percorrer os quatro cantos duas vezes para o mesmo resultado.
+            if (contorno != 0 && g_arco[0] != NULL)
+                QuadTex(pos, uvc, g_arco[0], contorno, true);
+        }
+        Mistura(false);
+
+        if (contorno == 0) return;
+
+        // Os quatro segmentos RETOS param antes dos cantos; a curva já saiu do arco.
+        // Desenhar o retângulo inteiro deixaria o contorno cortado nas quinas.
+        r.x1 = x + R;     r.x2 = x + l - R;
+        r.y1 = y;         r.y2 = y + 1;         Preencher(r, contorno);
+        r.y1 = y + a - 1; r.y2 = y + a;         Preencher(r, contorno);
+        r.y1 = y + R;     r.y2 = y + a - R;
+        r.x1 = x;         r.x2 = x + 1;         Preencher(r, contorno);
+        r.x1 = x + l - 1; r.x2 = x + l;         Preencher(r, contorno);
+    }
+
     // ---- a barra de categorias -------------------------------------------------
     //
     // Mora no alto da tela, que NESTA tela sempre foi vazio: a grade de coleções não
@@ -1488,8 +1570,11 @@ namespace
                       : L"Nenhuma coleção para cruzar";
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, vazia, ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape((g_tela == TELA_ORIGENS) ? GLYPH_B_BUTTON L" Cancelar"
-                                            : GLYPH_X_BUTTON L" Nova coleção", L"");
+            // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
+            Rodape((g_tela == TELA_ORIGENS)
+                   ? GLYPH_B_BUTTON L" Cancelar"
+                   : GLYPH_X_BUTTON L" Nova coleção     " GLYPH_BACK_BUTTON L" Exportar",
+                   L"");
             g_fonte.End();
             return;
         }
@@ -1603,7 +1688,7 @@ namespace
         }
         else
             Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
-                   GLYPH_START_BUTTON L" Opções", texto);
+                   GLYPH_START_BUTTON L" Opções     " GLYPH_BACK_BUTTON L" Exportar", texto);
         g_fonte.End();
     }
 
@@ -1857,41 +1942,117 @@ namespace
         }
     }
 
-    void DesenharMenu()
+    // ---- o modal ---------------------------------------------------------------
+    //
+    // Uma funcao so para os cinco casos do MenuDe. O desenho saiu do estudo em
+    // previa/modais.html: rotulo pequeno, nome, regua, linhas de borda a borda e o
+    // rodape dentro da caixa.
+    //
+    // O veu e mais leve que o antigo (172 contra 200): este painel nao cobre a tela
+    // inteira, e ver a grade por tras e metade da ideia.
+    //
+    // A linha em foco e NEUTRA, faixa branca a 9% com a barra verde. A destrutiva nao
+    // tem cor propria parada -- so fica vermelha quando esta em foco.
+    const int MOD_PAD = 26, MOD_ALT = 48, MOD_CABECA = 128, MOD_PE = 80;
+    const int MOD_MIN = 460, MOD_MAX = 760;
+    const D3DCOLOR COR_VEU       = D3DCOLOR_ARGB(172, 6, 9, 8);
+    const D3DCOLOR COR_FAIXA     = D3DCOLOR_ARGB( 23, 233, 240, 235);   // branco a 9%
+    const D3DCOLOR COR_PERIGO    = D3DCOLOR_XRGB(201, 66, 58);
+    const D3DCOLOR COR_FAIXA_MAL = D3DCOLOR_ARGB( 56, 201, 66, 58);     // vermelho a 22%
+    const D3DCOLOR COR_TEXTO_MAL = D3DCOLOR_XRGB(255, 226, 223);
+
+    const WCHAR *RODAPE_MODAL = GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar";
+
+    // Largura pelo CONTEUDO, e nao os 460 fixos de antes: com um item so sobrava caixa
+    // vazia, e um nome de jogo comprido era cortado. GetTextExtent e CPU pura (le a
+    // tabela de glifos), entao pode ser chamado fora do Begin/End.
+    int LarguraDoModal(const WCHAR *titulo)
     {
-        const int L = 460, A = 94 + g_menuQtd * 52;   // 34 a mais: a linha de botões
-        const int x = (1280 - L) / 2, y = (720 - A) / 2;
+        FLOAT w = 0.0f, h = 0.0f;
+        WCHAR largo[256];
 
-        D3DRECT fundo;
-        fundo.x1 = 0; fundo.y1 = 0; fundo.x2 = 1280; fundo.y2 = 720;
-        Preencher(fundo, D3DCOLOR_ARGB(200, 6, 9, 8));
-        Caixa(x, y, L, A, false);
-
-        for (int i = 0; i < g_menuQtd; i++)
-            if (i == g_menuFoco)
-            {
-                D3DRECT r;
-                r.x1 = x + 14; r.y1 = y + 46 + i * 52;
-                r.x2 = x + L - 14; r.y2 = r.y1 + 42;
-                ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
-            }
-
-        WCHAR texto[256];
-        g_fonte.Begin();
-        Larga(g_menuTitulo, texto, 256);
-        g_fonte.DrawText((FLOAT)x + 20.0f, (FLOAT)y + 14.0f, COR_TEXTO,
-                         texto, ATGFONT_TRUNCATED, (FLOAT)L - 40.0f);
+        g_fonte.GetTextExtent(titulo, &w, &h);
+        FLOAT maior = w * 1.3f;                 // o titulo e desenhado a 1,3x
 
         for (int i = 0; i < g_menuQtd; i++)
         {
-            Larga(g_menuItens[i], texto, 256);
-            g_fonte.DrawText((FLOAT)x + 30.0f, (FLOAT)y + 56.0f + i * 52.0f,
-                             (i == g_menuFoco) ? COR_TEXTO : COR_APAGADO, texto, 0);
+            Larga(g_menuItens[i], largo, 256);
+            g_fonte.GetTextExtent(largo, &w, &h);
+            if (w > maior) maior = w;
         }
-        // Dentro da caixa. No rodapé da tela ficaria por cima do rodapé que a tela
-        // de baixo continua desenhando.
-        g_fonte.DrawText((FLOAT)x + 20.0f, (FLOAT)y + (FLOAT)A - 34.0f, COR_APAGADO,
-                         GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar", 0);
+        g_fonte.GetTextExtent(RODAPE_MODAL, &w, &h);
+        if (w > maior) maior = w;
+
+        int L = (int)maior + (MOD_PAD + 18) * 2;
+        if (L < MOD_MIN) L = MOD_MIN;
+        if (L > MOD_MAX) L = MOD_MAX;
+        return L;
+    }
+
+    void DesenharMenu()
+    {
+        WCHAR titulo[256], rotulo[64], texto[256];
+        Larga(g_menuTitulo, titulo, 256);
+        Larga(g_menuRotulo, rotulo, 64);
+        ParaMaiusculas(rotulo);
+
+        const int L = LarguraDoModal(titulo);
+        const int A = MOD_CABECA + g_menuQtd * MOD_ALT + MOD_PE;
+        const int x = (1280 - L) / 2, y = (720 - A) / 2;
+
+        D3DRECT r;
+        r.x1 = 0; r.y1 = 0; r.x2 = 1280; r.y2 = 720;
+        Preencher(r, COR_VEU);
+
+        PainelRedondo(x, y, L, A, COR_PAINEL, COR_LINHA);
+
+        // As duas reguas: uma sob o cabecalho, outra sobre o rodape.
+        r.x1 = x + MOD_PAD; r.x2 = x + L - MOD_PAD;
+        r.y1 = y + 108;     r.y2 = r.y1 + 1;         Preencher(r, COR_LINHA);
+        r.y1 = y + A - 56;  r.y2 = r.y1 + 1;         Preencher(r, COR_LINHA);
+
+        // A faixa de foco vai de borda a borda. Nao encosta em canto nenhum: a
+        // primeira linha comeca 128 px abaixo do topo e a ultima termina 80 px acima
+        // do fim, contra os 16 px de raio -- por isso ela pode ser retangulo cheio.
+        if (g_menuFoco >= 0 && g_menuFoco < g_menuQtd)
+        {
+            const bool mau = (g_menuFoco == g_menuPerigo);
+            const int ly = y + MOD_CABECA + g_menuFoco * MOD_ALT;
+
+            r.x1 = x + 1; r.x2 = x + L - 1;
+            r.y1 = ly;    r.y2 = ly + MOD_ALT;
+            Preencher(r, mau ? COR_FAIXA_MAL : COR_FAIXA);
+
+            r.x2 = x + 5;
+            Preencher(r, mau ? COR_PERIGO : COR_ANEL);
+        }
+
+        g_fonte.Begin();
+
+        g_fonte.SetScaleFactors(0.72f, 0.72f);
+        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + 26.0f, COR_FRACO, rotulo, 0);
+
+        g_fonte.SetScaleFactors(1.3f, 1.3f);
+        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + 48.0f, COR_TEXTO, titulo,
+                         ATGFONT_TRUNCATED, (FLOAT)(L - MOD_PAD * 2));
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
+
+        for (int i = 0; i < g_menuQtd; i++)
+        {
+            const bool mau = (i == g_menuPerigo);
+            // Parada, a destrutiva e uma linha como as outras.
+            const D3DCOLOR cor = (i != g_menuFoco) ? COR_APAGADO
+                                                   : (mau ? COR_TEXTO_MAL : COR_TEXTO);
+            Larga(g_menuItens[i], texto, 256);
+            g_fonte.DrawText((FLOAT)x + MOD_PAD,
+                             (FLOAT)(y + MOD_CABECA + i * MOD_ALT) + (MOD_ALT - 27) / 2.0f,
+                             cor, texto, ATGFONT_TRUNCATED, (FLOAT)(L - MOD_PAD * 2));
+        }
+
+        // Dentro da caixa. No rodape da tela ficaria por cima do rodape que a tela de
+        // baixo continua desenhando.
+        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + (FLOAT)A - 42.0f, COR_FRACO,
+                         RODAPE_MODAL, 0);
         g_fonte.End();
     }
 
@@ -2163,10 +2324,11 @@ namespace
             // coleções à vista e a contagem ao vivo no rodapé, que explica melhor do
             // que qualquer frase no menu.
             g_menuDe = MENU_TIPO;
+            g_menuRotulo = "Nova coleção";
             g_menuItens[0] = "Coleção Manual";
             g_menuItens[1] = "Junção";
             g_menuItens[2] = "Interseção";
-            g_menuQtd = 3; g_menuFoco = 0; g_menuAberto = true;
+            g_menuQtd = 3; g_menuFoco = 0; g_menuPerigo = -1; g_menuAberto = true;
         }
         else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
         {
@@ -2193,40 +2355,54 @@ namespace
         // A lista da TELA: g_iCol é índice dela, não da completa.
         std::vector<colecoes::Colecao *> L = ListaDeColecoes();
 
+        // Sem coleção nenhuma o menu não tem mais o que oferecer -- o exportar saiu
+        // daqui para o Back. Abrir uma caixa vazia é pior do que não abrir.
+        if (L.empty() || g_iCol < 0 || g_iCol >= (int)L.size())
+        {
+            som::Tocar(som::SOM_VOLTA);
+            return;
+        }
+
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
         g_menuQtd = 0;
+        g_menuRotulo = "Coleção";
+        CopiarTitulo(L[g_iCol]->nome);
 
-        // Sem coleção nenhuma o menu NÃO sai vazio: o export é da biblioteca, não da
-        // coleção, e quem ainda não criou nenhuma também quer exportar. Antes isto
-        // voltava sem abrir nada.
-        if (!L.empty())
+        g_menuItens[g_menuQtd] = "Renomear";
+        g_menuAcao [g_menuQtd] = ACAO_RENOMEAR;  g_menuQtd++;
+
+        // Composta ganha a opção de trocar as origens; coleção de jogos não tem o que
+        // escolher ali.
+        if (colecoes::Composta(L[g_iCol]))
         {
-            CopiarTitulo(L[g_iCol]->nome);
-
-            g_menuItens[g_menuQtd] = "Renomear";
-            g_menuAcao [g_menuQtd] = ACAO_RENOMEAR;  g_menuQtd++;
-
-            // Composta ganha a opção de trocar as origens; coleção de jogos não tem
-            // o que escolher ali.
-            if (colecoes::Composta(L[g_iCol]))
-            {
-                g_menuItens[g_menuQtd] = "Escolher coleções";
-                g_menuAcao [g_menuQtd] = ACAO_ORIGENS;   g_menuQtd++;
-            }
-
-            g_menuItens[g_menuQtd] = "Apagar coleção";
-            g_menuAcao [g_menuQtd] = ACAO_APAGAR;    g_menuQtd++;
-        }
-        else
-        {
-            CopiarTitulo("Opções");
+            g_menuItens[g_menuQtd] = "Escolher coleções";
+            g_menuAcao [g_menuQtd] = ACAO_ORIGENS;   g_menuQtd++;
         }
 
-        g_menuItens[g_menuQtd] = "Exportar para o Vault";
-        g_menuAcao [g_menuQtd] = ACAO_EXPORTAR;  g_menuQtd++;
+        g_menuPerigo = g_menuQtd;                 // a destrutiva é sempre a última
+        g_menuItens[g_menuQtd] = "Apagar coleção";
+        g_menuAcao [g_menuQtd] = ACAO_APAGAR;    g_menuQtd++;
 
         g_menuFoco = 0; g_menuAberto = true;
+    }
+
+    // O exportar NÃO é da coleção: o exportar::ParaOVault recebe g_jogos, então vai a
+    // biblioteca inteira e todas as coleções. Dentro de um menu intitulado com o nome
+    // de uma coleção, ele dizia o contrário do que faz. Agora mora no Back -- que não
+    // era usado em lugar nenhum do app -- e abre ESTE modal em vez de exportar na
+    // hora: o vault.txt é reescrito por cima do anterior, e um Back sem querer faria
+    // isso calado. O rodapé não tem largura para a frase inteira; aqui tem.
+    void AbrirMenuExportar()
+    {
+        som::Tocar(som::SOM_MENU);
+        g_menuDe = MENU_EXPORTAR;
+        g_menuRotulo = "Exportar";
+        CopiarTitulo("Biblioteca e coleções para o Xbox Vault");
+        g_menuItens[0] = "Exportar";
+        g_menuItens[1] = "Cancelar";
+        g_menuQtd = 2; g_menuFoco = 0; g_menuPerigo = -1;
+        g_menuAberto = true;
     }
 
     void AbrirMenuJogo()
@@ -2244,6 +2420,7 @@ namespace
         CopiarTitulo(L[g_iJogo]->nome);
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_JOGO;
+        g_menuRotulo = "Jogo";
 
         // A coleção guarda TitleId, então remover tira TODOS os itens que o
         // compartilham -- os dois discos de um multi-disco, as duas cópias de uma
@@ -2257,7 +2434,7 @@ namespace
         g_menuItemBuf[sizeof(g_menuItemBuf) - 1] = '\0';
 
         g_menuItens[0] = g_menuItemBuf;
-        g_menuQtd = 1; g_menuFoco = 0; g_menuAberto = true;
+        g_menuQtd = 1; g_menuFoco = 0; g_menuPerigo = 0; g_menuAberto = true;
     }
 
     // Entra na escolha de origens, com o rascunho partindo do que a composta já tem.
@@ -2322,7 +2499,21 @@ namespace
         som::Tocar(som::SOM_CONFIRMA);
         g_menuAberto = false;
 
-        if (g_menuDe == MENU_TIPO)
+        if (g_menuDe == MENU_EXPORTAR)
+        {
+            if (g_menuFoco == 0)
+            {
+                // A lista já tem as ROMs dentro: elas entraram como itens comuns no
+                // arranque, então o vault recebe jogo e ROM pela mesma varredura. As
+                // coleções o próprio exportar busca.
+                std::string erro;
+                if (exportar::ParaOVault(g_jogos, g_bancoOk, erro))
+                    Avisar("vault.txt gravado");
+                else
+                    Avisar(erro.c_str());
+            }
+        }
+        else if (g_menuDe == MENU_TIPO)
         {
             if (g_menuFoco == 0)
             {
@@ -2362,18 +2553,7 @@ namespace
             std::vector<colecoes::Colecao *> Lc = ListaDeColecoes();   // a da tela
             const AcaoCol acao = g_menuAcao[g_menuFoco];
 
-            if (acao == ACAO_EXPORTAR)
-            {
-                // A lista já tem as ROMs dentro: elas entraram como itens comuns no
-                // arranque, então o vault recebe jogo e ROM pela mesma varredura. As
-                // coleções o próprio exportar busca -- não passam por aqui.
-                std::string erro;
-                if (exportar::ParaOVault(g_jogos, g_bancoOk, erro))
-                    Avisar("vault.txt gravado");
-                else
-                    Avisar(erro.c_str());
-            }
-            else if (acao == ACAO_RENOMEAR) Renomear();
+            if (acao == ACAO_RENOMEAR) Renomear();
             else if (acao == ACAO_ORIGENS && !Lc.empty() && g_iCol < (int)Lc.size())
             {
                 AbrirOrigens(Lc[g_iCol]);
@@ -2389,10 +2569,12 @@ namespace
                 {
                     CopiarTitulo(L[g_iCol]->nome);
                     g_menuDe = MENU_APAGAR;
+                    g_menuRotulo = "Apagar";
                     g_menuItens[0] = "Cancelar";
                     g_menuItens[1] = "Apagar esta coleção";
                     g_menuQtd = 2;
                     g_menuFoco = 0;          // o seguro em foco
+                    g_menuPerigo = 1;
                     g_menuAberto = true;
                 }
             }
@@ -2857,6 +3039,9 @@ void __cdecl main()
                 if      (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
                 else if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
                 else if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
+                // Só aqui: na tela de origens o Back não vale, ali se está escolhendo
+                // coleção e o exportar não tem nada a ver com a escolha.
+                else if (novos & XINPUT_GAMEPAD_BACK)  AbrirMenuExportar();
             }
         }
         else

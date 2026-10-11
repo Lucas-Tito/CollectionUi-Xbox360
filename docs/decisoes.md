@@ -1523,3 +1523,45 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      (os três `Ordenadas()` que sobraram precisam mesmo da lista completa), apagar com aba ativa
      nunca deixa o foco fora de faixa, os buffers do subtítulo cabem, e os pares de
      `SetScaleFactors` estão todos fechados sem `return` no meio.
+
+145. **O modal foi redesenhado, e o exportar saiu do menu da coleção para o Back.** O desenho
+     foi escolhido em [`../previa/modais.html`](../previa/modais.html), uma página avulsa que
+     reproduz os cinco casos do `DesenharMenu` lado a lado. Ela mede com os avanços do próprio
+     `app/media/Arial_16.xpr`, e não com a fonte do navegador — que é ~25% mais estreita e fazia
+     um nome comprido parecer caber onde no console seria cortado.
+
+     **O que estava errado no de antes:** 460 px fixos (com um item só sobrava caixa vazia, e um
+     nome de jogo comprido era cortado *antes* dos itens), título do mesmo tamanho dos itens e
+     foco por contorno fino. E "Apagar esta coleção" tinha exatamente a aparência de "Renomear".
+
+     **O que ficou:** painel centralizado, largura pelo conteúdo entre 460 e 760 px, rótulo
+     pequeno acima do nome, régua sob o cabeçalho e sobre o rodapé, linhas de 48 px de borda a
+     borda. O véu caiu de 200 para 172 — este painel não cobre a tela inteira, e ver a grade por
+     trás é metade da ideia.
+
+     **A linha em foco é neutra**, faixa branca a 9% com a barra verde. A destrutiva **não tem
+     cor própria parada**: é igual às outras até receber o foco, e só então faixa, barra e texto
+     ficam vermelhos. Cor parada em item de menu vira enfeite; o que o vermelho precisa marcar é
+     o instante em que o `A` faria aquilo. O vermelho é a única cor nova.
+
+     **O arredondado usa uma máscara nova, a de DENTRO da curva** (`GerarCanto(0.0f)`). A dos
+     cards não serve aqui: ela pinta o canto *na cor do fundo*, e sob o véu essa cor não é
+     uniforme — há card e capa por baixo, e o canto sairia como um entalhe escuro sobre as capas
+     claras. A interna desenha o painel *por dentro* da curva, por cima do véu, e não depende de
+     adivinhar nada. O contorno de 1 px sai em quatro segmentos retos mais os quatro arcos, como
+     o card já fazia.
+
+     **O exportar não é da coleção.** O `exportar::ParaOVault` recebe `g_jogos`: vai a biblioteca
+     inteira e todas as coleções. Dentro de um menu intitulado com o nome de uma coleção, ele
+     dizia o contrário do que faz. Foi para o **Back**, que não era usado em lugar nenhum do app
+     — não havia um `XINPUT_GAMEPAD_BACK` no `main.cpp` —, e cujo glifo está no atlas com os
+     mesmos 54 px do A e do Start. O rodapé diz só **Exportar**; a frase inteira fica no modal,
+     *Exportar — Biblioteca e coleções para o Xbox Vault*, com "Exportar" e "Cancelar". Ele não
+     exporta na hora de propósito: o `game:\vault.txt` é reescrito por cima do anterior, e um
+     Back sem querer faria isso calado.
+
+     Duas consequências: o menu da coleção ficou com três linhas e a destrutiva passou a ser a
+     **última**, e o `☰` sem nenhuma coleção criada deixou de abrir — antes ele existia só para
+     oferecer o exportar, e agora toca o som de volta. Na tela de origens o Back não vale: ali se
+     escolhe coleção, e o exportar não tem nada a ver com a escolha. Sem coleção nenhuma o
+     exportar continua no rodapé, porque ele é da biblioteca.
