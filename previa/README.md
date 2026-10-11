@@ -173,7 +173,8 @@ As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `A
 ## O modal — `modais.html`
 
 Página **avulsa**, abre direto no navegador, sem `montar.py` e sem dados: `previa/modais.html`.
-Mostra os **cinco casos** em que o modal aparece — opções da coleção, opções do jogo, a confirmação
+**Já está no C++** (decisão 145): a página virou o espelho do que o `DesenharMenu` desenha, e
+não mais uma proposta. Mostra os **cinco casos** em que o modal aparece — opções da coleção, opções do jogo, a confirmação
 de apagar, o exportar que o Back abre e a escolha do tipo —, todos no desenho que foi escolhido. Setas movem o
 foco, `C` troca a confirmação pelos dois botões lado a lado, `E` tira o exportar do Back, clicar
 amplia.

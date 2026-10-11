@@ -1971,6 +1971,12 @@ namespace
         FLOAT w = 0.0f, h = 0.0f;
         WCHAR largo[256];
 
+        // O GetTextExtent multiplica pelo m_fXScaleFactor (AtgFont.cpp:550). Todo
+        // mundo devolve a escala a 1,0 antes de sair, mas a largura do painel inteiro
+        // depende disto: medir a 1,3 por engano grudaria o painel no teto de 760 px
+        // em todos os casos.
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
+
         g_fonte.GetTextExtent(titulo, &w, &h);
         FLOAT maior = w * 1.3f;                 // o titulo e desenhado a 1,3x
 
