@@ -182,6 +182,25 @@ queixas: 460 px fixos (um item só sobra caixa vazia, um nome comprido é cortad
 tamanho dos itens, foco por contorno fino, e **"Apagar esta coleção" com exatamente a aparência de
 "Renomear"**.
 
+O candidato é o **`central`**: o painel do `lateral` trazido para o meio da tela — mesmo cabeçalho
+com rótulo e nome, mesmas linhas de borda a borda, mesmo véu leve (172) que deixa a grade aparecer
+por trás — e com a largura seguindo o conteúdo, que é o que o `lateral` não fazia. A cor da linha
+em foco é escolha à parte, nos botões **Realce**: `Cheio` (bloco verde, texto escuro, a língua da
+barra de categorias), `Verde 30%`, `Neutro`, `Só barra` e o `Verde 14%` do primeiro desenho, que é
+o que motivou a troca — a 14% sobre o painel ele vira quase a cor de um painel qualquer.
+
+### O `Exportar para o Vault` sai do menu
+
+O `exportar.cpp` recebe `g_jogos`: ele exporta a **biblioteca inteira** e todas as coleções. Dentro
+de um menu intitulado com o nome de uma coleção, ele diz o contrário do que faz. O **Back não é
+usado em lugar nenhum do app** — não há um `XINPUT_GAMEPAD_BACK` no `main.cpp` — e o glifo dele
+está no atlas, com os mesmos 54 px do A e do Start. A página põe `Back Exportar para o Vault` no
+rodapé da tela de coleções e tira a linha do menu; o interruptor na barra desfaz, para comparar.
+
+Duas consequências, se isto for para o C++: o menu da coleção fica com três linhas e a destrutiva
+passa a ser a **última**, e o `☰` sem nenhuma coleção criada deixa de ter o que oferecer — hoje ele
+abre só com o "Exportar", e passaria a só tocar o som de volta.
+
 Duas coisas tornam esta página mais fiel que a prévia:
 
 - **Mede com o atlas de verdade.** Os avanços de cada caractere saem do `app/media/Arial_16.xpr`,
