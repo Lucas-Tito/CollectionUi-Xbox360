@@ -173,8 +173,8 @@ As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `A
 ## O modal — `modais.html`
 
 Página **avulsa**, abre direto no navegador, sem `montar.py` e sem dados: `previa/modais.html`.
-Mostra os **quatro casos** em que o modal aparece de verdade — opções da coleção, opções do jogo,
-a confirmação de apagar e a escolha do tipo —, todos no desenho que foi escolhido. Setas movem o
+Mostra os **cinco casos** em que o modal aparece — opções da coleção, opções do jogo, a confirmação
+de apagar, o exportar que o Back abre e a escolha do tipo —, todos no desenho que foi escolhido. Setas movem o
 foco, `C` troca a confirmação pelos dois botões lado a lado, `E` tira o exportar do Back, clicar
 amplia.
 
@@ -197,8 +197,13 @@ realces estão no commit `c783678`, se precisar rever.
 O `exportar.cpp` recebe `g_jogos`: ele exporta a **biblioteca inteira** e todas as coleções. Dentro
 de um menu intitulado com o nome de uma coleção, ele diz o contrário do que faz. O **Back não é
 usado em lugar nenhum do app** — não há um `XINPUT_GAMEPAD_BACK` no `main.cpp` — e o glifo dele
-está no atlas, com os mesmos 54 px do A e do Start. A página põe `Back Exportar para o Vault` no
-rodapé da tela de coleções e tira a linha do menu; o `E` desfaz, para comparar.
+está no atlas, com os mesmos 54 px do A e do Start. A página põe `Back Exportar` no rodapé da
+tela de coleções e tira a linha do menu; o `E` desfaz, para comparar.
+
+O Back **não exporta na hora**: abre um modal, *Exportar — Biblioteca e coleções para o Xbox Vault*,
+com "Exportar" e "Cancelar". O rodapé não tem largura para a frase inteira, e o `game:\vault.txt`
+é reescrito por cima do anterior — um Back sem querer, sem nada perguntando, faria isso calado.
+Nada ali é destrutivo, então nada fica vermelho.
 
 Duas consequências, se isto for para o C++: o menu da coleção fica com três linhas e a destrutiva
 passa a ser a **última**, e o `☰` sem nenhuma coleção criada deixa de ter o que oferecer — hoje ele

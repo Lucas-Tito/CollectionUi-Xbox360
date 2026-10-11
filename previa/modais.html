@@ -80,6 +80,11 @@ figcaption .custo b{color:var(--dim);font-weight:600}
       <li>A linha em foco é <b>neutra</b>: faixa branca a 9% com a barra verde. A destrutiva
         <b>não tem cor própria parada</b> — ela é igual às outras até receber o foco, e só então a
         faixa, a barra e o texto ficam vermelhos. O vermelho é a única cor nova no app.</li>
+      <li>O <b>Back</b> não é usado em lugar nenhum do app hoje, e o glifo dele está no atlas. Ele
+        abre o modal de exportar em vez de exportar na hora: o <code>exportar.cpp</code> recebe
+        <code>g_jogos</code>, então é a biblioteca inteira e todas as coleções que vão para o
+        <code>game:\vault.txt</code> — e um Back sem querer, sem nada perguntando, reescreveria o
+        arquivo.</li>
       <li>Os outros quatro desenhos comparados antes (hoje, pílula, seco, lateral, cartão) saíram
         desta página; ficam no commit <code>c783678</code> se precisar rever.</li>
     </ul>
@@ -328,7 +333,7 @@ function telaColecoes(ctx, iFoco){
     cardColecao(ctx, x, y, COL_LADO, NOMES_COL[k], k === iFoco, k);
   }
   const pares = [['A','Abrir'],['X','Nova coleção']];
-  if (exportarNoBack) pares.push(['BACK','Exportar para o Vault']);
+  if (exportarNoBack) pares.push(['BACK','Exportar']);
   linhaBotoes(ctx, MARGEM_X, 652, pares, C.apagado);
   txt(ctx, '8 coleções · 439 jogos', 1180, 652, C.fraco, 1, 'right');
 }
@@ -383,6 +388,18 @@ const CASOS = {
     nota:'A segunda tela, com o Cancelar em foco — é assim que o C++ abre. Desça o foco para ver a '
        + 'linha ficar vermelha. O interruptor lá em cima troca pelos dois botões lado a lado.',
   },
+  exportar: {
+    chave:'exportar', nome:'Exportar (o que o Back abre)',
+    rotulo:'Exportar', titulo:'Biblioteca e coleções para o Xbox Vault',
+    itens:['Exportar','Cancelar'],
+    perigo:-1, confirma:true, tela:'colecoes', foco:0,
+    explica:'Grava o vault.txt, por cima do anterior.',
+    rodape:[['A','Escolher'],['B','Fechar']],
+    nota:'O rodapé diz só <b>Exportar</b>; o que exporta o quê fica aqui, onde há espaço para a '
+       + 'frase inteira. Nada aqui é destrutivo, então nada fica vermelho — o <code>vault.txt</code> '
+       + 'é reescrito, mas é o arquivo que esta tela existe para gerar. Depois de gravar, quem avisa '
+       + 'continua sendo o balão do sistema, como hoje.',
+  },
   tipo: {
     chave:'tipo', nome:'Escolher o tipo',
     rotulo:'Nova coleção', titulo:'Zerados em 2024',
@@ -435,7 +452,10 @@ function botoesLadoALado(ctx, caso, foco, cx, y){
     if (ativo) pinta(ctx, x, y, LB, AB, mau ? C.perigo : 'rgba(233,240,235,0.14)', CANTO_N);
     else       contorno(ctx, x, y, LB, AB, C.linha, 1, CANTO_N);
     const cor = ativo ? (mau ? C.sobrePerigo : C.texto) : C.apagado;
-    txt(ctx, i === 0 ? 'Cancelar' : 'Apagar', x + LB/2, y + (AB-ALT_LINHA)/2, cor, 1, 'center');
+    // O rótulo é o do próprio caso: "Cancelar/Apagar" numa confirmação de apagar,
+    // "Exportar/Cancelar" na de exportar.
+    const curto = caso.itens[i].split(' ')[0];
+    txt(ctx, curto, x + LB/2, y + (AB-ALT_LINHA)/2, cor, 1, 'center');
   }
 }
 
