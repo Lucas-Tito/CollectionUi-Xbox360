@@ -1485,3 +1485,41 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      Quatro desenhos foram comparados na prévia e os outros três ficaram lá, no `T`: o da
      Steam, um seletor de uma aba só entre setas, e um trilho vertical à esquerda que custava
      uma coluna inteira da grade.
+
+     **O que uma revisão achou depois, e o que ela mudou.** Quatro defeitos de verdade, todos
+     do mesmo tipo: a aba vazando para onde a própria decisão dizia que ela não vale.
+
+     O pior era na **tela de origens**. O `ListaDeColecoes` tem o ramo que a isenta, mas o
+     `TelaColecoes` desenha as duas telas com a mesma função, e a colagem do card e o `( N )`
+     filtravam assim mesmo. Escolhendo origens numa aba, uma coleção legítima aparecia com a
+     colagem vazia e **`( 0 )`** — que é o sinal de "coleção vazia" em todo o resto do app —
+     enquanto o rodapé da mesma tela dizia "1 escolhidas · 37 jogos". Quem decidisse ali
+     decidiria pelo número errado, e composta sem origem é apagada sem volta. O conserto foi
+     tirar a regra de cada chamador e pôr num lugar só, o `AbaEmVigor()`: escolhendo origens
+     não há aba. Era também o que o comentário no topo do arquivo escondia — ele nomeava como
+     filtrado justamente o rodapé de origens, que é o único que não pode filtrar.
+
+     **Coleção pode esvaziar por dentro**, e a invariante só cobria a grade de coleções. Tire o
+     último jogo de 360 de uma coleção com 40 de XBLA, estando na aba Xbox 360, e a tela dizia
+     "Nenhum jogo nesta coleção" — mentira — e ainda voltava antes do cabeçalho, que é onde o
+     nome da aba apareceria. Agora a frase nomeia a aba.
+
+     **Concluir o "Adicionar jogos" escondia o que se acabou de marcar.** O escolhedor mostra a
+     biblioteca inteira de propósito; marcar três jogos de 360 estando na aba XBLA gravava os
+     três e voltava para uma grade sem nenhum deles. Hoje, marcar algo de fora da aba tira a
+     aba da frente — a mesma regra do criar e do renomear.
+
+     **LB e A no mesmo quadro abriam outra coleção**: o `salto` entrava como `if` solto, fora
+     da cadeia dos botões, e o `TrocarAba` troca a lista e zera o foco antes de o A ser lido.
+     Virou `else`, como o ramo do menu já fazia pelo mesmo motivo.
+
+     De quebra: o `AtualizarAbas` roda todo quadro e chamava o `Tem()` mesmo para categoria já
+     encontrada — o teste do `bool` passou para a frente da chamada cara; a chamada de arranque
+     era redundante (o `ClampFoco` sempre precede o primeiro `Desenhar`) e saiu junto com o
+     comentário que a justificava; aba fora de faixa vinda do banco passou a virar "Outros" em
+     vez de ser deduzida pelo `ContentType`, porque dedução é o que o `0` pede e só ele.
+
+     O que a revisão apontou e **não** era problema: os seis sítios de índice estão todos certos
+     (os três `Ordenadas()` que sobraram precisam mesmo da lista completa), apagar com aba ativa
+     nunca deixa o foco fora de faixa, os buffers do subtítulo cabem, e os pares de
+     `SetScaleFactors` estão todos fechados sem `return` no meio.

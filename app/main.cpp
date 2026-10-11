@@ -133,8 +133,11 @@ namespace
     //
     // A aba NAO muda o que a colecao tem: ela encolhe o UNIVERSO sobre o qual se
     // pergunta. Por isso o colecoes.cpp nao sabe que abas existem -- o filtro entra
-    // so onde se VARRE g_jogos, que sao tres lugares: ListaAtual, a contagem do card
-    // e a do rodape de origens.
+    // so onde se VARRE g_jogos, que sao QUATRO lugares: ListaAtual, TresDaColecao, a
+    // contagem do card e o filtro do ListaDeColecoes.
+    //
+    // O rodape da tela de origens varre g_jogos e NAO filtra, de proposito: ele conta
+    // o que a composta vai ter, que nao depende de aba nenhuma.
     //
     // O APP SEMPRE ABRE EM "TODOS". Esta variavel mora na memoria e em lugar nenhum
     // alem dela: nao vai para o colecoes.txt, nao vai para a config, nao sobrevive a
@@ -278,9 +281,23 @@ namespace
         return L"Todos";
     }
 
+    // ONDE A ABA VALE, num lugar so. Escolhendo origens ela NAO vale: ali se escolhe
+    // coleção, e a composta que sair dali vale para as outras abas também.
+    //
+    // Isto precisa morar aqui e não em cada chamador porque o TelaColecoes desenha as
+    // DUAS telas. Sem esta pergunta, o card de uma origem saía com a colagem vazia e
+    // `( 0 )` -- que é o sinal de "coleção vazia" em todo o resto do app -- enquanto o
+    // rodapé da mesma tela dizia "1 escolhidas · 37 jogos". Quem decidisse ali
+    // decidiria pelo número errado, e composta sem origem é apagada sem volta.
+    int AbaEmVigor()
+    {
+        return (g_tela == TELA_ORIGENS) ? biblioteca::ABA_AUTOMATICA : g_aba;
+    }
+
     bool NaAba(const biblioteca::Jogo &j)
     {
-        return g_aba == biblioteca::ABA_AUTOMATICA || j.aba == g_aba;
+        const int aba = AbaEmVigor();
+        return aba == biblioteca::ABA_AUTOMATICA || j.aba == aba;
     }
 
     // As abas com conteudo, em ordem, com o Todos na frente. Recalculada UMA VEZ por
@@ -307,9 +324,13 @@ namespace
         // UMA passada por colecao, contando as abas de quem casou -- e nao uma
         // passada por aba. O resultado e o mesmo e custa seis vezes menos.
         std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
+        // O teste do `tem` vem ANTES do Tem(): assim que uma categoria aparece, os
+        // outros itens dela custam um bool em vez de uma varredura dos ids da coleção
+        // (e, em composta, de uma recursão com PorId linear dentro). Isto roda todo
+        // quadro, e sem o curto-circuito eram colecoes x jogos chamadas caras.
         for (size_t i = 0; i < todas.size(); i++)
             for (size_t j = 0; j < g_jogos.size(); j++)
-                if (colecoes::Tem(todas[i], g_jogos[j].titleId))
+                if (!tem[g_jogos[j].aba] && colecoes::Tem(todas[i], g_jogos[j].titleId))
                     tem[g_jogos[j].aba] = true;
 
         g_abas.clear();
@@ -513,6 +534,7 @@ namespace
         g_iCol = 0;
         if (c == NULL) return;
 
+        const int abaAntes = g_aba;
         for (int tentativa = 0; tentativa < 2; tentativa++)
         {
             std::vector<colecoes::Colecao *> L = ListaDeColecoes();
@@ -520,6 +542,9 @@ namespace
                 if (L[i] == c) { g_iCol = (int)i; return; }
             g_aba = biblioteca::ABA_AUTOMATICA;
         }
+        // Não achou nem em Todos: a coleção não está na lista por outro motivo, e
+        // trocar a aba não resolveu nada. Desfaz, para não mexer no que funcionava.
+        g_aba = abaAntes;
     }
 
     // "em todas: Co-op, Não zerado" -- o que responde "por que este jogo está aqui?".
@@ -1654,6 +1679,20 @@ namespace
                 if      (g_atual->tipo == colecoes::TIPO_INTERSECAO) vazia = L"Nenhum jogo está em todas elas";
                 else if (g_atual->tipo == colecoes::TIPO_UNIAO)      vazia = L"Nenhum jogo nas coleções escolhidas";
             }
+
+            // A ABA pode ter esvaziado a coleção por dentro -- tire o último jogo de
+            // 360 de uma coleção que tem 40 de XBLA, na aba Xbox 360, e sobra isto.
+            // A frase genérica estaria MENTINDO: a coleção não está vazia. O
+            // subtítulo com a aba não serve de consolo aqui, porque este ramo volta
+            // antes do Cabecalho -- então quem diz o porquê é a própria frase.
+            WCHAR porCausaDaAba[128];
+            if (!adicionando && g_aba != biblioteca::ABA_AUTOMATICA)
+            {
+                swprintf_s(porCausaDaAba, 128, L"Nenhum jogo de %s nesta coleção",
+                           NomeDaAba(g_aba));
+                vazia = porCausaDaAba;
+            }
+
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
                              adicionando ? L"A biblioteca está vazia" : vazia,
                              ATGFONT_CENTER_X);
@@ -2042,6 +2081,20 @@ namespace
         {
             g_atual->ids = g_selecao;
             colecoes::Gravar();
+
+            // O escolhedor mostra a biblioteca INTEIRA de propósito, então dá para
+            // marcar jogo que a aba corrente não mostra -- e aí o Concluir voltaria
+            // para uma grade sem nenhum deles. Marcou algo de fora da aba, a aba sai
+            // da frente. É a mesma regra do criar e do renomear: quem acabou de fazer
+            // uma coisa tem de VÊ-LA.
+            if (g_aba != biblioteca::ABA_AUTOMATICA)
+                for (size_t i = 0; i < g_jogos.size(); i++)
+                    if (g_jogos[i].aba != g_aba &&
+                        SelecionadoNoRascunho(g_jogos[i].titleId))
+                    {
+                        g_aba = biblioteca::ABA_AUTOMATICA;
+                        break;
+                    }
         }
         g_selecao.clear();
         g_tela = TELA_JOGOS;
@@ -2321,7 +2374,7 @@ namespace
                     Avisar(erro.c_str());
             }
             else if (acao == ACAO_RENOMEAR) Renomear();
-            else if (acao == ACAO_ORIGENS && !Lc.empty())
+            else if (acao == ACAO_ORIGENS && !Lc.empty() && g_iCol < (int)Lc.size())
             {
                 AbrirOrigens(Lc[g_iCol]);
             }
@@ -2642,9 +2695,6 @@ void __cdecl main()
     }
 
     colecoes::Carregar();
-    // As abas já no arranque: o ClampFoco as recalcula a cada quadro, mas o primeiro
-    // desenho não pode sair sem elas.
-    AtualizarAbas();
     diario::Escrever("  [%u ms] colecoes / [%u ms] ARRANQUE TOTAL",
                      (unsigned)(GetTickCount() - tm), (unsigned)(GetTickCount() - t0));
     carregador::Iniciar();
@@ -2795,12 +2845,19 @@ void __cdecl main()
         }
         else if (g_tela == TELA_COLECOES)
         {
+            // Trocar de aba é a ÚNICA ação do quadro quando acontece. O ramo do menu
+            // acima já diz por quê ("uma ação por quadro"), e aqui é pior do que lá:
+            // o TrocarAba troca a lista inteira e zera o foco, então um A no mesmo
+            // quadro abriria uma coleção sem relação nenhuma com a que estava à vista.
             if (salto) TrocarAba(salto);
-            if (dx) MoverColecao(dx);
-            if (dy) MoverColecao(dy * COL_POR_LINHA);
-            if      (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
-            else if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
-            else if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
+            else
+            {
+                if (dx) MoverColecao(dx);
+                if (dy) MoverColecao(dy * COL_POR_LINHA);
+                if      (novos & XINPUT_GAMEPAD_A)     AbrirColecao();
+                else if (novos & XINPUT_GAMEPAD_X)     NovaColecao();
+                else if (novos & XINPUT_GAMEPAD_START) AbrirMenuColecao();
+            }
         }
         else
         {

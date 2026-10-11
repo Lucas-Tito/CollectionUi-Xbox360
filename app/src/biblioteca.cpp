@@ -246,8 +246,14 @@ namespace biblioteca
             // A aba vem pronta do banco. O ContentType so entra quando ela e
             // ABA_AUTOMATICA, que e a FreeStyle pedindo a deducao -- ver o cabecalho.
             j.aba = temColunaAba ? sqlite3_column_int(stmt, 12) : ABA_AUTOMATICA;
-            if (j.aba <= ABA_AUTOMATICA || j.aba >= ABA_QUANTAS)
+            if (j.aba == ABA_AUTOMATICA)
                 j.aba = AbaPorContentType(j.contentType);
+            // Aba que a FreeStyle inventou depois de nos, ou lixo de banco corrompido.
+            // NAO deduzir pelo ContentType aqui: deducao e o que o 0 pede, e so ele.
+            // Para o resto, a resposta honesta e "nao sei a categoria" -- e o campo e
+            // indice de vetor la na frente, entao tem de sair daqui dentro da faixa.
+            else if (j.aba < ABA_AUTOMATICA || j.aba >= ABA_QUANTAS)
+                j.aba = ABA_OUTROS;
 
             // TitleId zero vira id sintetico do caminho. Sem caminho nao da para
             // sintetizar nada estavel, e ai o zero fica -- quem marca ainda barra.
