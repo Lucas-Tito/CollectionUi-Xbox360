@@ -266,23 +266,26 @@ let CARD = 'grupo30';
 //       0 Automatic   1 XBLA      2 Xbox 360   3 Xbox Classic
 //       4 Homebrew    5 Emulator  6 Other
 //
-// e cada RAIZ DE VARREDURA aponta para uma delas:
+// e CADA ITEM ja carrega a dele, numa coluna do content.db:
 //
-//     ScanPaths(ScanPathPath, ScanPathRetailTabId)
-//       \JOGOS\ -> 2    \XBLA\ -> 1    \ORIGINAL XBOX\ -> 3
-//       \EMULADORES\ -> 5    \Content\0000000000000000\584E07D2\ -> 1
+//     ContentItems.ContentItemTab
 //
-// Quem decide a aba e a RAIZ, nao o ContentType. Os seis homebrews deste console
-// tem ContentType 0x7000 -- o mesmo de um jogo de varejo --, e so a raiz \HOMEBREW\
-// os separa. Entao a conta certa no C++ e content.db (ContentItemScanPathId)
-// JUNTADO com settings.db (ScanPaths -> Tabs); o ContentType sozinho erra.
+// Nao e por pasta, nem por ContentType. O banco que o biblioteca.cpp JA ABRE tem a
+// resposta pronta: e uma coluna a mais no SELECT, e nada alem disso. Sem abrir o
+// settings.db, sem juntar com ScanPaths, sem olhar nome de pasta -- a pasta pode se
+// chamar qualquer coisa, e e por isso que a conta por pasta esta errada.
 //
-// Repare tambem que os 32 indies (ContentType 0x2) caem em XBLA, porque e para la
-// que a raiz \Content\...\ aponta. Nao ha aba "Indie" na FreeStyle, e inventar uma
-// seria divergir dela.
+// O ContentType sozinho tambem erra: os seis homebrews deste console tem 0x7000, o
+// mesmo de um jogo de varejo. Ele serve so para o caso 0 (Automatic), que e a
+// FreeStyle dizendo "deduza": 0x7000 -> 2, 0xD0000 -> 1, 0x5000 -> 3. No dump desta
+// casa sao 5 itens em 120 -- Splinter Cell, MGS V, CoD WaW, The Cave.
 //
-// A previa nao tem o settings.db, entao deriva do CAMINHO -- que e de onde a
-// varredura saiu, e da o mesmo resultado neste acervo.
+// Repare tambem que os 32 indies (ContentType 0x2) estao gravados com Tab 1, XBLA.
+// Nao ha aba "Indie" na FreeStyle, e inventar uma seria divergir dela.
+//
+// AQUI NA PREVIA e por caminho, porque o games.json nao tem essa coluna -- o
+// extrair.py foi escrito antes de ela importar. E um SUBSTITUTO que da o mesmo
+// resultado neste acervo, nao o desenho da coisa.
 const ABAS_FSD = [
   { id:0, nome:'Todos'   },   // sempre existe; e a tela de hoje
   { id:1, nome:'XBLA'    },

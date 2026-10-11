@@ -90,7 +90,12 @@ A mesma "Co-op" tem 28 jogos em Todos e 15 em Xbox 360, e a contagem no card aco
 
 #### De onde sai a categoria
 
-A FreeStyle tem uma tabela fixa de abas, no `settings.db`:
+Do próprio `content.db`, numa coluna por item: **`ContentItems.ContentItemTab`**. Não é por pasta
+nem por `ContentType` — o banco que o `biblioteca.cpp` já abre tem a resposta pronta, e é **uma
+coluna a mais no `SELECT`**. Sem `settings.db`, sem juntar com `ScanPaths`, sem olhar nome de
+pasta: a pasta pode se chamar qualquer coisa.
+
+Os valores são os da tabela `Tabs` do `settings.db`, que é fixa:
 
 | TabId | TabName |
 |---|---|
@@ -102,21 +107,21 @@ A FreeStyle tem uma tabela fixa de abas, no `settings.db`:
 | 5 | Emulator |
 | 6 | Other |
 
-e cada **raiz de varredura** aponta para uma delas, em `ScanPaths.ScanPathRetailTabId`. Neste
-console: `\JOGOS\` → 2, `\XBLA\` → 1, `\ORIGINAL XBOX\` → 3, `\EMULADORES\` → 5,
-`\Content\0000000000000000\584E07D2\` → 1.
+O `ContentType` entra **só** no caso `0`, que é a FreeStyle dizendo "deduza": `0x7000` → 2,
+`0xD0000` → 1, `0x5000` → 3. No dump desta casa são 5 itens em 120 (Splinter Cell, MGS V, CoD
+World at War, The Cave). Sozinho ele erraria: os seis homebrews têm `0x7000`, o mesmo de um jogo
+de varejo.
 
-**Quem decide é a raiz, não o `ContentType`.** Os seis homebrews deste console têm `ContentType`
-`0x7000`, o mesmo de um jogo de varejo; só a raiz `\HOMEBREW\` os separa. Então a conta certa no
-C++ é o `content.db` (`ContentItemScanPathId`, que o `SELECT` de hoje ainda não lê) **juntado** com
-o `settings.db` (`ScanPaths` → `Tabs`). O `ContentType` sozinho erra.
+Uma consequência que vem da FreeStyle e não de nós: os 32 indies (`ContentType` `0x2`) estão
+gravados com `Tab` **1, XBLA** — ela não tem aba "Indie", e inventar uma seria divergir dela. A
+**ordem** também é dela, por `TabId`, com **XBLA antes de Xbox 360**.
 
-Duas consequências que vêm da FreeStyle e não de nós: os 32 indies (`ContentType` `0x2`) caem em
-**XBLA**, porque é para lá que a raiz deles aponta — a FreeStyle não tem aba "Indie", e inventar
-uma seria divergir dela; e a **ordem** é a da tabela, por `TabId`, com **XBLA antes de Xbox 360**.
+**Aqui na prévia é por caminho**, porque o `games.json` não tem essa coluna — o `extrair.py` foi
+escrito antes de ela importar. É um substituto que dá o mesmo resultado neste acervo, não o
+desenho da coisa.
 
-A prévia não tem o `settings.db`, então deriva do **caminho** — que é de onde a varredura saiu, e
-dá o mesmo resultado neste acervo.
+Falta confirmar com que `Tab` a FreeStyle gravou os seis homebrews: a cópia de `content.db` que
+está aqui é anterior à pasta `\HOMEBREW\` existir.
 
 #### A regra, inteira
 
