@@ -170,24 +170,27 @@ Os outros quatro ficam no `T`, de registro do que foi comparado:
 As setas do `seletor` e o tique são **desenhados**, não caracteres: o atlas `Arial_16` não garante
 `‹`/`›` (U+2039/U+203A), e o que ele não tem vira quadradinho na TV.
 
-## Desenhos de modal — `modais.html`
+## O modal — `modais.html`
 
 Página **avulsa**, abre direto no navegador, sem `montar.py` e sem dados: `previa/modais.html`.
-Compara o modal de hoje com quatro alternativas, nos quatro casos em que ele aparece de verdade
-(opções da coleção, opções do jogo, a confirmação de apagar e a escolha do tipo). Setas trocam o
-caso e o foco, `C` liga a confirmação em botões lado a lado, clicar amplia.
+Mostra os **quatro casos** em que o modal aparece de verdade — opções da coleção, opções do jogo,
+a confirmação de apagar e a escolha do tipo —, todos no desenho que foi escolhido. Setas movem o
+foco, `C` troca a confirmação pelos dois botões lado a lado, `E` tira o exportar do Back, clicar
+amplia.
 
-O modal é uma função só no C++ — o `DesenharMenu` — servindo os quatro casos, e é daí que vêm as
+O modal é uma função só no C++ — o `DesenharMenu` — servindo os quatro casos, e é daí que vinham as
 queixas: 460 px fixos (um item só sobra caixa vazia, um nome comprido é cortado), título do mesmo
-tamanho dos itens, foco por contorno fino, e **"Apagar esta coleção" com exatamente a aparência de
-"Renomear"**.
+tamanho dos itens e foco por contorno fino.
 
-O candidato é o **`central`**: o painel do `lateral` trazido para o meio da tela — mesmo cabeçalho
-com rótulo e nome, mesmas linhas de borda a borda, mesmo véu leve (172) que deixa a grade aparecer
-por trás — e com a largura seguindo o conteúdo, que é o que o `lateral` não fazia. A cor da linha
-em foco é escolha à parte, nos botões **Realce**: `Cheio` (bloco verde, texto escuro, a língua da
-barra de categorias), `Verde 30%`, `Neutro`, `Só barra` e o `Verde 14%` do primeiro desenho, que é
-o que motivou a troca — a 14% sobre o painel ele vira quase a cor de um painel qualquer.
+**O escolhido:** painel centralizado com rótulo e nome no cabeçalho, linhas de borda a borda,
+largura seguindo o conteúdo e véu leve (172), que deixa a grade aparecer por trás. A linha em foco
+é **neutra** — faixa branca a 9% com a barra verde. A destrutiva **não tem cor própria parada**:
+ela é uma linha como as outras até receber o foco, e só então a faixa, a barra e o texto ficam
+vermelhos. Cor parada em item de menu vira enfeite; o que o vermelho precisa marcar é o instante
+em que o `A` faria aquilo.
+
+Os outros quatro desenhos comparados no caminho (hoje, pílula, seco, lateral, cartão) e os cinco
+realces estão no commit `c783678`, se precisar rever.
 
 ### O `Exportar para o Vault` sai do menu
 
@@ -195,7 +198,7 @@ O `exportar.cpp` recebe `g_jogos`: ele exporta a **biblioteca inteira** e todas 
 de um menu intitulado com o nome de uma coleção, ele diz o contrário do que faz. O **Back não é
 usado em lugar nenhum do app** — não há um `XINPUT_GAMEPAD_BACK` no `main.cpp` — e o glifo dele
 está no atlas, com os mesmos 54 px do A e do Start. A página põe `Back Exportar para o Vault` no
-rodapé da tela de coleções e tira a linha do menu; o interruptor na barra desfaz, para comparar.
+rodapé da tela de coleções e tira a linha do menu; o `E` desfaz, para comparar.
 
 Duas consequências, se isto for para o C++: o menu da coleção fica com três linhas e a destrutiva
 passa a ser a **última**, e o `☰` sem nenhuma coleção criada deixa de ter o que oferecer — hoje ele

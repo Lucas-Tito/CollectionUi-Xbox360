@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>CollectionUI — desenhos de modal</title>
+<title>CollectionUI — o modal, nos quatro casos</title>
 <style>
 :root{
   --fundo:#0C100E; --painel:#141A17; --linha:#2B352F; --texto:#E7EDE9;
@@ -26,7 +26,7 @@ label.chk{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--dim
 .dica kbd{font:inherit;font-family:var(--mono);background:#1A211D;border:1px solid var(--linha);
           border-radius:4px;padding:1px 5px}
 main{padding:22px 24px 60px}
-.grade{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(540px,1fr))}
+.grade{display:grid;gap:24px;grid-template-columns:repeat(auto-fit,minmax(560px,1fr))}
 body.solo .grade{grid-template-columns:1fr}
 body.solo figure:not(.aberto){display:none}
 figure{margin:0;background:var(--painel);border:1px solid var(--linha);border-radius:10px;
@@ -49,17 +49,14 @@ figcaption .custo b{color:var(--dim);font-weight:600}
 .notas li{margin-bottom:8px}
 .notas code{font-family:var(--mono);font-size:12px;color:var(--anel)}
 </style>
-
 <header>
-  <h1>Desenhos de modal <small>o de hoje, reproduzido chamada por chamada, e quatro alternativas</small></h1>
+  <h1>O modal, nos quatro casos <small>central + neutro, que é o que foi escolhido</small></h1>
   <div class="ctrl">
-    <div class="grupo" id="casos"><b>Caso</b></div>
     <div class="grupo"><b>Foco</b><button id="sobe">↑</button><button id="desce">↓</button></div>
-    <div class="grupo" id="realces"><b>Realce</b></div>
     <label class="chk"><input type="checkbox" id="lado"> confirmação com botões lado a lado</label>
     <label class="chk"><input type="checkbox" id="exportar" checked> exportar no <b>Back</b>, fora do menu</label>
-    <span class="dica"><kbd>←</kbd><kbd>→</kbd> caso · <kbd>↑</kbd><kbd>↓</kbd> foco ·
-      <kbd>C</kbd> confirmação · <kbd>R</kbd> realce · clicar amplia</span>
+    <span class="dica"><kbd>↑</kbd><kbd>↓</kbd> foco · <kbd>C</kbd> confirmação ·
+      <kbd>E</kbd> exportar · clicar amplia</span>
   </div>
 </header>
 
@@ -70,20 +67,21 @@ figcaption .custo b{color:var(--dim);font-weight:600}
     <h3>O que aqui é aproximação, e o que não é</h3>
     <ul>
       <li>O <b>desenho das letras</b> é da fonte local; a <b>largura</b> não é aproximada. Cada
-        string é esticada para ocupar exatamente o que ocuparia no console, então onde um nome é
-        cortado aqui ele é cortado lá. O atlas tem um peso só, e por isso nada nesta página é
-        negrito: no console não haveria como.</li>
-      <li>Os textos são medidos com os <b>avanços do próprio <code>Arial_16.xpr</code></b> que o app
-        carrega — é por eles que o <code>GetTextExtent</code> responde e que o corte acontece. Todo
-        caractere sem glifo no atlas é denunciado no aviso abaixo; hoje não há nenhum.</li>
+        string é esticada para ocupar exatamente o que ocuparia no console, com os avanços do
+        próprio <code>Arial_16.xpr</code> que o app carrega — é por eles que o
+        <code>GetTextExtent</code> responde e que o corte por largura acontece. Caractere sem glifo
+        no atlas é denunciado no aviso abaixo; hoje não há nenhum. Nada é negrito: o atlas tem um
+        peso só.</li>
       <li>O <b>canto arredondado</b> é a máscara <code>g_canto</code> de 16×16 que o
         <code>main.cpp</code> já gera no arranque — a mesma que arredonda os cards. Ela pinta o canto
-        <i>na cor do fundo</i>, e sobre o véu essa cor não é uniforme: com alfa 200 e uma capa clara
-        exatamente sob o canto o erro chega a ~40 unidades. Véu em 230 derruba para ~20, e o modal
-        quer o fundo apagado de qualquer jeito.</li>
-      <li>O <b>vermelho</b> é cor nova no app: uma constante, nada além disso. Hoje "Apagar esta
-        coleção" tem exatamente a mesma aparência de "Renomear".</li>
-      <li>O caso <b>jogo</b> traz um nome comprido de propósito: é onde o corte por largura aparece.</li>
+        <i>na cor do fundo</i>, e sobre o véu essa cor não é uniforme: com alfa 172 e uma capa clara
+        exatamente sob o canto o erro passa de 50 unidades. Véu mais forte derruba o erro; este é o
+        preço de deixar a grade aparecer por trás.</li>
+      <li>A linha em foco é <b>neutra</b>: faixa branca a 9% com a barra verde. A destrutiva
+        <b>não tem cor própria parada</b> — ela é igual às outras até receber o foco, e só então a
+        faixa, a barra e o texto ficam vermelhos. O vermelho é a única cor nova no app.</li>
+      <li>Os outros quatro desenhos comparados antes (hoje, pílula, seco, lateral, cartão) saíram
+        desta página; ficam no commit <code>c783678</code> se precisar rever.</li>
     </ul>
     <p id="aviso-glifo" hidden></p>
   </div>
@@ -353,59 +351,46 @@ function telaJogos(ctx){
 }
 
 // ===========================================================================
-// Como a linha em foco é marcada. A queixa é sobre ESTA cor, então ela vira
-// escolha: o desenho 'central' pinta por aqui e os botões no alto trocam.
-// ===========================================================================
-const REALCES = {
-  cheio:  { nome:'Cheio',     faixa:C.anel,                   barra:null,   texto:C.sobreAnel,
-            mauFaixa:C.perigo,                                mauBarra:null, mauTexto:C.sobrePerigo },
-  meio:   { nome:'Verde 30%', faixa:'rgba(155,203,60,0.30)',  barra:C.anel, texto:C.texto,
-            mauFaixa:'rgba(201,66,58,0.38)',                  mauBarra:C.perigo, mauTexto:'rgb(248,196,191)' },
-  neutro: { nome:'Neutro',    faixa:'rgba(233,240,235,0.09)', barra:C.anel, texto:C.texto,
-            mauFaixa:'rgba(233,240,235,0.09)',                mauBarra:C.perigo, mauTexto:'rgb(232,130,122)' },
-  barra:  { nome:'Só barra',  faixa:null,                     barra:C.anel, texto:C.texto,
-            mauFaixa:null,                                    mauBarra:C.perigo, mauTexto:C.perigo },
-  // O do print, que é a queixa: o verde a 14% sobre o painel dá quase a cor de um
-  // painel qualquer -- some de longe e ainda deixa o texto num fundo esverdeado sujo.
-  verde:  { nome:'Verde 14%', faixa:'rgba(155,203,60,0.14)',  barra:C.anel, texto:C.texto,
-            mauFaixa:'rgba(201,66,58,0.18)',                  mauBarra:C.perigo, mauTexto:C.perigo },
-};
-let realce = 'cheio';
-
-// ===========================================================================
 // Os quatro casos REAIS. Saíram do main.cpp: AbrirMenuColecao, AbrirMenuJogo,
 // a confirmação de apagar e o menu de tipo que vem depois do teclado.
 // ===========================================================================
 const CASOS = {
   colecao: {
-    chave:'colecao', botao:'Coleção',
+    chave:'colecao', nome:'Opções da coleção',
     rotulo:'Coleção', titulo:'Co-op de sofá',
     itens:['Renomear','Escolher coleções','Apagar coleção','Exportar para o Vault'],
-    perigo:2, tela:'colecoes',
+    perigo:2, tela:'colecoes', foco:0,
     rodape:[['A','Escolher'],['B','Fechar']],
+    nota:'O <code>☰</code> na tela de coleções. Com o exportar no Back sobram três linhas, e a '
+       + 'destrutiva passa a ser a última. Repare que ela só fica vermelha quando recebe o foco.',
   },
   jogo: {
-    chave:'jogo', botao:'Jogo',
+    chave:'jogo', nome:'Opções do jogo',
     rotulo:'Jogo', titulo:'Castlevania: Lords of Shadow - Mirror of Fate HD',
     itens:['Remover da coleção (2 itens)'],
-    perigo:0, tela:'jogos',
+    perigo:0, tela:'jogos', foco:0,
     rodape:[['A','Escolher'],['B','Fechar']],
+    nota:'Uma linha só. É o caso em que os 460 px fixos de hoje sobravam caixa vazia e cortavam o '
+       + 'nome; aqui a largura segue o conteúdo e o nome inteiro cabe.',
   },
   apagar: {
-    chave:'apagar', botao:'Apagar',
+    chave:'apagar', nome:'Confirmar apagar',
     rotulo:'Apagar', titulo:'Co-op de sofá',
     itens:['Cancelar','Apagar esta coleção'],
-    perigo:1, confirma:true, tela:'colecoes',
-    pergunta:'Apagar "Co-op de sofá"?',
+    perigo:1, confirma:true, tela:'colecoes', foco:0,
     explica:'Os 28 jogos continuam na biblioteca.',
     rodape:[['A','Escolher'],['B','Fechar']],
+    nota:'A segunda tela, com o Cancelar em foco — é assim que o C++ abre. Desça o foco para ver a '
+       + 'linha ficar vermelha. O interruptor lá em cima troca pelos dois botões lado a lado.',
   },
   tipo: {
-    chave:'tipo', botao:'Tipo',
+    chave:'tipo', nome:'Escolher o tipo',
     rotulo:'Nova coleção', titulo:'Zerados em 2024',
     itens:['Coleção Manual','Junção','Interseção'],
-    perigo:-1, tela:'colecoes',
+    perigo:-1, tela:'colecoes', foco:0,
     rodape:[['A','Escolher'],['B','Fechar']],
+    nota:'Vem logo depois do teclado do sistema, com o nome já digitado no título. Nenhuma linha '
+       + 'aqui é destrutiva, então nada fica vermelho em momento nenhum.',
   },
 };
 
@@ -415,27 +400,23 @@ function fundoDoCaso(ctx, caso){
 }
 
 // ===========================================================================
-// Os desenhos.
+// O desenho: central, realce neutro.
+//
+// A faixa de foco é branca a 9% com a barra verde. A linha destrutiva NÃO tem
+// cor própria parada -- ela é igual às outras até receber o foco, e só então
+// fica vermelha. Cor parada em item de menu vira enfeite: o que ela precisa
+// marcar é o instante em que o A faria aquilo.
 // ===========================================================================
+const FOCO = {
+  faixa:    'rgba(233,240,235,0.09)',
+  barra:    C.anel,
+  texto:    C.texto,
+  mauFaixa: 'rgba(201,66,58,0.22)',
+  mauBarra: C.perigo,
+  mauTexto: 'rgb(255,226,223)',
+};
 
-// --- 1. o de hoje, chamada por chamada -------------------------------------
-function dAtual(ctx, caso, foco){
-  escurecer(ctx, 200);
-  const n = caso.itens.length;
-  const L = 460, A = 94 + n*52;
-  const x = (1280-L)/2, y = (720-A)/2;
-
-  caixa(ctx, x, y, L, A);
-  if (foco >= 0)
-    contorno(ctx, x+14, y+46+foco*52, L-28, 42, C.anel, 2);
-
-  txt(ctx, cortar(ctx, caso.titulo, L-40, 1), x+20, y+14, C.texto, 1);
-  for (let i = 0; i < n; i++)
-    txt(ctx, caso.itens[i], x+30, y+56+i*52, i === foco ? C.texto : C.apagado, 1);
-  linhaBotoes(ctx, x+20, y+A-34, caso.rodape, C.apagado);
-}
-
-// Largura que serve ao conteúdo, em vez dos 460 de sempre.
+// Largura que serve ao conteúdo, em vez dos 460 fixos de hoje.
 function larguraUtil(ctx, caso, pad, min, max){
   let w = larg(ctx, caso.titulo, 1.3);
   for (const it of caso.itens) w = Math.max(w, larg(ctx, it, 1));
@@ -443,102 +424,31 @@ function larguraUtil(ctx, caso, pad, min, max){
   return Math.max(min, Math.min(max, Math.ceil(w) + pad*2));
 }
 
-// Duas opções lado a lado, para a confirmação. Proposta, e ortogonal ao desenho.
-function botoesLadoALado(ctx, caso, foco, cx, y, estilo){
+// Duas opções lado a lado, para a confirmação. Mesma regra: parado, o Apagar não
+// é vermelho; ele fica vermelho quando está em foco.
+function botoesLadoALado(ctx, caso, foco, cx, y){
   const LB = 200, AB = 48, GAP = 18;
   const x0 = cx - (LB*2 + GAP)/2;
   for (let i = 0; i < 2; i++){
     const x = x0 + i*(LB+GAP);
-    const mau = i === caso.perigo;
-    const ativo = i === foco;
-    const corFundo = ativo ? (mau ? C.perigo : C.anel) : 'rgba(255,255,255,0.05)';
-    pinta(ctx, x, y, LB, AB, corFundo, estilo.r);
-    if (!ativo) contorno(ctx, x, y, LB, AB, mau ? C.perigoFrio : C.linha, 1, estilo.r);
-    const cor = ativo ? (mau ? C.sobrePerigo : C.sobreAnel) : (mau ? C.perigoFrio : C.apagado);
+    const mau = i === caso.perigo, ativo = i === foco;
+    if (ativo) pinta(ctx, x, y, LB, AB, mau ? C.perigo : 'rgba(233,240,235,0.14)', CANTO_N);
+    else       contorno(ctx, x, y, LB, AB, C.linha, 1, CANTO_N);
+    const cor = ativo ? (mau ? C.sobrePerigo : C.texto) : C.apagado;
     txt(ctx, i === 0 ? 'Cancelar' : 'Apagar', x + LB/2, y + (AB-ALT_LINHA)/2, cor, 1, 'center');
   }
 }
 
-// --- 2. pílula: a mesma língua da barra de categorias -----------------------
-function dPilula(ctx, caso, foco, opc){
-  escurecer(ctx, 206);
-  const PAD = 26, ALT = 44, GAP = 6;
-  const lado = opc.lado && caso.confirma;
-  const L = Math.max(larguraUtil(ctx, caso, PAD+14, 440, 760), lado ? 500 : 0);
-  const corpo = lado ? 34 + 48 : caso.itens.length*(ALT+GAP) - GAP;
-  const CABECA = 118, RODAPE = 34;
-  const A = CABECA + corpo + 28 + RODAPE + 18;
-  const x = (1280-L)/2, y = (720-A)/2;
-
-  pinta(ctx, x, y, L, A, C.painel, CANTO_N);
-  contorno(ctx, x, y, L, A, C.linha, 1, CANTO_N);
-
-  txt(ctx, caso.rotulo.toUpperCase(), x+PAD, y+22, C.fraco, 0.72);
-  txt(ctx, cortar(ctx, caso.titulo, L-PAD*2, 1.3), x+PAD, y+44, C.texto, 1.3);
-  pinta(ctx, x+PAD, y+100, L-PAD*2, 1, C.linha);
-
-  const y0 = y + CABECA;
-  if (lado){
-    txt(ctx, caso.explica, x + L/2, y0 - 2, C.apagado, 1, 'center');
-    botoesLadoALado(ctx, caso, foco, x + L/2, y0 + 32, { r: CANTO_N });
-  } else {
-    for (let i = 0; i < caso.itens.length; i++){
-      const ly = y0 + i*(ALT+GAP);
-      const mau = i === caso.perigo;
-      if (i === foco) pinta(ctx, x+14, ly, L-28, ALT, mau ? C.perigo : C.anel, CANTO_N);
-      const cor = i === foco ? (mau ? C.sobrePerigo : C.sobreAnel)
-                             : (mau ? C.perigoFrio : C.apagado);
-      txt(ctx, caso.itens[i], x+PAD, ly + (ALT-ALT_LINHA)/2, cor, 1);
-    }
-  }
-  linhaBotoes(ctx, x+PAD, y + CABECA + corpo + 28, caso.rodape, C.fraco);
-}
-
-// --- 3. seco: sem painel nenhum --------------------------------------------
-function dSeco(ctx, caso, foco, opc){
-  escurecer(ctx, 238);
-  const lado = opc.lado && caso.confirma;
-  const cx = 640;
-
-  txt(ctx, caso.rotulo.toUpperCase(), cx, 196, C.fraco, 0.78, 'center');
-  txt(ctx, cortar(ctx, caso.titulo, 900, 1.5), cx, 226, C.texto, 1.5, 'center');
-
-  if (lado){
-    txt(ctx, caso.explica, cx, 300, C.apagado, 1, 'center');
-    botoesLadoALado(ctx, caso, foco, cx, 348, { r: CANTO_N });
-  } else {
-    const y0 = 320;
-    for (let i = 0; i < caso.itens.length; i++){
-      const ly = y0 + i*54;
-      const mau = i === caso.perigo;
-      const cor = i === foco ? (mau ? C.perigo : C.texto)
-                             : (mau ? C.perigoFrio : C.fraco);
-      const w = larg(ctx, caso.itens[i], 1.15);
-      if (i === foco) pinta(ctx, cx - w/2 - 22, ly + 3, 4, 26, mau ? C.perigo : C.anel);
-      txt(ctx, caso.itens[i], cx, ly, cor, 1.15, 'center');
-    }
-  }
-  // NÃO no rodapé da tela: a tela de baixo continua desenhando o dela ali, e os
-  // dois se sobrepõem -- é o que o comentário do DesenharMenu já avisa no C++.
-  const fim = lado ? 420 : 320 + caso.itens.length*54 + 10;
-  const lr = medirLinhaBotoes(ctx, caso.rodape);
-  linhaBotoes(ctx, cx - lr/2, fim, caso.rodape, C.fraco);
-}
-
-// --- 4. central: o lateral trazido para o meio ------------------------------
-function dCentral(ctx, caso, foco, opc){
+function desenharModal(ctx, caso, foco, opc){
   // Véu mais leve que os 200 de hoje: este painel não cobre a tela inteira, e ver
-  // a grade por trás é metade do motivo de ter gostado do lateral.
+  // a grade por trás é metade da ideia.
   escurecer(ctx, 172);
   const PAD = 26, ALT = 48;
   const lado = opc.lado && caso.confirma;
-  // Largura pelo conteúdo, que é o que o lateral NÃO fazia: lá o nome comprido de
-  // jogo era cortado igualzinho ao de hoje.
   const L = Math.max(larguraUtil(ctx, caso, PAD+18, 460, 760), lado ? 500 : 0);
   const corpo = lado ? 44 + 48 : caso.itens.length*ALT;
   const A = 128 + corpo + 26 + 54;
   const x = (1280-L)/2, y = (720-A)/2;
-  const R = REALCES[realce];
 
   pinta(ctx, x, y, L, A, C.painel, CANTO_N);
   contorno(ctx, x, y, L, A, C.linha, 1, CANTO_N);
@@ -550,7 +460,7 @@ function dCentral(ctx, caso, foco, opc){
   const y0 = y + 128;
   if (lado){
     txt(ctx, caso.explica, x + L/2, y0, C.apagado, 1, 'center');
-    botoesLadoALado(ctx, caso, foco, x + L/2, y0 + 44, { r: CANTO_N });
+    botoesLadoALado(ctx, caso, foco, x + L/2, y0 + 44);
   } else {
     for (let i = 0; i < caso.itens.length; i++){
       const ly = y0 + i*ALT;
@@ -558,13 +468,12 @@ function dCentral(ctx, caso, foco, opc){
       if (i === foco){
         // Recortada pelo painel: a faixa cheia passaria por cima do canto redondo.
         ctx.save(); arredondado(ctx, x, y, L, A, CANTO_N); ctx.clip();
-        const f = mau ? R.mauFaixa : R.faixa, b = mau ? R.mauBarra : R.barra;
-        if (f) pinta(ctx, x+1, ly, L-2, ALT, f);
-        if (b) pinta(ctx, x+1, ly, 4, ALT, b);
+        pinta(ctx, x+1, ly, L-2, ALT, mau ? FOCO.mauFaixa : FOCO.faixa);
+        pinta(ctx, x+1, ly, 4,   ALT, mau ? FOCO.mauBarra : FOCO.barra);
         ctx.restore();
       }
-      const cor = i === foco ? (mau ? R.mauTexto : R.texto)
-                             : (mau ? C.perigoFrio : C.apagado);
+      // Parada, a destrutiva é uma linha como as outras.
+      const cor = i === foco ? (mau ? FOCO.mauTexto : FOCO.texto) : C.apagado;
       txt(ctx, cortar(ctx, caso.itens[i], L-PAD*2, 1), x+PAD, ly + (ALT-ALT_LINHA)/2, cor, 1);
     }
   }
@@ -572,167 +481,19 @@ function dCentral(ctx, caso, foco, opc){
   linhaBotoes(ctx, x+PAD, y+A-42, caso.rodape, C.fraco);
 }
 
-// --- 5. lateral: ancorado à direita, véu leve -------------------------------
-function dLateral(ctx, caso, foco, opc){
-  escurecer(ctx, 128);
-  const L = 440, PAD = 24, ALT = 46;
-  const lado = opc.lado && caso.confirma;
-  // O TOPO é fixo: a caixa não pula de lugar quando o número de itens muda, que é
-  // o que o modal centralizado faz a cada menu diferente.
-  const x = 1280 - L - 56, y = 56;
-  const corpo = lado ? 44 + 48 : caso.itens.length*ALT;
-  const A = 124 + corpo + 24 + 54;
-
-  pinta(ctx, x, y, L, A, C.painel, CANTO_N);
-  contorno(ctx, x, y, L, A, C.linha, 1, CANTO_N);
-
-  txt(ctx, caso.rotulo.toUpperCase(), x+PAD, y+26, C.fraco, 0.72);
-  txt(ctx, cortar(ctx, caso.titulo, L-PAD*2, 1.3), x+PAD, y+48, C.texto, 1.3);
-  pinta(ctx, x+PAD, y+104, L-PAD*2, 1, C.linha);
-
-  const y0 = y + 124;
-  if (lado){
-    txt(ctx, caso.explica, x+PAD, y0, C.apagado, 1);
-    const LB = (L - PAD*2 - 14)/2;
-    for (let i = 0; i < 2; i++){
-      const bx = x + PAD + i*(LB+14), by = y0 + 44;
-      const mau = i === caso.perigo, ativo = i === foco;
-      pinta(ctx, bx, by, LB, 48, ativo ? (mau ? C.perigo : C.anel) : 'rgba(255,255,255,0.05)', CANTO_N);
-      if (!ativo) contorno(ctx, bx, by, LB, 48, mau ? C.perigoFrio : C.linha, 1, CANTO_N);
-      const cor = ativo ? (mau ? C.sobrePerigo : C.sobreAnel) : (mau ? C.perigoFrio : C.apagado);
-      txt(ctx, i === 0 ? 'Cancelar' : 'Apagar', bx + LB/2, by + (48-ALT_LINHA)/2, cor, 1, 'center');
-    }
-  } else {
-    for (let i = 0; i < caso.itens.length; i++){
-      const ly = y0 + i*ALT;
-      const mau = i === caso.perigo;
-      if (i === foco){
-        // Recortada pelo painel: a faixa cheia passaria por cima do canto redondo.
-        ctx.save(); arredondado(ctx, x, y, L, A, CANTO_N); ctx.clip();
-        pinta(ctx, x+1, ly, L-2, ALT, mau ? 'rgba(201,66,58,0.18)' : 'rgba(155,203,60,0.14)');
-        pinta(ctx, x+1, ly, 4, ALT, mau ? C.perigo : C.anel);
-        ctx.restore();
-      }
-      const cor = i === foco ? (mau ? C.perigo : C.texto) : (mau ? C.perigoFrio : C.apagado);
-      txt(ctx, cortar(ctx, caso.itens[i], L-PAD*2, 1), x+PAD, ly + (ALT-ALT_LINHA)/2, cor, 1);
-    }
-  }
-  pinta(ctx, x+PAD, y+A-54, L-PAD*2, 1, C.linha);
-  linhaBotoes(ctx, x+PAD, y+A-40, caso.rodape, C.fraco);
-}
-
-// --- 6. cartão: faixa de cabeçalho e linhas separadas ----------------------
-function dCartao(ctx, caso, foco, opc){
-  escurecer(ctx, 206);
-  const PAD = 24, FAIXA = 70, ALT = 48;
-  const lado = opc.lado && caso.confirma;
-  const L = Math.max(larguraUtil(ctx, caso, PAD+16, 460, 760), lado ? 500 : 0);
-  const n = caso.itens.length;
-  const aparta = caso.perigo === n-1 && !caso.confirma;   // vão só se for a última
-  const corpo = lado ? 34 + 48 + 20 : n*ALT + (aparta ? 10 : 0);
-  const A = FAIXA + 14 + corpo + 14 + 44;
-  const x = (1280-L)/2, y = (720-A)/2;
-
-  pinta(ctx, x, y, L, A, C.painel, CANTO_N);
-  ctx.save();
-  arredondado(ctx, x, y, L, A, CANTO_N); ctx.clip();
-  pinta(ctx, x, y, L, FAIXA, C.faixa);
-  ctx.restore();
-  pinta(ctx, x, y+FAIXA, L, 1, C.linha);
-  contorno(ctx, x, y, L, A, C.linha, 1, CANTO_N);
-
-  txt(ctx, cortar(ctx, caso.titulo, L-PAD*2-90, 1.3), x+PAD, y+20, C.texto, 1.3);
-  txt(ctx, caso.rotulo.toUpperCase(), x+L-PAD, y+26, C.fraco, 0.72, 'right');
-
-  const y0 = y + FAIXA + 14;
-  if (lado){
-    txt(ctx, caso.explica, x + L/2, y0, C.apagado, 1, 'center');
-    botoesLadoALado(ctx, caso, foco, x + L/2, y0 + 34, { r: 0 });
-  } else {
-    let ly = y0;
-    for (let i = 0; i < n; i++){
-      const mau = i === caso.perigo;
-      if (mau && aparta){ pinta(ctx, x+PAD, ly+5, L-PAD*2, 1, C.linha); ly += 10; }
-      else if (i > 0)     pinta(ctx, x+PAD, ly, L-PAD*2, 1, 'rgba(43,53,47,0.55)');
-      if (i === foco){
-        ctx.save(); arredondado(ctx, x, y, L, A, CANTO_N); ctx.clip();
-        pinta(ctx, x+1, ly, L-2, ALT, mau ? C.faixaMal : C.faixaFoco);
-        pinta(ctx, x+1, ly, 4, ALT, mau ? C.perigo : C.anel);
-        ctx.restore();
-      }
-      const cor = i === foco ? (mau ? C.sobrePerigo : C.texto) : (mau ? C.perigoFrio : C.apagado);
-      txt(ctx, caso.itens[i], x+PAD, ly + (ALT-ALT_LINHA)/2, cor, 1);
-      ly += ALT;
-    }
-  }
-  pinta(ctx, x, y+A-46, L, 1, C.linha);
-  linhaBotoes(ctx, x+PAD, y+A-36, caso.rodape, C.fraco);
-}
-
 // ===========================================================================
-const DESENHOS = [
-  { id:'atual', nome:'O de hoje', tag:'no console',
-    desenhar:dAtual,
-    nota:'460 px fixos, canto reto, título do mesmo tamanho dos itens e foco por contorno fino. '
-       + 'Com um item só sobra caixa vazia; com um nome comprido o título é cortado antes dos itens. '
-       + 'E "Apagar esta coleção" tem exatamente a aparência de "Renomear".',
-    custo:'<b>Hoje:</b> 2 retângulos (véu e painel), 1 contorno, 1 contorno de foco, n+2 DrawText.' },
-
-  { id:'central', nome:'Central', tag:'escolhido',
-    desenhar:dCentral,
-    nota:'O lateral trazido para o meio: mesmo cabeçalho, mesmas linhas de borda a borda, '
-       + 'mesmo véu leve (172) que deixa a grade aparecer por trás. Ganha o que o lateral não '
-       + 'tinha — a largura segue o conteúdo, então nome comprido de jogo não é mais cortado. '
-       + 'A cor da linha em foco é escolhida nos botões "Realce" lá em cima.',
-    custo:'<b>+</b> As máscaras de canto (painel e recorte da faixa), 2 réguas, 1 DrawText a mais. '
-        + 'A faixa de foco é retângulo cheio recortado pelo painel.' },
-
-  { id:'pilula', nome:'Pílula', tag:'proposta',
-    desenhar:dPilula,
-    nota:'A mesma língua que a barra de categorias acabou de adotar: ativo é bloco verde preenchido '
-       + 'com texto escuro. Rótulo pequeno acima do nome dá hierarquia, e a largura segue o conteúdo. '
-       + 'A linha destrutiva é vermelha antes de ser tocada.',
-    custo:'<b>+</b> 4 máscaras g_canto por canto arredondado (painel e pílula em foco), 1 retângulo '
-        + 'de régua, 1 DrawText a mais (o rótulo), 1 constante de cor.' },
-
-  { id:'seco', nome:'Seco', tag:'proposta',
-    desenhar:dSeco,
-    nota:'Painel nenhum: o véu sobe para 238 e a tela some, como as lâminas do painel do 360. '
-       + 'É o que menos desenha e o que melhor se lê a três metros, mas perde a moldura — nada '
-       + 'delimita o modal além do escuro, e o texto fica solto sobre o resto da tela.',
-    custo:'<b>−</b> Nenhum painel, nenhum contorno, nenhuma máscara: 1 retângulo de véu, '
-        + '1 barrinha de foco e os DrawText. Mais barato que o de hoje.' },
-
-  { id:'lateral', nome:'Lateral', tag:'proposta',
-    desenhar:dLateral,
-    nota:'Ancorado à direita, sempre no mesmo lugar e na mesma altura — não pula quando o número '
-       + 'de itens muda. E o véu pode ser leve (128), porque o painel não cobre a coleção: dá para '
-       + 'ver sobre o que se está decidindo, que é justamente o que o modal centralizado esconde.',
-    custo:'<b>+</b> As máscaras de canto; a faixa de foco é retângulo cheio, sem arredondar. '
-        + 'A geometria é constante, então nada é medido em tempo de execução.' },
-
-  { id:'cartao', nome:'Cartão', tag:'proposta',
-    desenhar:dCartao,
-    nota:'Faixa de cabeçalho separando o nome da lista, linhas com régua entre elas e a ação '
-       + 'destrutiva apartada por um vão. É o mais estruturado e o mais pesado de desenhar; '
-       + 'o rótulo vai para a direita da faixa para não roubar largura do nome.',
-    custo:'<b>++</b> Faixa, régua por linha, faixa de foco, barra lateral e as máscaras de canto — '
-        + 'o dobro de retângulos do de hoje. Nada que o Preencher() não faça.' },
-];
-
+// Página: os quatro casos ao mesmo tempo, no mesmo desenho.
 // ===========================================================================
-// Página
-// ===========================================================================
-let casoAtual = 'colecao', foco = 0, lado = false, exportarNoBack = true;
+let lado = false, exportarNoBack = true;
 
 // O "Exportar para o Vault" exporta a BIBLIOTECA inteira e todas as coleções -- o
 // exportar.cpp recebe g_jogos, não a coleção. Dentro de um menu que tem o nome de
 // uma coleção no título, ele diz o contrário do que faz. O Back não é usado em
 // lugar nenhum do app hoje (nenhum XINPUT_GAMEPAD_BACK no main.cpp), e é o lugar
 // natural de uma ação que é da tela e não do item.
-function casoAtivo(){
-  const c = Object.assign({}, CASOS[casoAtual]);
-  if (c.chave === 'colecao' && exportarNoBack){
+function casoAtivo(chave){
+  const c = Object.assign({}, CASOS[chave]);
+  if (chave === 'colecao' && exportarNoBack){
     c.itens = c.itens.filter(i => i !== 'Exportar para o Vault');
     c.perigo = c.itens.indexOf('Apagar coleção');
   }
@@ -740,92 +501,62 @@ function casoAtivo(){
 }
 
 const grade = document.getElementById('grade');
-const fig = {};
+const ctxs = {};
 
-for (const d of DESENHOS){
+for (const k in CASOS){
   const f = document.createElement('figure');
-  if (d.id === 'atual') f.className = 'atual';
   f.innerHTML = '<canvas width="1280" height="720"></canvas>'
-    + '<figcaption><h2>' + d.nome + ' <code>' + d.id + '</code>'
-    + '<span class="tag">' + d.tag + '</span></h2>'
-    + '<p>' + d.nota + '</p><p class="custo">' + d.custo + '</p></figcaption>';
+    + '<figcaption><h2>' + CASOS[k].nome + ' <code>' + k + '</code></h2>'
+    + '<p>' + CASOS[k].nota + '</p></figcaption>';
   const cv = f.querySelector('canvas');
   cv.onclick = () => {
     const aberto = f.classList.contains('aberto');
     document.querySelectorAll('figure').forEach(o => o.classList.remove('aberto'));
     document.body.classList.toggle('solo', !aberto);
-    if (!aberto) f.classList.add('aberto');
-    if (!aberto) f.scrollIntoView({block:'start'});
+    if (!aberto){ f.classList.add('aberto'); f.scrollIntoView({block:'start'}); }
   };
   grade.appendChild(f);
-  fig[d.id] = cv.getContext('2d');
-}
-
-const barraCasos = document.getElementById('casos');
-for (const k in CASOS){
-  const b = document.createElement('button');
-  b.textContent = CASOS[k].botao;
-  b.dataset.caso = k;
-  b.onclick = () => { casoAtual = k; foco = 0; pintarTudo(); };
-  barraCasos.appendChild(b);
-}
-
-const barraRealces = document.getElementById('realces');
-for (const k in REALCES){
-  const b = document.createElement('button');
-  b.textContent = REALCES[k].nome;
-  b.dataset.realce = k;
-  b.onclick = () => { realce = k; pintarTudo(); };
-  barraRealces.appendChild(b);
+  ctxs[k] = cv.getContext('2d');
 }
 
 function pintarTudo(){
-  calibrar(fig[DESENHOS[0].id]);
-  const caso = casoAtivo();
-  foco = Math.max(0, Math.min(foco, caso.itens.length - 1));
-  for (const d of DESENHOS){
-    const ctx = fig[d.id];
+  calibrar(ctxs.colecao);
+  for (const k in CASOS){
+    const caso = casoAtivo(k);
+    CASOS[k].foco = Math.max(0, Math.min(CASOS[k].foco, caso.itens.length - 1));
+    const ctx = ctxs[k];
     ctx.setTransform(1,0,0,1,0,0);
     fundoDoCaso(ctx, caso);
-    d.desenhar(ctx, caso, foco, { lado: lado });
+    desenharModal(ctx, caso, CASOS[k].foco, { lado: lado });
   }
   const av = document.getElementById('aviso-glifo');
   if (SEM_GLIFO.size){
     av.hidden = false;
-    av.style.color = 'rgb(201,66,58)';
-    av.textContent = 'FORA DO ATLAS, sairia quadradinho na TV: '
-                   + Array.from(SEM_GLIFO).join(' ');
+    av.style.color = C.perigo;
+    av.textContent = 'FORA DO ATLAS, sairia quadradinho na TV: ' + Array.from(SEM_GLIFO).join(' ');
   }
-  barraCasos.querySelectorAll('button').forEach(b =>
-    b.setAttribute('aria-pressed', String(b.dataset.caso === casoAtual)));
-  barraRealces.querySelectorAll('button').forEach(b =>
-    b.setAttribute('aria-pressed', String(b.dataset.realce === realce)));
   document.getElementById('lado').checked = lado;
   document.getElementById('exportar').checked = exportarNoBack;
 }
 
-document.getElementById('sobe').onclick  = () => { foco--; pintarTudo(); };
-document.getElementById('desce').onclick = () => { foco++; pintarTudo(); };
+const mover = d => { for (const k in CASOS) CASOS[k].foco += d; pintarTudo(); };
+document.getElementById('sobe').onclick  = () => mover(-1);
+document.getElementById('desce').onclick = () => mover(+1);
 document.getElementById('lado').onchange = e => { lado = e.target.checked; pintarTudo(); };
 document.getElementById('exportar').onchange = e => { exportarNoBack = e.target.checked; pintarTudo(); };
 
-const ordem = Object.keys(CASOS);
 addEventListener('keydown', e => {
-  const i = ordem.indexOf(casoAtual);
-  if      (e.key === 'ArrowUp')    foco--;
-  else if (e.key === 'ArrowDown')  foco++;
-  else if (e.key === 'ArrowLeft')  { casoAtual = ordem[(i+ordem.length-1)%ordem.length]; foco = 0; }
-  else if (e.key === 'ArrowRight') { casoAtual = ordem[(i+1)%ordem.length]; foco = 0; }
-  else if (e.key.toLowerCase() === 'c') lado = !lado;
-  else if (e.key.toLowerCase() === 'r'){
-    const ks = Object.keys(REALCES);
-    realce = ks[(ks.indexOf(realce)+1) % ks.length];
+  const t = e.key.toLowerCase();
+  if      (e.key === 'ArrowUp')   mover(-1);
+  else if (e.key === 'ArrowDown') mover(+1);
+  else if (t === 'c'){ lado = !lado; pintarTudo(); }
+  else if (t === 'e'){ exportarNoBack = !exportarNoBack; pintarTudo(); }
+  else if (e.key === 'Escape'){
+    document.body.classList.remove('solo');
+    document.querySelectorAll('figure').forEach(o => o.classList.remove('aberto'));
   }
-  else if (e.key === 'Escape'){ document.body.classList.remove('solo');
-                                document.querySelectorAll('figure').forEach(o => o.classList.remove('aberto')); }
   else return;
   e.preventDefault();
-  pintarTudo();
 });
 
 // A fonte precisa estar carregada antes de medir, ou a primeira pintura mede errado.
