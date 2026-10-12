@@ -9,6 +9,7 @@
 
 #include <xtl.h>
 #include <xgraphics.h>
+#include <algorithm>   // sort/unique/binary_search do g_cobertos
 #include "diario.h"
 #include "biblioteca.h"
 #include "emuladores.h"
@@ -116,7 +117,11 @@ namespace
     // ---- estado ----------------------------------------------------------------
     // TELA_ORIGENS reusa o desenho da grade de coleções, marcando quais entram na
     // união. Mesma mecânica da tela de adicionar jogos: A marca, ☰ conclui, B cancela.
-    enum Tela { TELA_COLECOES, TELA_JOGOS, TELA_ADICIONAR, TELA_ORIGENS };
+    // TELA_SOLTOS e a grade de capas dos jogos que nao estao em colecao nenhuma --
+    // uma TELA, mas alcancada por uma ABA, a primeira da barra. TELA_ARQUIVAR e a
+    // escolha de colecoes para um jogo, com o vocabulario da tela de origens.
+    enum Tela { TELA_COLECOES, TELA_JOGOS, TELA_ADICIONAR, TELA_ORIGENS,
+                TELA_SOLTOS, TELA_ARQUIVAR };
 
     std::string                   g_caminhoBanco;
     std::vector<biblioteca::Jogo> g_jogos;
@@ -145,6 +150,29 @@ namespace
     // apertado RB na sessao passada, parece defeito -- e o jeito de nunca pagar esse
     // preco e nao ter onde guardar.
     int g_aba = biblioteca::ABA_AUTOMATICA;   // 0 = Todos
+
+    // A primeira da barra, a ESQUERDA do Todos, e nao e categoria da FreeStyle: sao
+    // os jogos que nao estao em colecao nenhuma. Negativa de proposito -- as da
+    // FreeStyle sao 0..6 e esta nao concorre com numero nenhum deles.
+    const int ABA_SOLTOS = -1;
+
+    bool g_temSoltos = false;        // ha o que arquivar? decide se a aba existe
+
+    // TitleIds citados por alguma colecao DE JOGOS, ordenado, refeito uma vez por
+    // quadro. Sem ele, perguntar "este jogo esta em alguma colecao?" custaria uma
+    // varredura dos ids de cada colecao por item -- colecoes x jogos x ids a cada
+    // quadro. Com ele e uma busca binaria.
+    std::vector<unsigned int> g_cobertos;
+
+    // A janela da barra de abas, quando a fileira nao cabe inteira. Mesmo papel do
+    // g_primeiraLinha da grade: a janela segue o foco.
+    int  g_primeiraAba = 0;
+    bool g_lbVivo = false, g_rbVivo = false;   // ha aba para aquele lado?
+
+    // O jogo sendo arquivado e o rascunho das colecoes marcadas. Rascunho pelo mesmo
+    // motivo do escolhedor de jogos: sem ele o B nao teria o que desfazer.
+    const biblioteca::Jogo *g_arquivando = NULL;
+    std::vector<int>        g_escolhidas;
 
     // De qual menu se trata. Despachar pelo g_tela dava errado: ☰ na tela de jogos
     // abria o menu do jogo, mas EscolherNoMenu lia g_tela de novo -- e se a ação
@@ -286,6 +314,7 @@ namespace
         case biblioteca::ABA_HOMEBREW: return L"Homebrew";
         case biblioteca::ABA_EMULADOR: return L"Emulador";
         case biblioteca::ABA_OUTROS:   return L"Outros";
+        case ABA_SOLTOS:               return L"Soltos";
         }
         return L"Todos";
     }
@@ -300,13 +329,42 @@ namespace
     // decidiria pelo número errado, e composta sem origem é apagada sem volta.
     int AbaEmVigor()
     {
-        return (g_tela == TELA_ORIGENS) ? biblioteca::ABA_AUTOMATICA : g_aba;
+        // Arquivar um jogo e escolher COLECAO, igual a escolher origem -- e a aba
+        // corrente ali e justamente "Soltos", que nao e categoria de jogo nenhum.
+        // Sem esta linha, toda colecao sairia com a colagem vazia e `( 0 )`.
+        if (g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR) return biblioteca::ABA_AUTOMATICA;
+        // Na tela dos soltos a pergunta e sobre a biblioteca inteira, nao sobre uma
+        // categoria: o universo ali e "tudo o que nao esta em colecao".
+        if (g_aba == ABA_SOLTOS) return biblioteca::ABA_AUTOMATICA;
+        return g_aba;
     }
 
     bool NaAba(const biblioteca::Jogo &j)
     {
         const int aba = AbaEmVigor();
         return aba == biblioteca::ABA_AUTOMATICA || j.aba == aba;
+    }
+
+    // "Em colecao" e estar numa colecao DE JOGOS. Composta nao conta: o conteudo
+    // dela vem das origens, entao um jogo que so aparece numa juncao ja esta na
+    // colecao de jogos que e origem dela -- contar a juncao tambem nao mudaria
+    // resposta nenhuma, e contar SO ela daria um "solto" que nao esta solto.
+    void AtualizarCobertos()
+    {
+        g_cobertos.clear();
+        std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
+        for (size_t i = 0; i < todas.size(); i++)
+            if (!colecoes::Composta(todas[i]))
+                for (size_t j = 0; j < todas[i]->ids.size(); j++)
+                    g_cobertos.push_back(todas[i]->ids[j]);
+
+        std::sort(g_cobertos.begin(), g_cobertos.end());
+        g_cobertos.erase(std::unique(g_cobertos.begin(), g_cobertos.end()), g_cobertos.end());
+    }
+
+    bool EmAlgumaColecao(unsigned int titleId)
+    {
+        return std::binary_search(g_cobertos.begin(), g_cobertos.end(), titleId);
     }
 
     // As abas com conteudo, em ordem, com o Todos na frente. Recalculada UMA VEZ por
@@ -348,6 +406,19 @@ namespace
 
         if (g_abas.size() < 2) g_abas.clear();
         g_abas.insert(g_abas.begin(), biblioteca::ABA_AUTOMATICA);
+
+        // O Soltos existe enquanto houver o que arquivar, e some sozinho quando o
+        // ultimo for arquivado. Mesma forma da regra das categorias: aba que existe
+        // tem conteudo, entao nenhuma tecla leva a uma tela vazia.
+        //
+        // Entra DEPOIS do insert do Todos, porque fica a esquerda dele -- e vale
+        // mesmo sem categoria nenhuma: "Soltos" e "Todos" ja sao escolha de verdade.
+        AtualizarCobertos();
+        g_temSoltos = false;
+        for (size_t j = 0; j < g_jogos.size() && !g_temSoltos; j++)
+            if (!EmAlgumaColecao(g_jogos[j].titleId)) g_temSoltos = true;
+
+        if (g_temSoltos) g_abas.insert(g_abas.begin(), ABA_SOLTOS);
     }
 
     int IndiceDaAba()
@@ -361,7 +432,15 @@ namespace
     {
         std::vector<const biblioteca::Jogo *> saida;
 
-        if (g_tela == TELA_ADICIONAR)
+        if (g_tela == TELA_SOLTOS)
+        {
+            // A aba nao filtra aqui: o universo JA e um recorte, e cruzar os dois
+            // esconderia metade do que se veio arrumar.
+            for (size_t i = 0; i < g_jogos.size(); i++)
+                if (!EmAlgumaColecao(g_jogos[i].titleId))
+                    saida.push_back(&g_jogos[i]);
+        }
+        else if (g_tela == TELA_ADICIONAR)
         {
             // Ao ADICIONAR a aba nao filtra: marcar so o que a aba corrente mostra e
             // marcar as cegas -- o jogo entraria na coleção e sumiria da tela ao
@@ -491,19 +570,34 @@ namespace
     std::vector<colecoes::Colecao *> ListaDeColecoes()
     {
         std::vector<colecoes::Colecao *> todas = colecoes::Ordenadas();
+
+        // Arquivando: so colecao DE JOGOS recebe. Composta nao guarda jogo proprio --
+        // oferecer uma seria oferecer um destino que nao recebe nada.
+        if (g_tela == TELA_ARQUIVAR)
+        {
+            std::vector<colecoes::Colecao *> recebem;
+            for (size_t i = 0; i < todas.size(); i++)
+                if (!colecoes::Composta(todas[i])) recebem.push_back(todas[i]);
+            return recebem;
+        }
+
         if (g_tela != TELA_ORIGENS)
         {
             // A OUTRA metade da regra: numa aba, coleção que não tem nada dela sai da
             // tela. Junto com o AtualizarAbas, as duas garantem que nenhuma tecla
             // leva a uma tela vazia.
-            if (g_aba == biblioteca::ABA_AUTOMATICA)
+            // Pelo AbaEmVigor e não pelo g_aba: na aba Soltos a grade de coleções
+            // nem está à vista, e comparar a categoria de cada jogo com -1 era uma
+            // varredura inteira da biblioteca para devolver lista vazia.
+            const int aba = AbaEmVigor();
+            if (aba == biblioteca::ABA_AUTOMATICA)
                 return todas;
 
             std::vector<colecoes::Colecao *> naAba;
             for (size_t i = 0; i < todas.size(); i++)
             {
                 for (size_t j = 0; j < g_jogos.size(); j++)
-                    if (g_jogos[j].aba == g_aba &&
+                    if (g_jogos[j].aba == aba &&
                         colecoes::Tem(todas[i], g_jogos[j].titleId))
                     {
                         naAba.push_back(todas[i]);
@@ -586,6 +680,13 @@ namespace
         return (c->tipo == colecoes::TIPO_UNIAO ? "em qualquer uma: " : "em todas: ") + s;
     }
 
+    bool ColecaoEscolhida(int id)
+    {
+        for (size_t i = 0; i < g_escolhidas.size(); i++)
+            if (g_escolhidas[i] == id) return true;
+        return false;
+    }
+
     bool OrigemMarcada(int id)
     {
         for (size_t i = 0; i < g_origens.size(); i++)
@@ -598,7 +699,10 @@ namespace
         // A tela de coleções tambem carrega agora: tres capas por card. Sao as MESMAS
         // texturas que a colecao usa por dentro (a chave do cache e o ContentItemId),
         // entao isto deixa a tela de jogos mais rapida em vez de custar o dobro.
-        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS)
+        // TELA_ARQUIVAR entra aqui: é grade de coleções como as outras duas. Sem
+        // isto ela pediria as capas pela ListaAtual, que ali é vazia -- e todo card
+        // sairia sem colagem, que é o sinal de coleção vazia.
+        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
         {
             std::vector<colecoes::Colecao *> L = ListaDeColecoes();
             // Uma linha de folga para CADA lado, como a tela de jogos faz: sem a de
@@ -1461,32 +1565,75 @@ namespace
 
     struct PilulaAba { int x, l, aba; };
 
-    // Mede e posiciona a fileira. SEPARADO do desenho porque as pílulas são
-    // retângulos e os rótulos são texto: o Begin/End da fonte salva e restaura estado
-    // de render, e intercalar os dois embaralha o D3D -- a mesma razão pela qual a
+    // A fileira ocupa a faixa entre os dois chips. Com as sete categorias da
+    // FreeStyle mais o Soltos ela soma 989 px numa faixa de 980: passa por NOVE, e
+    // esconde uma pilula. Neste console, que tem seis categorias, sao 882 e nada
+    // rola. Entao a rolagem e rede de seguranca, nao compromisso diario.
+    const int ABA_X0  = MARGEM_X + CHIP_L + 16;
+    const int ABA_FIM = 1180 - CHIP_L - 16;
+
+    // Quantas pilulas inteiras cabem a partir de 'de'. INTEIRAS: meia pilula cortada
+    // na TV parece defeito, e o scissor cortaria no meio de uma letra.
+    int AbasQueCabem(const int *larg, int n, int de)
+    {
+        int x = 0, quantas = 0;
+        for (int j = de; j < n; j++)
+        {
+            const int novo = x + larg[j] + (quantas ? ABA_GAP : 0);
+            if (novo > ABA_FIM - ABA_X0) break;
+            x = novo; quantas++;
+        }
+        return quantas;
+    }
+
+    // Mede e posiciona a fileira VISIVEL. SEPARADO do desenho porque as pilulas sao
+    // retangulos e os rotulos sao texto: o Begin/End da fonte salva e restaura estado
+    // de render, e intercalar os dois embaralha o D3D -- a mesma razao pela qual a
     // grade de capas desenha as imagens primeiro e os nomes todos depois.
     int MedirAbas(PilulaAba *p, int capacidade, int *xRB)
     {
-        int n = 0, x = MARGEM_X + CHIP_L + 16;
+        const int n = (int)g_abas.size();
+        if (n <= 0) { *xRB = ABA_X0; return 0; }
 
-        for (size_t i = 0; i < g_abas.size() && n < capacidade; i++)
+        int larg[biblioteca::ABA_QUANTAS + 1];
+        for (int i = 0; i < n && i < biblioteca::ABA_QUANTAS + 1; i++)
         {
             FLOAT w = 0.0f, h = 0.0f;
             g_fonte.GetTextExtent(NomeDaAba(g_abas[i]), &w, &h);
-            p[n].aba = g_abas[i];
-            p[n].x   = x;
-            p[n].l   = (int)w + ABA_PAD * 2;
-            x += p[n].l + ABA_GAP;
-            n++;
+            larg[i] = (int)w + ABA_PAD * 2;
+        }
+
+        // A janela segue o foco, como o SeguirFoco da grade.
+        const int foco = IndiceDaAba();
+        if (g_primeiraAba > foco) g_primeiraAba = foco;
+        while (foco >= g_primeiraAba + AbasQueCabem(larg, n, g_primeiraAba)) g_primeiraAba++;
+        // E volta assim que couber de novo: sem isto a barra ficava rolada para
+        // sempre depois de uma visita a ultima aba.
+        while (g_primeiraAba > 0 &&
+               AbasQueCabem(larg, n, g_primeiraAba - 1) > foco - g_primeiraAba + 1)
+            g_primeiraAba--;
+
+        const int ate = g_primeiraAba + AbasQueCabem(larg, n, g_primeiraAba);
+
+        int quantas = 0, x = ABA_X0;
+        for (int i = g_primeiraAba; i < ate && quantas < capacidade; i++)
+        {
+            p[quantas].aba = g_abas[i];
+            p[quantas].x   = x;
+            p[quantas].l   = larg[i];
+            x += larg[i] + ABA_GAP;
+            quantas++;
         }
         *xRB = x - ABA_GAP + 16;
-        return n;
+
+        // Chip apagado na ponta: LB na primeira aba e RB na ultima nao fazem nada, e
+        // a tela tem de dizer isso antes de a pessoa apertar. Vale desde sempre, sem
+        // o Soltos: no "Todos" o LB ja nao fazia nada e nada avisava.
+        g_lbVivo = (foco > 0);
+        g_rbVivo = (foco < n - 1);
+        return quantas;
     }
 
-    // A pílula cheia. O canto arredondado NÃO custa textura nova: o g_canto é um
-    // quarto de círculo de 16x16 em alfa, pintado na cor do FUNDO para "comer" o
-    // canto -- o mesmo truque dos cards. Com 32 de altura e 16 de raio, as duas
-    // pontas saem como semicírculos exatos.
     void PilulaCheia(int x, int y, int l, int a, D3DCOLOR cor)
     {
         D3DRECT r;
@@ -1538,9 +1685,9 @@ namespace
     {
         g_fonte.SetScaleFactors(0.72f, 0.72f);
         g_fonte.DrawText((FLOAT)MARGEM_X + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
-                         COR_FRACO, L"LB", ATGFONT_CENTER_X);
+                         g_lbVivo ? COR_FRACO : COR_LINHA, L"LB", ATGFONT_CENTER_X);
         g_fonte.DrawText((FLOAT)xRB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
-                         COR_FRACO, L"RB", ATGFONT_CENTER_X);
+                         g_rbVivo ? COR_FRACO : COR_LINHA, L"RB", ATGFONT_CENTER_X);
         g_fonte.SetScaleFactors(1.0f, 1.0f);
 
         for (int i = 0; i < n; i++)
@@ -1564,14 +1711,16 @@ namespace
             // Interseção aceita junção como origem, junção não aceita -- então a
             // frase tem de dizer o que FALTA, e não a mesma coisa para os dois.
             const WCHAR *vazia = L"Nenhuma coleção ainda";
-            if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
+            if (g_tela == TELA_ARQUIVAR)
+                vazia = L"Nenhuma coleção para arquivar";
+            else if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
                 vazia = (g_editandoComposta->tipo == colecoes::TIPO_UNIAO)
                       ? L"Nenhuma coleção de jogos para juntar"
                       : L"Nenhuma coleção para cruzar";
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, vazia, ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
             // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
-            Rodape((g_tela == TELA_ORIGENS)
+            Rodape((g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
                    ? GLYPH_B_BUTTON L" Cancelar"
                    : GLYPH_X_BUTTON L" Nova coleção     " GLYPH_BACK_BUTTON L" Exportar",
                    L"");
@@ -1579,12 +1728,14 @@ namespace
             return;
         }
 
-        // A barra de categorias, quando houver categoria para escolher. Na tela de
-        // origens ela não aparece: ali a aba não vale.
-        PilulaAba pilulas[biblioteca::ABA_QUANTAS];
+        // A barra de categorias, quando houver categoria para escolher. Nas telas de
+        // origens e de arquivar ela não aparece: ali a aba não vale, e mostrá-la
+        // acesa no "Soltos" enquanto se escolhe coleção seria dizer que a lista
+        // abaixo está filtrada por ela -- não está.
+        PilulaAba pilulas[biblioteca::ABA_QUANTAS + 1];   // +1: o Soltos
         int xRB = 0, nAbas = 0;
-        if (g_tela != TELA_ORIGENS && g_abas.size() >= 2)
-            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS, &xRB);
+        if (g_tela == TELA_COLECOES && g_abas.size() >= 2)
+            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS + 1, &xRB);
         if (nAbas >= 2) AbasFundo(pilulas, nAbas, xRB);
 
         const int topo = (nAbas >= 2) ? COL_TOPO_ABA : COL_TOPO;
@@ -1603,16 +1754,18 @@ namespace
             int y = topo + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
             DesenharCard(x, y, COL_LADO, L[i], i == g_iCol);
 
-            // Escolhendo origens, a não marcada recebe o mesmo véu dos jogos não
-            // marcados, e a marcada ganha o anel verde.
-            if (g_tela == TELA_ORIGENS)
+            // Escolhendo origens -- ou arquivando um jogo --, a não marcada recebe
+            // o mesmo véu dos jogos não marcados, e a marcada ganha o anel verde. O
+            // vocabulário é o mesmo de propósito: é o mesmo gesto.
+            if (g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
             {
+                const bool marcada = (g_tela == TELA_ORIGENS)
+                                   ? OrigemMarcada(L[i]->id)
+                                   : ColecaoEscolhida(L[i]->id);
                 D3DRECT rc;
                 rc.x1 = x; rc.y1 = y; rc.x2 = x + COL_LADO; rc.y2 = y + COL_LADO;
-                if (!OrigemMarcada(L[i]->id))
-                    Preencher(rc, D3DCOLOR_ARGB(150, 6, 9, 8));
-                else
-                    ATG::DebugDraw::DrawScreenSpaceRect(rc, 2.0f, COR_ANEL);
+                if (!marcada) Preencher(rc, D3DCOLOR_ARGB(150, 6, 9, 8));
+                else          ATG::DebugDraw::DrawScreenSpaceRect(rc, 2.0f, COR_ANEL);
             }
         }
 
@@ -1659,7 +1812,32 @@ namespace
         }
 
         swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
-        if (g_tela == TELA_ORIGENS)
+        if (g_tela == TELA_ARQUIVAR)
+        {
+            // Sem cabeçalho, como a tela de origens -- quem diz QUAL jogo está sendo
+            // arquivado é esta linha. Cortado em 420 px: nome de jogo passa disso
+            // fácil, e o que importa aqui é a contagem no fim.
+            WCHAR nome[256];
+            Larga(g_arquivando != NULL ? g_arquivando->nome : "", nome, 256);
+            FLOAT w = 0.0f, h = 0.0f;
+            g_fonte.GetTextExtent(nome, &w, &h);
+            if (w > 420.0f)
+            {
+                size_t n = wcslen(nome);
+                while (n > 1 && w > 420.0f)
+                {
+                    nome[--n] = L'\0';
+                    if (n >= 3) { nome[n-1] = L'.'; nome[n-2] = L'.'; nome[n-3] = L'.'; }
+                    g_fonte.GetTextExtent(nome, &w, &h);
+                }
+            }
+            const int q = (int)g_escolhidas.size();
+            swprintf_s(texto, 256, L"%s · %d %s", nome, q,
+                       (q == 1) ? L"coleção" : L"coleções");
+            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
+                   GLYPH_START_BUTTON L" Concluir", texto);
+        }
+        else if (g_tela == TELA_ORIGENS)
         {
             // Quantos jogos o rascunho daria SE fosse concluido agora. E a razao de
             // ser desta linha: um cruzamento esvazia facil, e descobrir o ( 0 ) so
@@ -1748,12 +1926,25 @@ namespace
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         const bool adicionando = (g_tela == TELA_ADICIONAR);
+        // A grade dos soltos é esta mesma, com três diferenças: no lugar do
+        // cabeçalho vai a barra de categorias (a pílula acesa já é o título, como na
+        // grade de coleções), a frase de vazio é outra e o rodapé oferece arquivar.
+        const bool soltos = (g_tela == TELA_SOLTOS);
+
+        PilulaAba pilulas[biblioteca::ABA_QUANTAS + 1];
+        int xRB = 0, nAbas = 0;
+        if (soltos && g_abas.size() >= 2)
+        {
+            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS + 1, &xRB);
+            if (nAbas >= 2) AbasFundo(pilulas, nAbas, xRB);
+        }
         const int total = (int)L.size();
         WCHAR texto[256], sub[64];
 
         if (total == 0)
         {
             g_fonte.Begin();
+            if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
             g_fonte.SetScaleFactors(1.3f, 1.3f);
             // Composta vazia nao se resolve adicionando jogos -- nao ha o que
             // adicionar nela. O cruzamento vazio e o caso que mais vai acontecer,
@@ -1778,15 +1969,19 @@ namespace
                 vazia = porCausaDaAba;
             }
 
+            if (soltos) vazia = L"Nenhum jogo fora das coleções";
+
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
                              adicionando ? L"A biblioteca está vazia" : vazia,
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(adicionando
+            Rodape(soltos
+                   ? GLYPH_B_BUTTON L" Voltar"
+                   : (adicionando
                    ? GLYPH_B_BUTTON L" Cancelar"
                    : (colecoes::Composta(g_atual)
                       ? GLYPH_B_BUTTON L" Voltar     " GLYPH_START_BUTTON L" Opções"
-                      : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos"),
+                      : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos")),
                    L"");
             g_fonte.End();
             return;
@@ -1865,7 +2060,14 @@ namespace
         }
 
         g_fonte.Begin();
-        if (adicionando)
+        if (soltos)
+        {
+            // SEM CABEÇALHO: a barra ocupa o alto, e a pílula acesa já é o título --
+            // a mesma razão de a grade de coleções não ter cabeçalho. Os dois no
+            // mesmo lugar brigariam pelos mesmos 36 px.
+            if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
+        }
+        else if (adicionando)
         {
             swprintf_s(sub, 64, L"%d de %d marcados", ItensMarcados(), (int)g_jogos.size());
             Cabecalho(L"Adicionar jogos", sub);
@@ -1915,6 +2117,15 @@ namespace
             swprintf_s(texto, 256, L"%d marcados", ItensMarcados());
             Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
                    GLYPH_START_BUTTON L" Concluir", texto);
+        }
+        else if (soltos)
+        {
+            swprintf_s(texto, 256, L"%d de %d", g_iJogo + 1, total);
+            // O B volta para Todos. Nas outras abas ele não faz nada, mas esta é uma
+            // TELA, e sair dela por onde se sai de toda tela é mais barato que
+            // lembrar do LB.
+            Rodape(GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
+                   GLYPH_X_BUTTON L" Adicionar a coleções", texto);
         }
         else
         {
@@ -2088,7 +2299,9 @@ namespace
                   D3DCOLOR_XRGB(FUNDO_DE[0],   FUNDO_DE[1],   FUNDO_DE[2]),
                   D3DCOLOR_XRGB(FUNDO_PARA[0], FUNDO_PARA[1], FUNDO_PARA[2]), true);
 
-        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS) TelaColecoes();
+        // TELA_ARQUIVAR é uma grade de coleções; TELA_SOLTOS é uma grade de capas.
+        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS ||
+            g_tela == TELA_ARQUIVAR)                           TelaColecoes();
         else                                                   TelaJogos();
 
         if (g_menuAberto)
@@ -2143,17 +2356,30 @@ namespace
         bool abaVive = false;
         for (size_t i = 0; i < g_abas.size(); i++)
             if (g_abas[i] == g_aba) abaVive = true;
-        if (!abaVive) g_aba = biblioteca::ABA_AUTOMATICA;
+        if (!abaVive)
+        {
+            g_aba = biblioteca::ABA_AUTOMATICA;
+            // Arquivar o último solto apaga a aba em que se está. Sem isto o app
+            // ficaria desenhando a grade de capas de uma lista vazia.
+            if (g_tela == TELA_SOLTOS) g_tela = TELA_COLECOES;
+        }
 
         int nCol = (int)ListaDeColecoes().size();
         if (g_iCol >= nCol) g_iCol = nCol - 1;
         if (g_iCol < 0)     g_iCol = 0;
         SeguirFocoColecao();
 
-        int nJogos = (int)ListaAtual().size();
-        if (g_iJogo >= nJogos) g_iJogo = nJogos - 1;
-        if (g_iJogo < 0)       g_iJogo = 0;
-        SeguirFoco();
+        // Arquivando, a grade à vista é a de COLEÇÕES: o g_iJogo que está guardado é
+        // a posição na lista dos soltos, para onde se volta. Clampá-lo contra a lista
+        // de jogos (que ali é vazia, porque g_atual é nulo) zerava o foco por baixo, e
+        // ao concluir a tela voltava sempre para o primeiro item.
+        if (g_tela != TELA_ARQUIVAR)
+        {
+            int nJogos = (int)ListaAtual().size();
+            if (g_iJogo >= nJogos) g_iJogo = nJogos - 1;
+            if (g_iJogo < 0)       g_iJogo = 0;
+            SeguirFoco();
+        }
     }
 
     void SaltoLetra(int dir)
@@ -2207,12 +2433,87 @@ namespace
 
         g_aba = g_abas[i];
         g_iCol = 0; g_primeiraLinhaCol = 0;
+
+        // O Soltos é uma TELA alcançada por uma aba: entrar nele troca a grade de
+        // coleções pela de capas, e sair dele devolve. O foco da grade de jogos zera
+        // junto, senão o item em foco seria o de uma lista que já não existe.
+        if (g_aba == ABA_SOLTOS)
+        {
+            g_tela = TELA_SOLTOS;
+            g_iJogo = 0; g_primeiraLinha = 0;
+        }
+        else if (g_tela == TELA_SOLTOS)
+        {
+            g_tela = TELA_COLECOES;
+        }
+
         som::Tocar(som::SOM_FOCO);
 
         // Troca a tela inteira de conteúdo: o que estava a caminho já não serve,
         // como ao abrir uma coleção.
         carregador::DescartarPendentes();
         g_emVoo.clear();
+    }
+
+    // Arquivar: escolher em QUE coleções este jogo entra. Uma tela, não um modal --
+    // é o mesmo gesto de escolher origens, com o mesmo vocabulário (anel na marcada,
+    // véu na outra, Start conclui), e um modal de lista não mostraria a colagem nem
+    // a contagem de cada coleção.
+    void AbrirArquivar()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        if (L.empty() || g_iJogo >= (int)L.size()) return;
+
+        // TitleId zero não pode entrar em coleção: gravaria 00000000 e a releitura
+        // descartaria, fazendo o item sumir no próximo boot sem aviso. Mesma barra do
+        // escolhedor de jogos.
+        if (L[g_iJogo]->titleId == 0)
+        {
+            Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");
+            return;
+        }
+
+        som::Tocar(som::SOM_MENU);
+        g_arquivando = L[g_iJogo];
+        g_escolhidas.clear();
+        g_tela = TELA_ARQUIVAR;
+        g_iCol = 0; g_primeiraLinhaCol = 0;
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+    }
+
+    void FecharArquivar(bool gravar)
+    {
+        if (gravar && g_arquivando != NULL && !g_escolhidas.empty())
+        {
+            const unsigned int titleId = g_arquivando->titleId;
+            for (size_t i = 0; i < g_escolhidas.size(); i++)
+            {
+                colecoes::Colecao *c = colecoes::PorId(g_escolhidas[i]);
+                // Alternar e não um push: se o jogo já estivesse lá, push duplicaria
+                // o TitleId. Aqui ele nunca está -- é um solto --, mas quem garante
+                // isso é a lista, não esta função.
+                if (c != NULL && !colecoes::Tem(c, titleId))
+                    colecoes::Alternar(c, titleId);
+            }
+            colecoes::Gravar();
+            diario::Escrever("arquivado '%s' em %d colecoes",
+                             g_arquivando->nome.c_str(), (int)g_escolhidas.size());
+        }
+
+        g_arquivando = NULL;
+        g_escolhidas.clear();
+        g_tela = TELA_SOLTOS;
+        g_iCol = 0; g_primeiraLinhaCol = 0;
+        carregador::DescartarPendentes();
+        g_emVoo.clear();
+
+        // O jogo arquivado SAIU da lista; o foco segue o que ficou no lugar dele. Se
+        // era o último, o ClampFoco devolve para Todos no quadro seguinte.
+        int n = (int)ListaAtual().size();
+        if (g_iJogo >= n) g_iJogo = n - 1;
+        if (g_iJogo < 0)  g_iJogo = 0;
+        SeguirFoco();
     }
 
     void AbrirColecao()
@@ -2706,7 +3007,16 @@ namespace
             return;
 
         som::Tocar(som::SOM_VOLTA);
-        if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
+        if (g_tela == TELA_SOLTOS)
+        {
+            // Volta para o Todos, que é de onde se veio.
+            g_aba = biblioteca::ABA_AUTOMATICA;
+            g_tela = TELA_COLECOES;
+            g_iCol = 0; g_primeiraLinhaCol = 0;
+            carregador::DescartarPendentes();
+            g_emVoo.clear();
+        }
+        else if (g_tela == TELA_ADICIONAR) FecharAdicionar(false);
         else if (g_tela == TELA_JOGOS)
         {
             g_tela = TELA_COLECOES;
@@ -3005,6 +3315,33 @@ void __cdecl main()
                 g_menuAberto = false;
             }
         }
+        else if (g_tela == TELA_ARQUIVAR)
+        {
+            // Mesmo gesto da escolha de origens: A marca, Start conclui, B desfaz.
+            if (dx) MoverColecao(dx);
+            if (dy) MoverColecao(dy * COL_POR_LINHA);
+
+            if (novos & XINPUT_GAMEPAD_A)
+            {
+                std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+                if (!L.empty() && g_iCol < (int)L.size())
+                {
+                    som::Tocar(som::SOM_CONFIRMA);
+                    const int id = L[g_iCol]->id;
+                    bool tirou = false;
+                    for (size_t i = 0; i < g_escolhidas.size(); i++)
+                        if (g_escolhidas[i] == id)
+                        {
+                            g_escolhidas.erase(g_escolhidas.begin() + i);
+                            tirou = true;
+                            break;
+                        }
+                    if (!tirou) g_escolhidas.push_back(id);
+                }
+            }
+            else if (novos & XINPUT_GAMEPAD_B)     { som::Tocar(som::SOM_VOLTA);     FecharArquivar(false); }
+            else if (novos & XINPUT_GAMEPAD_START) { som::Tocar(som::SOM_CONFIRMA); FecharArquivar(true); }
+        }
         else if (g_tela == TELA_ORIGENS)
         {
             if (dx) MoverColecao(dx);
@@ -3048,6 +3385,28 @@ void __cdecl main()
                 // Só aqui: na tela de origens o Back não vale, ali se está escolhendo
                 // coleção e o exportar não tem nada a ver com a escolha.
                 else if (novos & XINPUT_GAMEPAD_BACK)  AbrirMenuExportar();
+            }
+        }
+        else if (g_tela == TELA_SOLTOS)
+        {
+            // LB/RB continuam sendo a BARRA, não o salto por letra: a barra está na
+            // tela dizendo o que eles fazem, e contrariá-la seria pior que perder o
+            // salto -- que de todo jeito continua no segurar ↓.
+            if (salto) TrocarAba(salto);
+            else
+            {
+                bool segurando = (direcaoY != 0 && proximoPasso != 0 &&
+                                  tAgora >= proximoPasso - ESPERA_REPETE);
+                if (dx) MoverJogo(dx);
+                if (dy)
+                {
+                    if (segurando) SaltoLetra(dy);
+                    else           MoverJogo(dy * COLUNAS);
+                }
+
+                if      (novos & XINPUT_GAMEPAD_A) Confirmar();
+                else if (novos & XINPUT_GAMEPAD_B) Voltar();
+                else if (novos & XINPUT_GAMEPAD_X) AbrirArquivar();
             }
         }
         else

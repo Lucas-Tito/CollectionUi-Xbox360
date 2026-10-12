@@ -1565,3 +1565,52 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      oferecer o exportar, e agora toca o som de volta. Na tela de origens o Back não vale: ali se
      escolhe coleção, e o exportar não tem nada a ver com a escolha. Sem coleção nenhuma o
      exportar continua no rodapé, porque ele é da biblioteca.
+
+146. **A aba "Soltos", à esquerda do Todos, e o arquivamento de um jogo em várias coleções.** A
+     primeira pílula da barra não é categoria da FreeStyle: são os jogos que não estão em coleção
+     nenhuma. Desenhada em [`../previa/soltos.js`](../previa/soltos.js) antes de virar C++, que é
+     uma proposta carregada POR CIMA da prévia — a prévia é o espelho do console e não recebe
+     proposta dentro dela.
+
+     **Por que ela existe:** neste console são **213 itens de 439, 49% do acervo**, fora de toda
+     coleção. 92 de `\JOGOS\`, 61 de Original Xbox, 22 ROMs, 14 de `\Content\`, 10 de Arcade e
+     7 homebrews. Sem esta tela, a única forma de achá-los era abrir "Adicionar jogos" dentro de
+     cada coleção e comparar de cabeça.
+
+     **"Em coleção" é estar numa coleção DE JOGOS.** Composta não conta: o conteúdo dela vem das
+     origens, então um jogo que só aparece numa junção já está na coleção de jogos que é origem
+     dela. A conta sai de um vetor de TitleIds cobertos, ordenado uma vez por quadro no
+     `AtualizarAbas`, e a pergunta vira busca binária — sem ele seriam coleções × jogos × ids por
+     quadro.
+
+     **A aba é uma TELA, não um filtro.** As outras trocam o universo e a grade de coleções
+     continua lá; esta troca a grade pela de capas. O preço é o `A` mudar de significado dentro da
+     mesma barra, e ele é pago porque a tela é visivelmente outra. Sem cabeçalho: a pílula acesa já
+     é o título, como na grade de coleções — os dois brigariam pelos mesmos 36 px do alto. O `B`
+     volta para Todos, que nas outras abas não faz nada, mas esta é uma tela e sai-se dela por onde
+     se sai de toda tela. `LB`/`RB` continuam sendo a barra, e não o salto por letra: a barra está
+     na tela dizendo o que eles fazem. O salto continua no segurar `↓`.
+
+     **A barra rola.** Com as sete categorias da FreeStyle mais o Soltos a fileira soma 989 px numa
+     faixa de 980: passa por nove e esconde **uma** pílula. Neste console, que tem seis categorias,
+     são 882 e nada rola. A janela segue o foco por pílula INTEIRA — meia pílula cortada na TV
+     parece defeito, e o scissor cortaria no meio de uma letra. De brinde, os chips `LB`/`RB`
+     apagam quando não há aba daquele lado: vale desde sempre, sem o Soltos, porque no "Todos" o LB
+     já não fazia nada e nada avisava.
+
+     **Arquivar é uma tela, não um modal** (`TELA_ARQUIVAR`): a mesma grade de coleções da escolha
+     de origens, com o mesmo vocabulário — anel verde na marcada, véu na outra, `Start` conclui.
+     Um modal de lista não mostraria a colagem nem a contagem de cada coleção, que é o que faz
+     escolher onde arquivar. Só coleção de jogos recebe. Sem cabeçalho, como a de origens: quem diz
+     qual jogo está sendo arquivado é o rodapé, *"Borderlands · 2 coleções"*.
+
+     Três coisas que o `AbaEmVigor` passou a cobrir, pelo mesmo motivo da decisão 145: na tela de
+     arquivar e na dos soltos a aba **não** vale. Sem isso, toda coleção apareceria com a colagem
+     vazia e `( 0 )` na hora de escolher onde arquivar — exatamente o defeito que a revisão da 145
+     achou na tela de origens.
+
+     O jogo arquivado sai da lista na hora, e o foco segue quem ficou no lugar dele; se era o
+     último, a aba some e o `ClampFoco` devolve para Todos. Fica o detalhe de que o `g_iJogo` não
+     pode ser clampado enquanto a tela de arquivar está aberta: ele é a posição na lista dos
+     soltos, para onde se volta, e clampá-lo contra a lista de jogos (vazia ali, porque `g_atual` é
+     nulo) zerava o foco por baixo.
