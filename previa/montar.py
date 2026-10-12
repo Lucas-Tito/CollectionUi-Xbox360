@@ -45,6 +45,8 @@ def main():
                     help='saída de prototipo/extrair.py')
     ap.add_argument('--saida', default=os.path.join(AQUI, 'build', 'previa.html'))
     ap.add_argument('--vault', help='vault.txt exportado pelo console; traz homebrew e ROM')
+    ap.add_argument('--proposta', help='.js carregado POR CIMA da prévia, para ver uma '
+                                       'proposta sem sujar o espelho do console')
     a = ap.parse_args()
 
     jogos = json.load(open(os.path.join(a.build, 'games.json'), encoding='utf-8'))
@@ -60,6 +62,12 @@ def main():
 
     dados = json.dumps(jogos, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
     html = open(os.path.join(AQUI, 'template.html'), encoding='utf-8').read().replace('__DADOS__', dados)
+
+    # A prévia é o ESPELHO do que o console desenha. Proposta não entra nela: entra
+    # por cima, num arquivo cujo nome diz o que é, e que gera uma página separada.
+    if a.proposta:
+        patch = open(a.proposta, encoding='utf-8').read()
+        html += '\n<script>\n' + patch + '\n</script>\n'
 
     os.makedirs(os.path.dirname(a.saida), exist_ok=True)
     open(a.saida, 'w', encoding='utf-8').write(html)

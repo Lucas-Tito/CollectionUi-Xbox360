@@ -52,6 +52,22 @@ que aparecer é listado na barra de cima, em vermelho. A tabela cobre o Latin-1 
 é tudo o que o atlas tem fora do ASCII — **a pontuação tipográfica inteira está fora dele**: nem
 `’` `‘` `“` `–` `—` `…`, nem `®` `©` `™`.
 
+## Proposta: por cima, nunca dentro
+
+Como a prévia é o espelho, proposta entra **por cima**, num arquivo à parte, e gera outra página:
+
+```bash
+python3 previa/montar.py --vault ~/Downloads/vault.txt \
+        --proposta previa/soltos.js --saida previa/build/soltos.html
+```
+
+O `.js` é carregado depois do `<script>` da prévia e reescreve as funções que precisa. Assim há uma
+implementação só do desenho, a prévia continua mostrando só o que o `.xex` faz, e a proposta vive
+num arquivo cujo nome diz o que ela é — some junto quando a decisão for tomada.
+
+Hoje há uma: **`soltos.js`**, a aba à esquerda do "Todos" com os jogos que não estão em coleção
+nenhuma, e o arquivamento de um jogo em várias coleções de uma vez.
+
 ## Espelho, não proposta
 
 Esta página é o **espelho do que o `.xex` desenha hoje**. Não há mais nada aqui marcado como
