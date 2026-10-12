@@ -66,6 +66,9 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
 .pad.a{background:#6DC849}.pad.b{background:#F2565B}.pad.x{background:#4B9BE8}
 .pad.menu{background:#1D2521;color:var(--dim);border:1px solid var(--linha);
   border-radius:4px;width:auto;padding:0 6px;height:18px}
+.aviso{font-size:11px;color:var(--anel);border:1px solid #3C4A2A;border-radius:5px;
+  padding:4px 9px;background:#19200F}
+.aviso.perigo{color:#F2949A;border-color:#6E3236;background:#22100F}
 .so-proto{background:#2A2410;border:1px solid #5C4D18;border-radius:5px;padding:9px 12px;
   font-size:11.5px;color:#F0C036;margin-bottom:16px;line-height:1.45}
 .opts{display:flex;flex-direction:column;gap:6px}
@@ -89,6 +92,8 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
   <button class="ajuda" id="bt-ajuda" title="Botões do controle" aria-label="Botões do controle">?</button>
   <button class="bt" id="bt-exemplos">Criar coleções de exemplo</button>
   <button class="bt" id="bt-zerar">Zerar</button>
+  <span class="aviso" id="aviso" hidden></span>
+  <span class="aviso perigo" id="sem-glifo" hidden></span>
 </header>
 
 <div class="palco"><canvas id="tela" width="1280" height="720"></canvas></div>
@@ -98,7 +103,8 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
   <span class="pino"><i class="tec">Enter</i> Ⓐ</span>
   <span class="pino"><i class="tec">Esc</i> Ⓑ</span>
   <span class="pino"><i class="tec">X</i> Ⓧ</span>
-  <span class="pino"><i class="tec">M</i> ☰</span>
+  <span class="pino"><i class="tec">M</i> Start</span>
+  <span class="pino"><i class="tec">Backspace</i> Back</span>
   <span class="pino"><i class="tec">Q</i><i class="tec">E</i> LB/RB</span>
   <span class="espaco"></span>
   <span id="estado" class="nota"></span>
@@ -117,27 +123,26 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <tr class="grp"><td colspan="3">Na tela de coleções</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Abrir a coleção</td></tr>
       <tr><td><i class="pad x">X</i></td><td class="kb">X</td><td>Nova coleção</td></tr>
-      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Opções: renomear ou apagar</td></tr>
-      <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Trocar de categoria (<b>proposta</b>)</td></tr>
+      <tr><td><i class="pad menu">Start</i></td><td class="kb">M</td><td>Opções: renomear ou apagar</td></tr>
+      <tr><td><i class="pad menu">Back</i></td><td class="kb">Backspace</td><td>Exportar para o Xbox Vault</td></tr>
+      <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Trocar de categoria</td></tr>
       <tr class="grp"><td colspan="3">Dentro de uma coleção</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Jogar</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Voltar às coleções</td></tr>
       <tr><td><i class="pad x">X</i></td><td class="kb">X</td><td>Adicionar jogos</td></tr>
-      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Opções: remover da coleção</td></tr>
+      <tr><td><i class="pad menu">Start</i></td><td class="kb">M</td><td>Opções: remover da coleção</td></tr>
       <tr><td><i class="pad menu">LB</i> <i class="pad menu">RB</i></td><td class="kb">Q / E</td><td>Pular por letra</td></tr>
       <tr><td><i class="pad menu">↓ segurando</i></td><td class="kb">↓ segurando</td><td>Pular por letra</td></tr>
       <tr class="grp"><td colspan="3">Adicionando jogos</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
-      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Concluir: grava o que foi marcado</td></tr>
+      <tr><td><i class="pad menu">Start</i></td><td class="kb">M</td><td>Concluir: grava o que foi marcado</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar: descarta as marcações</td></tr>
       <tr class="grp"><td colspan="3">Escolhendo coleções (junção / cruzamento)</td></tr>
       <tr><td><i class="pad a">A</i></td><td class="kb">Enter</td><td>Marcar ou desmarcar</td></tr>
-      <tr><td><i class="pad menu">☰</i></td><td class="kb">M</td><td>Concluir</td></tr>
+      <tr><td><i class="pad menu">Start</i></td><td class="kb">M</td><td>Concluir</td></tr>
       <tr><td><i class="pad b">B</i></td><td class="kb">Esc</td><td>Cancelar</td></tr>
       <tr class="grp"><td colspan="3">Só na prévia</td></tr>
       <tr><td><i class="pad menu">—</i></td><td class="kb">mouse</td><td>Clicar move o foco; clicar de novo confirma</td></tr>
-      <tr><td><i class="pad menu">—</i></td><td class="kb">T</td><td>Trocar o <b>desenho</b> da barra de categorias</td></tr>
-      <tr><td><i class="pad menu">—</i></td><td class="kb">F / C</td><td>Trocar o fundo da tela / o fundo do card</td></tr>
     </table>
     <div class="acoes"><button class="bt" id="da-fechar">Fechar</button></div>
   </div>
@@ -152,36 +157,6 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
       <button class="bt" id="dn-cancelar">Cancelar</button>
       <button class="bt ok" id="dn-ok">Criar</button>
     </div>
-  </div>
-</div>
-
-<div class="dlg" id="dlg-tipo" hidden>
-  <div class="cx">
-    <h3 id="dt-tit">Nova coleção</h3>
-    <p>No console isto é o menu de opções, percorrido pelo d-pad. Nomes curtos: quem
-       escolhe Junção ou Interseção cai na tela de origens em seguida, e é lá que o
-       subtítulo diz o efeito, com as coleções à vista e a contagem ao vivo.</p>
-    <div class="opts">
-      <button class="opt" id="dt-jogos"><b>Coleção Manual</b></button>
-      <button class="opt" id="dt-uniao"><b>Junção</b></button>
-      <button class="opt" id="dt-inter"><b>Interseção</b></button>
-    </div>
-    <div class="acoes"><button class="bt" id="dt-cancelar">Cancelar</button></div>
-  </div>
-</div>
-
-<div class="dlg" id="dlg-menu" hidden>
-  <div class="cx">
-    <h3 id="dm-tit">Opções</h3>
-    <div class="opts" id="dm-colecao">
-      <button class="opt" id="dm-renomear">Renomear</button>
-      <button class="opt" id="dm-origens" hidden>Escolher coleções</button>
-      <button class="opt perigo" id="dm-apagar">Apagar coleção</button>
-    </div>
-    <div class="opts" id="dm-jogo" hidden>
-      <button class="opt perigo" id="dm-remover">Remover da coleção</button>
-    </div>
-    <div class="acoes"><button class="bt" id="dm-fechar">Fechar</button></div>
   </div>
 </div>
 
@@ -204,61 +179,24 @@ const POR_PAGINA = COLUNAS * LINHAS;
 
 const COR_FUNDO   = 'rgb(13,17,15)';
 
-// --- fundo em gradiente (experimento; ainda NAO esta no C++) -----------------
-// No console isto nao precisa virar imagem: da para desenhar com cor por vertice
-// (SetDeclPosColor + BeginShader_PreTransformed_VertexColor), entao e zero arquivo,
-// zero carregamento e sem risco de corte por overscan.
-const FUNDOS = {
-  chapado:  null,                                       // o de hoje, para comparar
-  sutil:    { de:'rgb(10,20,15)', para:'rgb(18,34,26)', ang:'diag' },
-  medio:    { de:'rgb(9,24,17)',  para:'rgb(26,52,38)', ang:'diag' },
-  vertical: { de:'rgb(16,32,24)', para:'rgb(8,16,12)',  ang:'vert' },
-
-  // Azul eclesiástico: o azul profundo de vitral e paramento, puxando para o roxo.
-  // Mais saturado que o verde, então vale olhar como fica com a capa por cima.
-  azul:     { de:'rgb(12,20,44)', para:'rgb(28,42,86)', ang:'diag' },
-  azulEsc:  { de:'rgb(8,14,32)',  para:'rgb(20,30,64)', ang:'diag' },
-};
-let FUNDO = 'medio';
-
-// --- fundo do card ----------------------------------------------------------
-// Canto arredondado no console NAO sai de graca: o Caixa() do C++ desenha
-// retangulo cheio + contorno, e arredondar exigiria uma textura 9-slice (uma so,
-// reusada por todos os cards). O gradiente em si sai de graca, igual ao do fundo.
-// Tres capas SEPARADAS: uma a esquerda e duas empilhadas a direita, com folga entre
-// elas. O grupo inteiro inclina junto. 'folga' e em fracao da largura da capa.
+// --- o fundo da tela ---------------------------------------------------------
+// Gradiente na diagonal, cor por vértice -- zero arquivo, zero carregamento e sem
+// risco de corte por overscan. Já está no C++ (Gradiente(), main.cpp).
 //
-//        +-----+
-//  +---+ |  2  |
-//  | 1 |  - - -       <- folga tambem entre as duas da direita
-//  +---+ |  3  |
-//        +-----+
-const CARDS = {
-  // O tom do card é GRADIENTE, mais escuro em cima, aliviando embaixo onde o véu de
-  // legibilidade já trabalha. O azul segue exatamente a mesma forma, só trocando a cor.
-  grupo30:  { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-              tomG:['rgba(9,20,13,0.66)', 'rgba(14,30,20,0.38)'], vert:true },
-  azul30:   { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-              tomG:['rgba(10,16,38,0.66)', 'rgba(16,24,52,0.38)'], vert:true },
-  grupo20:  { tipo:'colagem', r:10, giro:-20, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
-  grupo45:  { tipo:'colagem', r:10, giro:-45, larg:0.56, folga:0.14, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
-  // Mesmo grupo30, mas com GRADIENTE por cima da colagem em vez de tom chapado.
-  // 'tomG' vai do canto superior esquerdo ao inferior direito.
-  grad30:   { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-              tomG:['rgba(14,30,20,0.18)', 'rgba(10,22,15,0.80)'] },
-  grad30Inv:{ tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-              tomG:['rgba(10,22,15,0.80)', 'rgba(14,30,20,0.18)'] },
-  grad30Ver:{ tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-              tomG:['rgba(14,30,20,0.12)', 'rgba(8,18,12,0.88)'], vert:true },
-  folgaMai: { tipo:'colagem', r:10, giro:-30, larg:0.52, folga:0.26, alfa:0.60, tom:'rgba(14,30,20,0.50)' },
-  grupo30F: { tipo:'colagem', r:10, giro:-30, larg:0.56, folga:0.14, alfa:0.85, tom:'rgba(14,30,20,0.28)' },
-  gradiente:{ tipo:'gradiente', de:'rgb(32,50,39)', para:'rgb(20,32,25)', r:10 },
-  chapado:  null,                                                  // o de hoje
-};
-let CARD = 'grupo30';
+// OS NÚMEROS AQUI SÃO OS PRÉ-GAMA, e isso é de propósito: o console passa a saída
+// por uma rampa que o navegador não aplica, então o main.cpp guarda estes mesmos
+// tons corrigidos por 1/1,3 (9,24,17 vira 19,40,31). Os dois conjuntos existem
+// para a TV e o monitor MOSTRAREM a mesma coisa.
+const FUNDO_DE = 'rgb(9,24,17)', FUNDO_PARA = 'rgb(26,52,38)';
+
+// --- o card de coleção -------------------------------------------------------
+// Colagem de três capas inclinadas a -30°, tom por cima e véu embaixo para o
+// texto. Os números são os do DesenharCard() do main.cpp, pré-gama como o fundo.
+const CARD = { r:16, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
+               tomG:['rgba(9,20,13,0.66)', 'rgba(14,30,20,0.38)'] };
 
 // ===========================================================================
-// AS ABAS DE CATEGORIA (proposta; NAO esta no C++)
+// AS ABAS DE CATEGORIA (decisão 144, já no C++)
 // ===========================================================================
 // A FreeStyle tem uma tabela FIXA de abas, no settings.db:
 //
@@ -307,15 +245,6 @@ JOGOS.forEach(g => {
 
 const nomeAba = id => (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
 
-// --- os desenhos em prova. T cicla. -----------------------------------------
-//   pilula   fileira de pilulas, a ativa preenchida -- O ESCOLHIDO
-//   steam    fileira de rotulos, o ativo sublinhado -- o da Steam
-//   seletor  um rotulo so, entre setas, com os pontinhos embaixo
-//   coluna   trilho vertical a esquerda; a grade cai para 4 por linha
-//   nenhuma  a tela de hoje, para comparar
-const ESTILOS_ABA = ['pilula', 'steam', 'seletor', 'coluna', 'nenhuma'];
-let ABA_ESTILO = 'pilula';                      // ESCOLHIDO. Os outros ficam de registro.
-
 // O APP SEMPRE ABRE EM "TODOS". Esta variável mora na memória e em lugar nenhum
 // além dela: não vai para o colecoes.txt, não vai para o config, não sobrevive a
 // sair do app. Voltar e encontrar metade do acervo sumido, sem lembrar de ter
@@ -342,82 +271,66 @@ function caminhoArredondado(ctx, x, y, l, a, r) {
 }
 
 function pintarCard(ctx, x, y, l, a, selecionado, col) {
-  const c = CARDS[CARD];
+  const c = CARD;
+  ctx.save();
+  caminhoArredondado(ctx, x, y, l, a, c.r);
+  ctx.clip();
 
-  if (!c) {                                   // chapado: o de hoje
-    ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, l, a);
-  } else if (c.tipo === 'gradiente') {
-    const g = ctx.createLinearGradient(x, y, x + l, y + a);
-    g.addColorStop(0, c.de); g.addColorStop(1, c.para);
-    caminhoArredondado(ctx, x, y, l, a, c.r);
-    ctx.fillStyle = g; ctx.fill();
-  } else {                                    // colagem, como a Steam
+  // O fundo do card é CHAPADO e mais claro que o fundo da tela. Coleção vazia
+  // fica só nisto -- o tom e o véu abaixo são da colagem, e no C++ moram dentro
+  // do `if (n > 0)`. É o que faz o card ( 0 ) ser uma placa lisa e visível.
+  ctx.fillStyle = 'rgb(18,28,22)';
+  ctx.fillRect(x, y, l, a);
+
+  // As capas saem do que a coleção MOSTRA, não do que ela guarda: uma junção e um
+  // cruzamento têm ids vazio, e o card deles sairia liso se olhássemos col.ids.
+  const ids = col ? jogosDe(col).slice(0, 3).map(g => g.id) : [];
+  if (ids.length) {
     ctx.save();
-    caminhoArredondado(ctx, x, y, l, a, c.r);
-    ctx.clip();
+    ctx.translate(x + l / 2, y + a / 2);
+    ctx.rotate(c.giro * Math.PI / 180);
+    ctx.globalAlpha = c.alfa;
 
-    ctx.fillStyle = CARD.indexOf('azul') === 0 ? 'rgb(20,28,52)' : 'rgb(18,28,22)';
-    ctx.fillRect(x, y, l, a);
+    const w = l * c.larg;
+    const tres = ids.map(capaPorId);
+    const prim = tres.find(Boolean);
+    const h = prim ? w * (prim.height / prim.width) : w * 1.425;
+    const g = w * c.folga;
 
-    // O grupo inteiro gira junto; dentro dele as tres se encostam.
-    //
-    // As capas saem do que a coleção MOSTRA, não do que ela guarda: uma junção e um
-    // cruzamento têm ids vazio, e o card deles sairia cinza se olhássemos col.ids.
-    const ids = col ? jogosDe(col).slice(0, 3).map(g => g.id) : [];
-    if (ids.length) {
-      ctx.save();
-      ctx.translate(x + l / 2, y + a / 2);
-      ctx.rotate(c.giro * Math.PI / 180);
-      ctx.globalAlpha = c.alfa;
+    // 1 à esquerda, centrada na altura; 2 e 3 empilhadas à direita com folga
+    // entre si, e a folga delas na mesma altura do centro da 1.
+    const pos = [
+      { x: -(w + g), y: -h / 2        },
+      { x:  0,       y: -(h + g / 2)  },
+      { x:  0,       y:  g / 2        },
+    ];
+    tres.forEach((img, n) => { if (img) ctx.drawImage(img, pos[n].x, pos[n].y, w, h); });
 
-      const w = l * c.larg;
-      const tres = ids.map(capaPorId);
-      const prim = tres.find(Boolean);
-      const h = prim ? w * (prim.height / prim.width) : w * 1.42;
-      const g = w * (c.folga || 0);
-
-      // 1 a esquerda, centrada na altura; 2 e 3 empilhadas a direita com folga
-      // entre si, e a folga delas na mesma altura do centro da 1.
-      const pos = [
-        { x: -(w + g), y: -h / 2        },
-        { x:  0,       y: -(h + g / 2)  },
-        { x:  0,       y:  g / 2        },
-      ];
-      tres.forEach((img, n) => { if (img) ctx.drawImage(img, pos[n].x, pos[n].y, w, h); });
-
-      ctx.globalAlpha = 1;
-      ctx.restore();
-    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
 
     // Tom por cima, para a colagem não competir com a grade de capas de verdade.
-    // Chapado ou em gradiente, conforme a variante.
-    if (c.tomG) {
-      const t = c.vert ? ctx.createLinearGradient(x, y, x, y + a)
-                       : ctx.createLinearGradient(x, y, x + l, y + a);
-      t.addColorStop(0, c.tomG[0]);
-      t.addColorStop(1, c.tomG[1]);
-      ctx.fillStyle = t;
-    } else {
-      ctx.fillStyle = c.tom;
-    }
+    const t = ctx.createLinearGradient(x, y, x, y + a);
+    t.addColorStop(0, c.tomG[0]);
+    t.addColorStop(1, c.tomG[1]);
+    ctx.fillStyle = t;
     ctx.fillRect(x, y, l, a);
 
-    // véu embaixo: é o que mantém nome e contagem legíveis sobre a arte
+    // Véu embaixo: é o que mantém nome e contagem legíveis sobre a arte.
     const v = ctx.createLinearGradient(0, y + a * 0.42, 0, y + a);
     v.addColorStop(0, 'rgba(8,14,10,0)');
     v.addColorStop(1, 'rgba(8,14,10,0.94)');
     ctx.fillStyle = v; ctx.fillRect(x, y + a * 0.42, l, a * 0.58);
-
-    ctx.restore();
   }
+  ctx.restore();
 
+  // Contorno: 3 px verde em foco, 1 px de linha fora dele. No C++ são quatro
+  // segmentos retos mais os arcos, que dá no mesmo desenho.
   ctx.strokeStyle = selecionado ? COR_ANEL : COR_LINHA;
   ctx.lineWidth = selecionado ? 3 : 1;
-  if (c && c.r) { caminhoArredondado(ctx, x, y, l, a, c.r); ctx.stroke(); }
-  else {
-    const d = selecionado ? 1.5 : 0.5, e = selecionado ? 3 : 1;
-    ctx.strokeRect(x + d, y + d, l - e, a - e);
-  }
+  const d = selecionado ? 1.5 : 0.5;
+  caminhoArredondado(ctx, x + d, y + d, l - d*2, a - d*2, c.r);
+  ctx.stroke();
 }
 
 // Emblema no canto superior direito, dizendo que a coleção é composta e QUAL das
@@ -460,17 +373,16 @@ function emblema(ctx, x, y, lado, tipo){
     ctx.restore();
   };
 
+  // VERDE, o mesmo COR_ANEL do anel de foco -- é o que o QuadTex do C++ passa.
+  // Branco aqui escondia que há dois verdes competindo no canto de um card em foco.
   desenha(1, 1, 'rgba(6,10,8,0.75)');     // sombra: sem ela o emblema some em capa clara
-  desenha(0, 0, 'rgba(236,242,238,0.95)');
+  desenha(0, 0, COR_ANEL);
 }
 
 function pintarFundo(ctx) {
-  const f = FUNDOS[FUNDO];
-  if (!f) { ctx.fillStyle = COR_FUNDO; ctx.fillRect(0,0,1280,720); return; }
-  const g = f.ang === 'vert' ? ctx.createLinearGradient(0, 0, 0, 720)
-                             : ctx.createLinearGradient(0, 0, 1280, 720);
-  g.addColorStop(0, f.de);
-  g.addColorStop(1, f.para);
+  const g = ctx.createLinearGradient(0, 0, 1280, 720);
+  g.addColorStop(0, FUNDO_DE);
+  g.addColorStop(1, FUNDO_PARA);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 1280, 720);
 }
@@ -481,14 +393,77 @@ const COR_FRACO   = 'rgb(92,104,98)';
 const COR_LINHA   = 'rgb(43,53,47)';
 const COR_ANEL    = 'rgb(155,203,60)';
 
-// A fonte do console é o Arial_16 da ATG, atlas de bitmap de 27px. Aproximamos.
-const F_BASE = 17, F_TITULO = 25, F_MINI = 13;
+// ===========================================================================
+// A FONTE. O console desenha com o atlas app/media/Arial_16.xpr, 27 px de altura
+// e UM PESO SÓ. A tabela abaixo é o avanço de cada caractere (wOffset +
+// wAdvance) extraído desse mesmo arquivo: é com estes números que o
+// GetTextExtent responde e que o ATGFONT_TRUNCATED decide onde cortar.
+//
+// Medir com a sans do navegador subestimava a largura em ~22%, e com isso um
+// nome comprido PARECIA caber onde no console é cortado -- a prévia mostrava
+// "Call of Duty: Wor..." onde a TV mostra "Call of Duty: ". Agora cada string é
+// esticada para ocupar exatamente o que ocuparia lá.
+//
+// Nada aqui é negrito, porque no console não haveria como.
+//
+// A tabela cobre o Latin-1 e o Latin ext-A, que é tudo o que o atlas tem fora do
+// ASCII: a PONTUAÇÃO TIPOGRÁFICA INTEIRA está fora dele (nem ’ ‘ “ – — …, nem
+// ® © ™), e por isso o que não estiver aqui é mesmo quadradinho na TV.
+// ===========================================================================
+const ATLAS = {"desconhecido":18,"avanco":{"32":6,"33":7,"34":10,"35":12,"36":12,"37":17,"38":15,"39":5,"40":7,"41":7,"42":8,"43":12,"44":6,"45":7,"46":6,"47":6,"48":12,"49":12,"50":12,"51":12,"52":12,"53":12,"54":12,"55":12,"56":12,"57":12,"58":7,"59":7,"60":12,"61":12,"62":12,"63":13,"64":20,"65":15,"66":15,"67":15,"68":15,"69":14,"70":13,"71":16,"72":14,"73":5,"74":12,"75":15,"76":13,"77":17,"78":14,"79":16,"80":14,"81":16,"82":15,"83":14,"84":13,"85":14,"86":13,"87":21,"88":14,"89":13,"90":12,"91":7,"92":6,"93":7,"94":12,"95":12,"96":7,"97":12,"98":13,"99":12,"100":13,"101":12,"102":7,"103":13,"104":13,"105":5,"106":5,"107":12,"108":5,"109":19,"110":13,"111":13,"112":13,"113":13,"114":8,"115":12,"116":7,"117":13,"118":13,"119":15,"120":12,"121":11,"122":11,"123":8,"124":6,"125":8,"126":12,"161":7,"162":12,"163":12,"165":12,"167":12,"170":8,"171":12,"176":8,"178":7,"179":7,"181":12,"183":6,"185":7,"186":8,"187":12,"191":13,"192":15,"193":15,"194":15,"195":15,"196":15,"198":21,"199":15,"200":14,"201":14,"202":14,"203":14,"204":5,"205":5,"206":5,"207":5,"209":14,"210":16,"211":16,"212":16,"213":16,"214":16,"216":16,"217":14,"218":14,"219":14,"220":14,"221":13,"223":13,"224":12,"225":12,"226":12,"227":12,"228":12,"230":19,"231":12,"232":12,"233":12,"234":12,"235":12,"236":5,"237":5,"238":5,"239":5,"241":13,"242":13,"243":13,"244":13,"245":13,"246":13,"248":13,"249":13,"250":13,"251":13,"252":13,"253":11,"255":11,"256":27,"257":27,"258":27,"259":27,"260":27,"261":27,"262":27,"263":27,"264":27,"265":27,"266":27,"267":27,"268":27,"269":27,"270":27,"271":27,"320":27,"321":27,"322":27,"323":27,"324":27,"325":27,"326":27,"327":27,"328":27,"329":27,"330":27,"331":27,"332":27,"333":27,"334":27,"335":27,"338":21,"339":20,"376":13,"8364":11}};
+const PILHA = 'Arial, Helvetica, sans-serif';
+const ALT_GLIFO = 27;                 // altura da caixa do glifo, a 1,0
+let F_BASE = 22.5;                    // px equivalentes; calibrado no arranque
 
-// Coleções: quadrados. Medidas escolhidas AQUI, para depois virarem constantes no C++.
-const COL_LADO = 180, COL_GAP = 30, COL_POR_LINHA = 5, COL_LINHAS = 2;
-// Sem cabeçalho, a grade sobe: 64px fica dentro da área segura da TV (que corta uns
-// 8% das bordas) sem deixar uma faixa morta no topo.
-const COL_TOPO = 64;
+// Tudo o que o atlas não tem sai como quadradinho na TV. Em vez de prometer que
+// não há nenhum, a página CONTA: o que cair aqui aparece na barra de baixo.
+const SEM_GLIFO = new Set();
+function medir(txt, e){
+  let w = 0;
+  for (const ch of String(txt)){
+    const a = ATLAS.avanco[ch.codePointAt(0)];
+    if (a === undefined){ SEM_GLIFO.add(ch); w += ATLAS.desconhecido; }
+    else w += a;
+  }
+  return w * (e || 1);
+}
+function calibrar(){
+  const amostra = 'Exportar para o Vault Castlevania 0123 coleção';
+  ctx.font = '100px ' + PILHA;
+  const m = ctx.measureText(amostra).width;
+  if (m > 0) F_BASE = 100 * medir(amostra, 1) / m;
+}
+// As escalas são as MESMAS do C++: SetScaleFactors(0.72) para as miudezas,
+// 1,0 para o corpo, 1,3 para as frases de tela vazia, 1,5 para o cabeçalho.
+function fonte(e){ ctx.font = (F_BASE * (e || 1)).toFixed(2) + 'px ' + PILHA; }
+
+// O DrawText da ATG recebe o TOPO da caixa do glifo, não a linha de base -- é por
+// isso que os y daqui são os mesmos números do main.cpp.
+function texto(txt, x, y, cor, e, alin){
+  e = e || 1;
+  fonte(e);
+  const alvo = medir(txt, e), tem = ctx.measureText(txt).width;
+  let x0 = x;
+  if      (alin === 'center') x0 = x - alvo/2;
+  else if (alin === 'right')  x0 = x - alvo;
+  ctx.fillStyle = cor;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+  ctx.save();
+  ctx.translate(x0, y + ALT_GLIFO*e/2);
+  if (tem > 0) ctx.scale(alvo/tem, 1);    // resíduo: a fonte local não é a mesma
+  ctx.fillText(txt, 0, 0);
+  ctx.restore();
+}
+
+// Coleções: quadrados de 244, QUATRO por linha, centralizados por cálculo.
+// Eram 5 de 180 aqui e 4 de 244 no console -- a prévia mostrava 10 cards onde
+// cabem 8, cada um com 84% menos área.
+const COL_LADO = 244, COL_GAP = 32, COL_POR_LINHA = 4, COL_LINHAS = 2;
+const COL_TOPO = 72;
+const COL_MARGEM = (1280 - (COL_POR_LINHA*COL_LADO + (COL_POR_LINHA-1)*COL_GAP)) / 2;
+// Com a barra de categorias a grade desce: 96 + 244 + 32 + 244 = 616, e o rodapé
+// só começa em 656.
+const COL_TOPO_ABA = 96;
 
 const cv = document.getElementById('tela'), ctx = cv.getContext('2d');
 
@@ -528,7 +503,7 @@ cols.forEach((c, i) => {
 const salvar = () => { try { localStorage.setItem(CHAVE, JSON.stringify(cols)); } catch(e){} };
 
 let tela = 'colecoes';      // colecoes | jogos | adicionar | origens
-let iCol = 0, iJogo = 0, primeiraLinha = 0, atual = null, editando = null;
+let iCol = 0, iJogo = 0, primeiraLinha = 0, primeiraLinhaCol = 0, atual = null, editando = null;
 
 // Montando uma composta: a coleção em edição e o RASCUNHO das origens. Rascunho pelo
 // mesmo motivo do escolhedor de jogos -- sem ele o B não teria o que desfazer.
@@ -672,11 +647,12 @@ const contaRascunho = () =>
 // Todos. O escolhedor mostra a biblioteca inteira, como hoje.
 const lista = () => tela === 'adicionar' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
 
-// ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres
-function cortar(txt, larguraMax){
-  if (ctx.measureText(txt).width <= larguraMax) return txt;
+// ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres,
+// e monta as reticências com três pontos de verdade (o U+2026 está fora do atlas).
+function cortar(txt, larguraMax, e){
+  if (medir(txt, e) <= larguraMax) return txt;
   let s = txt;
-  while (s.length > 1 && ctx.measureText(s+'...').width > larguraMax) s = s.slice(0,-1);
+  while (s.length > 1 && medir(s+'...', e) > larguraMax) s = s.slice(0,-1);
   return s + '...';
 }
 
@@ -684,24 +660,24 @@ function cortar(txt, larguraMax){
 // A ATG sabe desenhar '\n' (DrawText trata o caractere), entao isto e reproduzivel no
 // C++ -- mas la a quebra tem de ser feita por nos, medindo com GetTextExtent, e NAO
 // com ATGFONT_TRUNCATED junto, que e um caminho que ja nos deu estouro de memoria.
-function quebrar(texto, maxLargura, maxLinhas){
-  const palavras = String(texto).split(/\s+/).filter(Boolean);
+function quebrar(txt, maxLargura, maxLinhas, e){
+  const palavras = String(txt).split(/\s+/).filter(Boolean);
   const linhas = [];
   let atual = '';
 
   for (let i = 0; i < palavras.length; i++){
     const tenta = atual ? atual + ' ' + palavras[i] : palavras[i];
-    if (ctx.measureText(tenta).width <= maxLargura){ atual = tenta; continue; }
+    if (medir(tenta, e) <= maxLargura){ atual = tenta; continue; }
 
     // Na última linha permitida, o resto todo entra e o cortar() põe as reticências.
     if (linhas.length === maxLinhas - 1){
-      linhas.push(cortar((atual ? atual + ' ' : '') + palavras.slice(i).join(' '), maxLargura));
+      linhas.push(cortar((atual ? atual + ' ' : '') + palavras.slice(i).join(' '), maxLargura, e));
       return linhas;
     }
     if (atual) linhas.push(atual);
     atual = palavras[i];
   }
-  if (atual) linhas.push(cortar(atual, maxLargura));   // palavra única maior que a linha
+  if (atual) linhas.push(cortar(atual, maxLargura, e));  // palavra única maior que a linha
   return linhas;
 }
 
@@ -716,323 +692,223 @@ function capa(indice){
   return null;
 }
 
-// ---- rodapé do console: símbolo do botão e ação ---------------------------
-function botao(x, y, letra, cor){
-  ctx.beginPath(); ctx.arc(x+9, y+9, 9, 0, Math.PI*2);
-  ctx.fillStyle = cor; ctx.fill();
-  ctx.font = `600 ${F_MINI-1}px var(--mono), monospace`;
-  ctx.fillStyle = '#0B1004'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(letra, x+9, y+10);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  return x + 24;
-}
-const CORES_BOTAO = {A:'#6DC849', B:'#F2565B', X:'#4B9BE8', Y:'#F0C036'};
+// ---- rodapé do console: glifo do botão e ação -----------------------------
+//
+// Os botões do rodapé são GLIFOS DO ATLAS (GLYPH_A_BUTTON e companhia), e o
+// AtgFont os desenha na MESMA COR DO TEXTO -- formas chapadas em COR_APAGADO.
+// Aqui eram bolinhas coloridas de tutorial de PC, que é um rodapé que o console
+// não desenha. Medidos no atlas: A/B/X/Y ocupam 27 px, Start e Back 54 (são dois
+// caracteres cada).
+const LARG_GLIFO = { A:27, B:27, X:27, Y:27, START:54, BACK:54 };
+const glifos = {};
 
+function glifoBotao(qual, cor){
+  const chave = qual + cor;
+  if (glifos[chave]) return glifos[chave];
+  const w = LARG_GLIFO[qual], h = ALT_GLIFO;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  g.fillStyle = cor;
+
+  if (qual === 'START' || qual === 'BACK'){
+    // Oval pequeno, como o do controle. A palavra fica VAZADA, que é o que uma
+    // máscara de alfa faz: o furo mostra o que estiver atrás.
+    const bw = 30, bh = 16, bx = (w - bw)/2, by = (h - bh)/2;
+    g.beginPath();
+    g.ellipse(bx + bw/2, by + bh/2, bw/2, bh/2, 0, 0, Math.PI*2);
+    g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = '600 8px ' + PILHA;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(qual, w/2, h/2 + 0.5);
+  } else {
+    g.beginPath(); g.arc(w/2, h/2, 9.5, 0, Math.PI*2); g.fill();
+    g.globalCompositeOperation = 'destination-out';
+    g.font = '600 12px ' + PILHA;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(qual, w/2, h/2 + 0.5);
+  }
+  glifos[chave] = c;
+  return c;
+}
+
+function glifo(x, y, qual, cor){
+  ctx.drawImage(glifoBotao(qual, cor), x, y);
+  return LARG_GLIFO[qual];
+}
+
+// No C++ o rodapé é UMA string só: glifo + " Abrir" + cinco espaços + glifo + ...
+// Reproduzir a emenda importa, porque são os espaços do atlas que dão o ritmo.
+const EMENDA = '     ';
 function rodape(itens, direita){
   let x = MARGEM_X;
-  ctx.font = `${F_BASE}px sans-serif`;
-  for (const [b, txt] of itens){
-    if (b === 'menu'){
-      ctx.fillStyle = '#1D2521'; ctx.fillRect(x, 651, 24, 18);
-      ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1; ctx.strokeRect(x+.5, 651.5, 23, 17);
-      ctx.fillStyle = COR_APAGADO; ctx.font = `${F_MINI}px sans-serif`;
-      ctx.textAlign='center'; ctx.fillText('☰', x+12, 655); ctx.textAlign='left';
-      x += 30;
-    } else {
-      x = botao(x, 651, b, CORES_BOTAO[b]);
-    }
-    ctx.font = `${F_BASE}px sans-serif`;
-    ctx.fillStyle = COR_APAGADO;
-    ctx.fillText(txt, x, 653);
-    x += ctx.measureText(txt).width + 26;
+  for (const [b, t] of itens){
+    x += glifo(x, 656, b, COR_APAGADO);
+    texto(' ' + t, x, 656, COR_APAGADO, 1);
+    x += medir(' ' + t, 1) + medir(EMENDA, 1);
   }
-  if (direita){
-    ctx.fillStyle = COR_FRACO; ctx.textAlign = 'right';
-    ctx.fillText(direita, 1180, 653); ctx.textAlign = 'left';
-  }
+  if (direita) texto(direita, 1180, 656, COR_FRACO, 1, 'right');
 }
 
 function cabecalho(titulo, sub){
-  ctx.textBaseline = 'top';
-  ctx.font = `600 ${F_TITULO}px sans-serif`;
-  ctx.fillStyle = COR_TEXTO;
-  ctx.fillText(titulo, MARGEM_X, 34);
-  if (sub){
-    ctx.font = `${F_BASE}px sans-serif`;
-    ctx.fillStyle = COR_FRACO;
-    ctx.fillText(sub, MARGEM_X + ctx.measureText(titulo).width * 0 + 260, 46);
-  }
+  texto(titulo, MARGEM_X, 34, COR_TEXTO, 1.5);
+  // CORTADO em 820 px: o subtítulo de uma composta é a lista das origens, e com
+  // três nomes ele passaria da borda direita. É o caso que o comentário do C++
+  // cita como motivo de o truncamento existir.
+  if (sub) texto(cortar(sub, 1180 - (MARGEM_X + 260), 1), MARGEM_X + 260, 46, COR_FRACO, 1);
 }
 
-// ---- as abas de categoria, desenhadas --------------------------------------
-// Geometria que MUDA com o estilo escolhido. O trilho da esquerda e o unico que
-// cobra alguma coisa: ele come 200 px de largura e a grade cai de 5 para 4 por
-// linha. Os de cima cabem na folga que ja existia -- a grade de colecoes termina
-// em y=454 e o rodape so comeca em 651.
-const colPorLinha = () => ABA_ESTILO === 'coluna' ? 4 : COL_POR_LINHA;
-const colX0       = () => ABA_ESTILO === 'coluna' ? 300 : MARGEM_X;
-const colTopoAba  = () => (ABA_ESTILO === 'coluna' || ABA_ESTILO === 'nenhuma')
-                          ? COL_TOPO : 124;
+// ---- a barra de categorias -------------------------------------------------
+// Geometria copiada do main.cpp: ABA_Y, ABA_ALT, ABA_PAD, ABA_GAP, CHIP_L,
+// CHIP_ALT. Os outros quatro desenhos que foram comparados (steam, seletor,
+// coluna, nenhuma) saíram daqui quando a pílula foi escolhida -- ficam no commit
+// f3d8d8b. A prévia reproduz o que o console desenha, e o console desenha um só.
+const ABA_Y = 26, ABA_ALT = 32, ABA_PAD = 14, ABA_GAP = 10;
+const CHIP_L = 34, CHIP_ALT = 22;
+const COR_SOBRE_ANEL = 'rgb(11,16,4)';
 
-// Caixinha do bumper, RETANGULAR de proposito: canto arredondado no console exige
-// textura 9-slice (ver o comentario dos CARDS), e um retangulo com contorno e duas
-// chamadas que o C++ ja faz no rodape.
-function bumper(x, y, txt){
-  ctx.font = `600 ${F_MINI}px var(--mono), monospace`;
-  const w = Math.ceil(ctx.measureText(txt).width) + 14;
-  ctx.fillStyle = '#1D2521'; ctx.fillRect(x, y, w, 20);
-  ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1; ctx.strokeRect(x+.5, y+.5, w-1, 19);
-  ctx.fillStyle = COR_FRACO;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(txt, x + w/2, y + 11);
-  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-  return w;
+// A caixinha do LB e do RB: retângulo cheio com contorno de 1 px, que é o Caixa()
+// do C++. Canto reto de propósito -- a máscara de canto é de 16 px e não cabe em
+// 22 de altura.
+function chip(x, y, txt){
+  ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, CHIP_L, CHIP_ALT);
+  ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, CHIP_L - 1, CHIP_ALT - 1);
+  texto(txt, x + CHIP_L/2, ABA_Y + 7, COR_FRACO, 0.72, 'center');
 }
 
-// Seta DESENHADA, dois tracos -- nao um caractere. O atlas Arial_16 nao garante
-// U+2039/U+203A, e o que ele nao tem vira quadradinho na TV. Mesma saida do tique.
-function seta(x, y, dir, cor){
-  ctx.beginPath();
-  ctx.moveTo(x - 4*dir, y - 7); ctx.lineTo(x + 4*dir, y); ctx.lineTo(x - 4*dir, y + 7);
-  ctx.strokeStyle = cor; ctx.lineWidth = 2.5;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-  ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
-}
-
-// 1) STEAM -- fileira de rotulos, o ativo sublinhado por uma barra da cor de foco.
-// E o desenho da biblioteca da Steam no Big Picture, e o mais barato de todos no
-// console: texto + um fillRect de 3 px. Zero textura.
-function abasSteam(A){
-  const Y = 40, GAP = 34;
-  let x = MARGEM_X;
-  x += bumper(x, Y + 3, 'LB') + 16;
-
-  ctx.textBaseline = 'top';
-  for (const a of A){
-    const ativa = a.id === aba;
-    ctx.font = `600 ${F_BASE+3}px sans-serif`;
-    const w = ctx.measureText(a.nome).width;
-    ctx.fillStyle = ativa ? COR_TEXTO : COR_FRACO;
-    ctx.fillText(a.nome, x, Y);
-    if (ativa){
-      ctx.fillStyle = COR_ANEL;
-      ctx.fillRect(x, Y + 28, w, 3);
-    }
-    zona(x - 8, Y - 8, w + 16, 44, 'aba', a.id);
-    x += w + GAP;
-  }
-  bumper(x - GAP + 16, Y + 3, 'RB');
-}
-
-// 2) PILULA -- O ESCOLHIDO. A ativa e um bloco preenchido, que le de longe sem
-// depender de uma barra de 3 px enxergada do sofa.
-//
-// O canto arredondado NAO custa nada de novo: o g_canto do main.cpp ja e uma
-// mascara de 16x16 gerada no arranque, e e com ela que os cards de colecao ja sao
-// arredondados hoje. A pilula tem 32 px de altura e raio 16 -- exatamente o
-// CANTO_N --, entao as duas pontas sao a mesma textura, virada.
-function abasPilula(A){
-  const Y = 36, ALT = 32, GAP = 10;
-  let x = MARGEM_X;
-  x += bumper(x, Y + 6, 'LB') + 14;
-
-  for (const a of A){
-    const ativa = a.id === aba;
-    ctx.font = `600 ${F_BASE}px sans-serif`;
-    const w = ctx.measureText(a.nome).width + 28;
-    if (ativa){
-      caminhoArredondado(ctx, x, Y, w, ALT, ALT/2);
-      ctx.fillStyle = COR_ANEL; ctx.fill();
-    }
-    ctx.fillStyle = ativa ? '#0B1004' : COR_APAGADO;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(a.nome, x + w/2, Y + ALT/2 + 1);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-    zona(x, Y, w, ALT, 'aba', a.id);
-    x += w + GAP;
-  }
-  bumper(x - GAP + 14, Y + 6, 'RB');
-}
-
-// 3) SELETOR -- uma aba so, entre setas, com os pontinhos embaixo dizendo quantas
-// ha e onde se esta. Nao da panorama, mas nunca estoura a largura, nem com dez
-// abas e nome comprido -- e e o unico que continua legivel a tres metros da TV.
-function abasSeletor(A){
-  const Y = 34;
-  const i = Math.max(0, A.findIndex(a => a.id === aba));
-  ctx.font = `600 ${F_TITULO}px sans-serif`;
-  const nome = A[i].nome, w = ctx.measureText(nome).width;
-
-  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillStyle = COR_TEXTO;
-  ctx.fillText(nome, 640, Y);
-  ctx.textAlign = 'left';
-
-  // Seta apagada na ponta: LB no primeiro e RB no ultimo nao fazem nada, e a tela
-  // tem de dizer isso antes de a pessoa apertar.
-  seta(640 - w/2 - 28, Y + 16, -1, i > 0 ? COR_APAGADO : 'rgb(40,49,44)');
-  seta(640 + w/2 + 28, Y + 16, +1, i < A.length-1 ? COR_APAGADO : 'rgb(40,49,44)');
-  zona(640 - w/2 - 44, Y - 6, 32, 44, 'aba', A[Math.max(0,i-1)].id);
-  zona(640 + w/2 + 12, Y - 6, 32, 44, 'aba', A[Math.min(A.length-1,i+1)].id);
-
-  const PASSO = 16, x0 = 640 - (A.length - 1) * PASSO / 2;
-  for (let k = 0; k < A.length; k++){
-    ctx.beginPath(); ctx.arc(x0 + k*PASSO, Y + 46, k === i ? 4 : 3, 0, Math.PI*2);
-    ctx.fillStyle = k === i ? COR_ANEL : 'rgb(53,64,58)'; ctx.fill();
-    zona(x0 + k*PASSO - 8, Y + 38, 16, 16, 'aba', A[k].id);
-  }
-}
-
-// 4) COLUNA -- o trilho da esquerda, como a barra de colecoes da Steam no PC. E o
-// unico que mostra tudo de uma vez SEM competir com o titulo, e o unico que custa
-// layout: a grade perde uma coluna inteira.
-function abasColuna(A){
-  const X = MARGEM_X, Y0 = 72, PASSO = 40;
-  ctx.textBaseline = 'top';
-  for (let k = 0; k < A.length; k++){
-    const a = A[k], ativa = a.id === aba, y = Y0 + k*PASSO;
-    if (ativa){ ctx.fillStyle = COR_ANEL; ctx.fillRect(X, y - 2, 4, 26); }
-    ctx.font = `${ativa ? '600 ' : ''}${F_BASE+2}px sans-serif`;
-    ctx.fillStyle = ativa ? COR_TEXTO : COR_FRACO;
-    ctx.fillText(a.nome, X + 18, y);
-    zona(X, y - 6, 180, PASSO - 6, 'aba', a.id);
-  }
-  bumper(X, Y0 + A.length*PASSO + 6, 'LB');
-  bumper(X + 44, Y0 + A.length*PASSO + 6, 'RB');
-}
-
-const DESENHO_ABA = { steam:abasSteam, pilula:abasPilula,
-                      seletor:abasSeletor, coluna:abasColuna, nenhuma:null };
-
-// A barra so aparece quando ha o que escolher. Com uma aba so -- um acervo todo de
-// Xbox 360, ou nenhuma colecao ainda -- a tela e exatamente a de hoje.
 function desenharAbas(){
   const A = abasPresentes();
   if (A.length < 2) return;
-  const f = DESENHO_ABA[ABA_ESTILO];
-  if (f) f(A);
+
+  // Mede primeiro, desenha depois: no C++ as pílulas são retângulos e os rótulos
+  // são texto, e o Begin/End da fonte não pode ser intercalado com retângulo.
+  let x = MARGEM_X + CHIP_L + 16;
+  const pilulas = A.map(a => {
+    const l = medir(a.nome, 1) + ABA_PAD*2;
+    const p = { x, l, aba: a.id, nome: a.nome };
+    x += l + ABA_GAP;
+    return p;
+  });
+  const xRB = x - ABA_GAP + 16;
+
+  chip(MARGEM_X, ABA_Y + 5, 'LB');
+  chip(xRB,      ABA_Y + 5, 'RB');
+
+  for (const p of pilulas){
+    const ativa = p.aba === aba;
+    if (ativa){
+      // Raio 16 = o CANTO_N do main.cpp, a mesma máscara que arredonda os cards.
+      caminhoArredondado(ctx, p.x, ABA_Y, p.l, ABA_ALT, 16);
+      ctx.fillStyle = COR_ANEL; ctx.fill();
+    }
+    texto(p.nome, p.x + ABA_PAD, ABA_Y + 3, ativa ? COR_SOBRE_ANEL : COR_APAGADO, 1);
+    zona(p.x, ABA_Y, p.l, ABA_ALT, 'aba', p.aba);
+  }
 }
 
 // ---- tela de coleções ------------------------------------------------------
+// Maiúscula como o ParaMaiusculas() do C++: ASCII e a faixa 0xE0-0xFE do
+// Latin-1 (menos o 0xF7, que é o sinal de divisão). O toUpperCase do navegador
+// faz mais que isso -- 'ß' vira 'SS' e muda a largura -- e a quebra de linha sairia
+// diferente da do console.
+function paraMaiusculas(t){
+  let r = '';
+  for (const ch of String(t)){
+    const c = ch.codePointAt(0);
+    if      (c >= 0x61 && c <= 0x7A)                    r += String.fromCharCode(c - 0x20);
+    else if (c >= 0xE0 && c <= 0xFE && c !== 0xF7)      r += String.fromCharCode(c - 0x20);
+    else                                                r += ch;
+  }
+  return r;
+}
+
+// Rolagem como o SeguirFocoColecao() do C++: a janela só anda quando o foco sai
+// dela. Antes a prévia recalculava a primeira linha a partir do iCol a cada
+// desenho, e com isso o foco caía sempre na última linha.
+function seguirFocoColecao(){
+  const linha = (iCol / COL_POR_LINHA)|0;
+  if (linha < primeiraLinhaCol) primeiraLinhaCol = linha;
+  else if (linha >= primeiraLinhaCol + COL_LINHAS) primeiraLinhaCol = linha - COL_LINHAS + 1;
+}
+
 function telaColecoes(){
   const escolhendo = tela === 'origens';
   const L = listaDeColecoes();
   pintarFundo(ctx);
 
-  if (escolhendo){
-    cabecalho(editandoComposta.nome,
-              editandoComposta.tipo === 'uniao' ? 'em qualquer uma delas'
-                                                : 'só em todas elas');
-  } else {
-    // A barra de abas ocupa o lugar do cabecalho que esta tela nunca teve.
-    desenharAbas();
-  }
-  // Sem título nem contagem: o rodapé já diz "1 de 4", e o quadrado em foco já diz
-  // onde se está. Cabeçalho aqui seria repetir o que a tela toda já mostra.
-  ctx.textBaseline = 'top';
+  // SEM CABEÇALHO nas duas telas -- o C++ não chama Cabecalho em nenhuma delas.
+  // A barra de categorias ocupa o alto que esta tela nunca teve; escolhendo
+  // origens ela não aparece, porque ali a aba não vale.
+  if (!escolhendo) desenharAbas();
 
   if (!L.length){
-    ctx.font = `600 ${F_TITULO-3}px sans-serif`;
-    ctx.fillStyle = COR_APAGADO; ctx.textAlign = 'center';
-    // Cruzamento exige ter o que cruzar. Sem nada elegível a tela precisa dizer o
-    // que falta, senão parece quebrada.
     // Cruzamento aceita junção como origem, junção não aceita -- a frase tem de
     // dizer o que FALTA, e não a mesma coisa para os dois.
-    ctx.fillText(!escolhendo ? 'Nenhuma coleção ainda'
-               : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
-               :                                     'Nenhuma coleção para cruzar', 640, 330);
-    ctx.textAlign = 'left';
-    rodape(escolhendo ? [['B','Cancelar']] : [['X','Nova coleção']], '');
+    texto(!escolhendo ? 'Nenhuma coleção ainda'
+        : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
+        :                                     'Nenhuma coleção para cruzar',
+          640, 320, COR_APAGADO, 1.3, 'center');
+    // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
+    rodape(escolhendo ? [['B','Cancelar']]
+                      : [['X','Nova coleção'],['BACK','Exportar']], '');
     return;
   }
 
   iCol = Math.min(iCol, L.length-1);
-  const PORLINHA = escolhendo ? COL_POR_LINHA : colPorLinha();
-  const X0 = escolhendo ? MARGEM_X : colX0();
-  const inicio = Math.max(0, Math.floor(iCol/PORLINHA) - (COL_LINHAS-1)) * PORLINHA;
+  seguirFocoColecao();
+  const topo = (!escolhendo && abasPresentes().length > 1) ? COL_TOPO_ABA : COL_TOPO;
+  const base = primeiraLinhaCol * COL_POR_LINHA;
 
-  // A grade de coleções não tem cabeçalho e por isso sobe até 64. Escolhendo origens
-  // ele existe, e sem descer a grade o título ficaria por cima da primeira linha.
-  const topo = escolhendo ? 104 : (abasPresentes().length > 1 ? colTopoAba() : COL_TOPO);
-
-  for (let k = 0; k < PORLINHA*COL_LINHAS; k++){
-    const i = inicio + k;
+  for (let k = 0; k < COL_POR_LINHA*COL_LINHAS; k++){
+    const i = base + k;
     if (i >= L.length) break;
-    const x = X0 + (k % PORLINHA) * (COL_LADO + COL_GAP);
-    const y = topo + ((k / PORLINHA)|0) * (COL_LADO + COL_GAP);
+    const x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
+    const y = topo + ((k / COL_POR_LINHA)|0) * (COL_LADO + COL_GAP);
     zona(x, y, COL_LADO, COL_LADO, 'colecao', i);
 
     const sel = (i === iCol);
-    const apaga = escolhendo && !marcada(L[i]);
-
     pintarCard(ctx, x, y, COL_LADO, COL_LADO, sel, L[i]);
     emblema(ctx, x, y, COL_LADO, L[i].tipo);
 
-    // Apagar a não-marcada é um VÉU ESCURO por cima, não globalAlpha.
-    //
-    // Com alpha o card clareia em vez de escurecer: o que segura o nome é o véu de
-    // legibilidade que já está pintado dentro do card, e baixar a opacidade apaga o
-    // véu junto com a arte -- a colagem some, mas o nome some mais. O véu some com a
-    // arte e deixa o texto por cima, que é desenhado depois.
-    if (apaga){
-      caminhoArredondado(ctx, x, y, COL_LADO, COL_LADO, 10);
-      ctx.fillStyle = 'rgba(8,13,10,0.70)'; ctx.fill();
+    // Escolhendo origens: a não marcada recebe o mesmo véu dos jogos não marcados,
+    // e a marcada ganha o ANEL VERDE. O tique desenhado que havia aqui era
+    // proposta e nunca foi para o C++ -- e com ele a prévia escondia que o anel de
+    // escolhida é o mesmo verde do anel de foco.
+    if (escolhendo){
+      if (!marcada(L[i])){
+        ctx.fillStyle = 'rgba(6,9,8,0.588)';     // ARGB(150,6,9,8)
+        ctx.fillRect(x, y, COL_LADO, COL_LADO);
+      } else {
+        ctx.strokeStyle = COR_ANEL; ctx.lineWidth = 2;
+        ctx.strokeRect(x+1, y+1, COL_LADO-2, COL_LADO-2);
+      }
     }
 
-    // Texto como no card da Steam: o bloco inteiro (nome + contagem) CENTRALIZADO NA
-    // VERTICAL, não colado embaixo. A contagem entre parênteses e sem a palavra
-    // "jogos" -- coleção vazia vira "( 0 )". O nome quebra em até duas linhas, e o
-    // bloco cresce para os dois lados a partir do centro.
-    const PAD = 14, LINHA_ALT = F_BASE + 7, ALT_CONT = F_MINI + 10;
+    // Nome e contagem centrados na HORIZONTAL, o bloco ancorado pela base a 86% da
+    // altura do card e crescendo para cima quando o nome ocupa duas linhas. Nome em
+    // CAIXA ALTA -- e a maiúscula entra ANTES de medir, senão a quebra sai errada.
+    // Os dois na mesma escala 1,0: a contagem não é uma miudeza.
+    const ALT_LINHA = 28, ALT_CONT = 24;
+    const meio = x + COL_LADO/2;
+    const linhas = quebrar(paraMaiusculas(L[i].nome), COL_LADO - 28, 2, 1);
+    const topoTexto = y + COL_LADO*0.86 - (linhas.length*ALT_LINHA + ALT_CONT);
+    const cor = sel ? COR_TEXTO : COR_APAGADO;
 
-    ctx.font = `600 ${F_BASE+1}px sans-serif`;
-    const linhas = quebrar(L[i].nome, COL_LADO - PAD*2, 2);
-
-    // Centrado só na HORIZONTAL. Na vertical o bloco é ancorado pela BASE, a 86% da
-    // altura do card, e cresce para cima quando o nome ocupa duas linhas. Nem
-    // centralizado, nem colado no rodapé.
-    //
-    // ATENÇÃO ao textBaseline: nesta prévia ele é 'top', então o y do fillText é o
-    // TOPO da linha, não a base.
-    const alturaBloco = linhas.length * LINHA_ALT + ALT_CONT;
-    const cx = x + COL_LADO / 2;
-    let yLinha = y + COL_LADO * 0.86 - alturaBloco;
-
-    ctx.textAlign = 'center';
-    ctx.fillStyle = sel ? COR_TEXTO : COR_APAGADO;
-    linhas.forEach(ln => { ctx.fillText(ln, cx, yLinha); yLinha += LINHA_ALT; });
-
+    linhas.forEach((ln, n) => texto(ln, meio, topoTexto + n*ALT_LINHA, cor, 1, 'center'));
     // A contagem é a RESOLVIDA, não ids.length: numa composta esse número é zero.
-    ctx.font = `${F_MINI}px var(--mono), monospace`;
-    ctx.fillStyle = COR_FRACO;
-    ctx.fillText(`( ${conta(L[i])} )`, cx, yLinha + 3);
-    ctx.textAlign = 'left';
-
-    // Marca de escolhida, no canto de CIMA À ESQUERDA: o de cima à direita é do
-    // emblema de tipo, e uma união pode ser origem de um cruzamento -- os dois
-    // apareceriam no mesmo card.
-    // O tique é DESENHADO, dois traços -- não um '✓' da fonte, que é U+2713 e
-    // também está fora do atlas. No console isso é a mesma textura procedural do
-    // raio, gerada uma vez no arranque.
-    if (escolhendo && marcada(L[i])){
-      ctx.beginPath(); ctx.arc(x + 20, y + 20, 12, 0, Math.PI*2);
-      ctx.fillStyle = COR_ANEL; ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(x + 14, y + 20); ctx.lineTo(x + 18.5, y + 25); ctx.lineTo(x + 26.5, y + 15);
-      ctx.strokeStyle = '#0B1004'; ctx.lineWidth = 2.6;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-      ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
-    }
+    texto('( ' + conta(L[i]) + ' )', meio, topoTexto + linhas.length*ALT_LINHA,
+          COR_FRACO, 1, 'center');
   }
 
   if (escolhendo){
-    // O resultado AO VIVO enquanto se marca. É a razão de ser desta linha: um
-    // cruzamento esvazia fácil, e "( 0 )" descoberto depois de gravar é tarde.
-    const n = origens.length, r = contaRascunho();
-    rodape([['A','Marcar'],['B','Cancelar'],['menu','Concluir']],
-           `${n} ${n === 1 ? 'escolhida' : 'escolhidas'} · ${r} ${r === 1 ? 'jogo' : 'jogos'}`);
+    // O resultado AO VIVO enquanto se marca. Um cruzamento esvazia fácil, e o
+    // "( 0 )" descoberto depois de gravar é tarde. Plural fixo, como o C++.
+    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']],
+           `${origens.length} escolhidas · ${contaRascunho()} jogos`);
   } else {
-    rodape([['A','Abrir'],['X','Nova coleção'],['menu','Opções']],
+    rodape([['A','Abrir'],['X','Nova coleção'],['START','Opções'],['BACK','Exportar']],
            `${iCol+1} de ${L.length}`);
   }
 }
@@ -1043,33 +919,31 @@ function telaJogos(){
   pintarFundo(ctx);
 
   const escolhendo = tela === 'adicionar';
-  // O nome da coleção fica: diz ONDE você está. A contagem sai, que o rodapé já
-  // traz "1 de 23". Ao adicionar, a contagem de marcados fica, porque essa não
-  // está em lugar nenhum.
-  // Numa composta o subtítulo é a FÓRMULA ("Co-op ∩ Não zerado"). É o que responde
-  // "por que este jogo está aqui?", que numa coleção de jogos nunca se pergunta.
-  // A ABA TEM DE APARECER AQUI. Ela foi escolhida na tela anterior, e uma colecao
-  // de 40 jogos mostrando 6 sem dizer por que parece defeito. Entra no subtitulo,
-  // junto da formula -- que responde a mesma pergunta ("por que estes?") pelo outro
-  // lado. LB/RB aqui continuam sendo o salto por letra; a aba so troca na home.
+
+  if (!total){
+    // Este ramo VOLTA ANTES DO CABEÇALHO, como no C++ -- e é por isso que a frase
+    // precisa nomear a aba: o subtítulo que diria "Xbox 360" não chega a existir.
+    let vazia = 'Nenhum jogo nesta coleção';
+    if (!escolhendo && atual){
+      if      (atual.tipo === 'intersecao') vazia = 'Nenhum jogo está em todas elas';
+      else if (atual.tipo === 'uniao')      vazia = 'Nenhum jogo nas coleções escolhidas';
+    }
+    if (!escolhendo && aba !== 0) vazia = `Nenhum jogo de ${nomeAba(aba)} nesta coleção`;
+
+    texto(escolhendo ? 'A biblioteca está vazia' : vazia, 640, 320, COR_APAGADO, 1.3, 'center');
+    rodape(escolhendo ? [['B','Cancelar']]
+         : composta(atual) ? [['B','Voltar'],['START','Opções']]
+         :                   [['B','Voltar'],['X','Adicionar jogos']], '');
+    return;
+  }
+
+  // O nome da coleção diz ONDE você está. Numa composta o subtítulo é a FÓRMULA,
+  // que responde "por que este jogo está aqui?". A ABA entra junto: uma coleção de
+  // 40 jogos mostrando 6 sem dizer por quê parece defeito.
   const subAba = (!escolhendo && aba !== 0) ? nomeAba(aba) : '';
   cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
             escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
                        : [formula(atual), subAba].filter(Boolean).join('  ·  '));
-
-  if (!total){
-    ctx.font = `600 ${F_TITULO-3}px sans-serif`;
-    ctx.fillStyle = COR_APAGADO; ctx.textAlign='center';
-    // Composta vazia não se resolve adicionando jogos -- não há o que adicionar nela.
-    // O cruzamento vazio é o caso que mais vai acontecer, então ele diz o porquê.
-    ctx.fillText(atual.tipo === 'intersecao' ? 'Nenhum jogo está em todas elas'
-               : atual.tipo === 'uniao'      ? 'Nenhum jogo nas coleções escolhidas'
-               :                               'Nenhum jogo nesta coleção', 640, 330);
-    ctx.textAlign='left';
-    rodape(composta(atual) ? [['B','Voltar'],['menu','Opções']]
-                           : [['B','Voltar'],['X','Adicionar jogos']], '');
-    return;
-  }
 
   const base = primeiraLinha * COLUNAS;
   const tem = new Set(escolhendo ? selecao : (atual ? atual.ids : []));
@@ -1082,32 +956,28 @@ function telaJogos(){
     const x1 = GRID_MARGEM + (i % COLUNAS) * (CAPA_L + ESPACO_X);
     const y1 = TOPO + ((i / COLUNAS)|0) * (CAPA_A + ESPACO_Y);
 
-    const idx = JOGOS.indexOf(g);
-    const img = capa(idx);
+    const img = capa(JOGOS.indexOf(g));
     const marcado = !escolhendo || tem.has(g.id);
 
     if (img){
-      ctx.globalAlpha = marcado ? 1 : 0.5;
       ctx.drawImage(img, x1, y1, CAPA_L, CAPA_A);
-      ctx.globalAlpha = 1;
+      // Apagar é um VÉU POR CIMA, não globalAlpha: com alpha a capa clareia contra
+      // o fundo em vez de escurecer, e é o estado inicial de TODOS os jogos na
+      // tela de adicionar -- ou seja, o que mais se vê ali.
+      if (!marcado){
+        ctx.fillStyle = 'rgba(6,9,8,0.549)';     // ARGB(140,6,9,8)
+        ctx.fillRect(x1, y1, CAPA_L, CAPA_A);
+      }
     } else {
       ctx.strokeStyle = COR_FRACO; ctx.lineWidth = 1;
       ctx.strokeRect(x1+.5, y1+.5, CAPA_L-1, CAPA_A-1);
     }
 
+    // Marcado é o ANEL de 2 px, e só. O tique desenhado era proposta e nunca foi
+    // para o C++.
     if (escolhendo && tem.has(g.id)){
       ctx.strokeStyle = COR_ANEL; ctx.lineWidth = 2;
       ctx.strokeRect(x1+1, y1+1, CAPA_L-2, CAPA_A-2);
-      // Tique DESENHADO, igual ao da tela de coleções: o '✓' é U+2713 e está fora
-      // do atlas Arial_16, então na TV sairia quadradinho. Era a única sobra.
-      const tx = x1+CAPA_L-18, ty = y1+18;
-      ctx.beginPath(); ctx.arc(tx, ty, 12, 0, Math.PI*2);
-      ctx.fillStyle = COR_ANEL; ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(tx-6, ty); ctx.lineTo(tx-1.5, ty+5); ctx.lineTo(tx+6.5, ty-5);
-      ctx.strokeStyle = '#0B1004'; ctx.lineWidth = 2.6;
-      ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
-      ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
     }
 
     if (indice === iJogo){
@@ -1118,22 +988,20 @@ function telaJogos(){
     nomes.push({x:x1, y:y1+CAPA_A+8, indice, nome:g.nome});
   }
 
-  ctx.font = `${F_BASE}px sans-serif`;
-  for (const n of nomes){
-    ctx.fillStyle = (n.indice === iJogo) ? COR_TEXTO : COR_APAGADO;
-    ctx.fillText(cortar(n.nome, CAPA_L), n.x, n.y);
-  }
+  for (const n of nomes)
+    texto(cortar(n.nome, CAPA_L, 1), n.x, n.y,
+          (n.indice === iJogo) ? COR_TEXTO : COR_APAGADO, 1);
 
   indiceAlfabetico(L);
 
   if (escolhendo)
-    rodape([['A','Marcar'],['B','Cancelar'],['menu','Concluir']], `${selecao.length} marcados`);
+    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']], `${selecao.length} marcados`);
   else if (composta(atual))
     // Sem "Adicionar jogos": numa composta o jogo está aqui por causa de uma origem,
-    // e para tirá-lo tira-se da origem. Oferecer o botão seria oferecer um que não faz nada.
-    rodape([['A','Jogar'],['B','Voltar'],['menu','Opções']], `${iJogo+1} de ${total}`);
+    // e para tirá-lo tira-se da origem.
+    rodape([['A','Jogar'],['B','Voltar'],['START','Opções']], `${iJogo+1} de ${total}`);
   else
-    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar jogos'],['menu','Opções']],
+    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar jogos'],['START','Opções']],
            `${iJogo+1} de ${total}`);
 }
 
@@ -1142,42 +1010,201 @@ function indiceAlfabetico(L){
   const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ#'.split('');
   const presentes = new Set(L.map(g => inicial(g.nome)));
   const atualL = inicial(L[iJogo].nome);
-  const passo = (640 - 92) / letras.length;
+  const passo = (640 - 92) / letras.length;      // 20,3 px por letra
+
+  // A 1,0 a letra tem 27 px e não cabe no passo de 20,3: transborda da faixa e
+  // encosta nas vizinhas. A 0,72 ela cabe, e aí a caixa É a faixa.
+  const ESCALA = 0.72, ALT_LETRA = ALT_GLIFO * ESCALA;
 
   for (let i = 0; i < letras.length; i++){
     const y = 92 + i * passo;
     const acesa = letras[i] === atualL;
-    if (presentes.has(letras[i])) zona(1204, y-1, 28, passo, 'letra', letras[i]);
+    if (presentes.has(letras[i])) zona(1204, y, 28, passo, 'letra', letras[i]);
+
+    // Caixa ESCURA com a letra clara, não o contrário: letra escura sobre verde
+    // forte fica com cara de negrito borrado nesse tamanho. Era o inverso aqui.
     if (acesa){
-      ctx.fillStyle = COR_ANEL;
-      ctx.fillRect(1204, y-1, 28, passo-1);
+      ctx.fillStyle = 'rgba(20,34,16,0.745)';    // ARGB(190,20,34,16)
+      ctx.fillRect(1204, y, 28, passo);
     }
-    ctx.font = `${F_MINI}px var(--mono), monospace`;
-    ctx.fillStyle = acesa ? '#0B1004' : (presentes.has(letras[i]) ? COR_APAGADO : 'rgb(36,44,39)');
-    ctx.textAlign = 'center';
-    ctx.fillText(letras[i], 1218, y+1);
-    ctx.textAlign = 'left';
+    texto(letras[i], 1218, y + (passo - ALT_LETRA)/2,
+          acesa ? COR_ANEL : (presentes.has(letras[i]) ? COR_APAGADO : COR_LINHA),
+          ESCALA, 'center');
   }
 }
 
-// ---- navegação -------------------------------------------------------------
-// Rotulo do experimento. SO na previa -- nao existe no C++.
-function rotuloExperimento(ctx){
-  ctx.save();
-  ctx.font = '500 15px sans-serif';
-  ctx.textAlign = 'right';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = 'rgba(142,156,148,0.75)';
-  ctx.fillText('F fundo: ' + FUNDO + '    C card: ' + CARD + '    T abas: ' + ABA_ESTILO, 1264, 700);
-  ctx.restore();
+// ---- o modal, DESENHADO NO CANVAS ------------------------------------------
+//
+// Era um <div> de HTML aqui, fora do quadro: uma caixinha de 420 px do navegador,
+// com itens-botão e o "Apagar" vermelho parado. Nada daquilo é o que o console
+// desenha. Agora é o DesenharMenu() do main.cpp, chamada por chamada.
+//
+// A linha em foco é NEUTRA, faixa branca a 9% com a barra verde. A destrutiva não
+// tem cor própria parada: é igual às outras até receber o foco.
+const MOD_PAD = 26, MOD_ALT = 48, MOD_CABECA = 128, MOD_PE = 80;
+const MOD_MIN = 460, MOD_MAX = 760;
+const COR_PERIGO = 'rgb(201,66,58)';
+const RODAPE_MODAL = [['A','Escolher'],['B','Fechar']];
+
+// menu = { de, rotulo, titulo, itens, foco, perigo }
+let menu = null;
+
+function largRodape(itens){
+  let w = 0;
+  for (const [b, t] of itens) w += LARG_GLIFO[b] + medir(' ' + t, 1) + medir(EMENDA, 1);
+  return w - medir(EMENDA, 1);
 }
 
+function larguraDoModal(m){
+  let maior = medir(m.titulo, 1.3);
+  for (const it of m.itens) maior = Math.max(maior, medir(it, 1));
+  maior = Math.max(maior, largRodape(RODAPE_MODAL));
+  return Math.max(MOD_MIN, Math.min(MOD_MAX, Math.ceil(maior) + (MOD_PAD + 18)*2));
+}
+
+function desenharMenu(){
+  const m = menu;
+  const L = larguraDoModal(m);
+  const A = MOD_CABECA + m.itens.length * MOD_ALT + MOD_PE;
+  const x = (1280 - L)/2, y = (720 - A)/2;
+
+  // Véu de 172, não de 200: este painel não cobre a tela inteira, e ver a grade
+  // por trás é metade da ideia.
+  ctx.fillStyle = 'rgba(6,9,8,0.675)';
+  ctx.fillRect(0, 0, 1280, 720);
+
+  // Raio 16, o CANTO_N. No C++ o painel é desenhado POR DENTRO da curva, com a
+  // máscara interna, porque sobre o véu não há uma cor de fundo para adivinhar.
+  caminhoArredondado(ctx, x, y, L, A, 16);
+  ctx.fillStyle = COR_PAINEL; ctx.fill();
+  ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1;
+  caminhoArredondado(ctx, x+0.5, y+0.5, L-1, A-1, 16);
+  ctx.stroke();
+
+  texto(paraMaiusculas(m.rotulo), x + MOD_PAD, y + 26, COR_FRACO, 0.72);
+  texto(cortar(m.titulo, L - MOD_PAD*2, 1.3), x + MOD_PAD, y + 48, COR_TEXTO, 1.3);
+
+  ctx.fillStyle = COR_LINHA;
+  ctx.fillRect(x + MOD_PAD, y + 108,    L - MOD_PAD*2, 1);
+  ctx.fillRect(x + MOD_PAD, y + A - 56, L - MOD_PAD*2, 1);
+
+  for (let i = 0; i < m.itens.length; i++){
+    const ly = y + MOD_CABECA + i*MOD_ALT;
+    const mau = (i === m.perigo);
+    if (i === m.foco){
+      // De borda a borda. Não encosta em canto nenhum: a primeira linha começa
+      // 128 px abaixo do topo e a última termina 80 acima do fim, contra 16 de raio.
+      ctx.fillStyle = mau ? 'rgba(201,66,58,0.22)' : 'rgba(233,240,235,0.09)';
+      ctx.fillRect(x+1, ly, L-2, MOD_ALT);
+      ctx.fillStyle = mau ? COR_PERIGO : COR_ANEL;
+      ctx.fillRect(x+1, ly, 4, MOD_ALT);
+    }
+    // Parada, a destrutiva é uma linha como as outras.
+    const cor = (i !== m.foco) ? COR_APAGADO : (mau ? 'rgb(255,226,223)' : COR_TEXTO);
+    texto(cortar(m.itens[i], L - MOD_PAD*2, 1), x + MOD_PAD,
+          ly + (MOD_ALT - ALT_GLIFO)/2, cor, 1);
+    zona(x, ly, L, MOD_ALT, 'menu', i);
+  }
+
+  // Dentro da caixa: no rodapé da tela ficaria por cima do rodapé que a tela de
+  // baixo continua desenhando.
+  let bx = x + MOD_PAD;
+  for (const [b, t] of RODAPE_MODAL){
+    bx += glifo(bx, y + A - 42, b, COR_FRACO);
+    texto(' ' + t, bx, y + A - 42, COR_FRACO, 1);
+    bx += medir(' ' + t, 1) + medir(EMENDA, 1);
+  }
+}
+
+function abrirMenuColecao(){
+  const c = colFoco();
+  // Sem coleção nenhuma o menu não tem o que oferecer -- o exportar saiu daqui
+  // para o Back. No console isto toca o som de volta e não abre nada.
+  if (!c) return;
+  const itens = ['Renomear'];
+  if (composta(c)) itens.push('Escolher coleções');
+  itens.push('Apagar coleção');
+  menu = { de:'colecao', rotulo:'Coleção', titulo:c.nome, itens,
+           foco:0, perigo:itens.length - 1 };
+  desenhar();
+}
+
+function abrirMenuJogo(){
+  const g = lista()[iJogo]; if (!g) return;
+  menu = { de:'jogo', rotulo:'Jogo', titulo:g.nome,
+           itens:['Remover da coleção'], foco:0, perigo:0 };
+  desenhar();
+}
+
+// O Back. O exportar::ParaOVault recebe a biblioteca inteira e todas as coleções,
+// então o rodapé diz só "Exportar" e a frase inteira fica aqui. Ele não exporta na
+// hora de propósito: o vault.txt é reescrito por cima do anterior.
+function abrirMenuExportar(){
+  menu = { de:'exportar', rotulo:'Exportar',
+           titulo:'Biblioteca e coleções para o Xbox Vault',
+           itens:['Exportar','Cancelar'], foco:0, perigo:-1 };
+  desenhar();
+}
+
+function abrirMenuTipo(){
+  menu = { de:'tipo', rotulo:'Nova coleção', titulo:nomeNovo,
+           itens:['Coleção Manual','Junção','Interseção'], foco:0, perigo:-1 };
+  desenhar();
+}
+
+function escolherNoMenu(){
+  const m = menu; menu = null;
+
+  if (m.de === 'exportar'){
+    if (m.foco === 0) avisar('vault.txt gravado');
+    desenhar(); return;
+  }
+  if (m.de === 'tipo'){ criarDoTipo(['jogos','uniao','intersecao'][m.foco]); return; }
+  if (m.de === 'jogo'){ removerDaColecao(); return; }
+
+  if (m.de === 'apagar'){
+    if (m.foco === 1){
+      const c = colFoco();
+      cols.splice(cols.indexOf(c), 1);
+      limparCompostas();
+      salvar();
+      iCol = Math.max(0, iCol - 1);
+    }
+    desenhar(); return;
+  }
+
+  // colecao
+  const c = colFoco();
+  const acao = m.itens[m.foco];
+  if      (acao === 'Renomear')          abrirNome(c);
+  else if (acao === 'Escolher coleções') abrirOrigens(c);
+  else if (acao === 'Apagar coleção'){
+    // Não apaga aqui: abre a confirmação, com o SEGURO em foco.
+    menu = { de:'apagar', rotulo:'Apagar', titulo:c.nome,
+             itens:['Cancelar','Apagar esta coleção'], foco:0, perigo:1 };
+    desenhar();
+  }
+}
+
+// No console quem avisa é o balão do SISTEMA (XNotifyQueueUI), desenhado pelo xam
+// por cima do app -- não é coisa que o canvas desenhe. Fica na barra da página,
+// que é onde moram as coisas que não são a tela do console.
+function avisar(txt){
+  const el = $('#aviso');
+  el.textContent = txt + ' — no console é o balão do sistema, no canto da tela';
+  el.hidden = false;
+  clearTimeout(avisar.t);
+  avisar.t = setTimeout(() => { el.hidden = true; }, 4000);
+}
+
+// ---- navegação -------------------------------------------------------------
 function desenhar(){
   zonas = [];
   // Apagar coleção pode apagar a aba em que se está. Mesmo papel do ClampFoco do
   // C++: um lugar só, antes de desenhar, em vez de espalhado por quem edita.
   clampAba();
   if (tela === 'colecoes' || tela === 'origens') telaColecoes(); else telaJogos();
+  if (menu) desenharMenu();
 
   if (tela === 'origens')
     $('#estado').textContent = `${origens.length} origens · ${contaRascunho()} jogos`;
@@ -1189,7 +1216,13 @@ function desenhar(){
     $('#estado').textContent =
       `${iJogo+1}/${L.length} · linha ${primeiraLinha} · ${L[iJogo] ? L[iJogo].nome : ''}`;
   }
-  rotuloExperimento(ctx);
+  // O que o atlas não tem sairia como quadradinho na TV. A página denuncia em vez
+  // de prometer que não há nenhum.
+  const av = $('#sem-glifo');
+  if (SEM_GLIFO.size){
+    av.hidden = false;
+    av.textContent = 'FORA DO ATLAS: ' + Array.from(SEM_GLIFO).join(' ');
+  }
 }
 
 function moverJogo(delta){
@@ -1231,7 +1264,7 @@ function cancelarAdicionar(){
 function abrirOrigens(c){
   editandoComposta = c;
   origens = c.origens.slice();
-  tela = 'origens'; iCol = 0; primeiraLinha = 0;
+  tela = 'origens'; iCol = 0; primeiraLinha = 0; primeiraLinhaCol = 0;
   desenhar();
 }
 
@@ -1263,7 +1296,7 @@ function fecharOrigens(gravar){
 
   // Reacha por IDENTIDADE, não por nome nem por índice: a grade de origens é uma
   // lista filtrada, e o mesmo iCol cai noutra coleção na grade completa.
-  iCol = 0;
+  iCol = 0; primeiraLinhaCol = 0;
   if (sobreviveu){
     const L = ordenadas();
     const i = L.indexOf(sobreviveu);
@@ -1288,32 +1321,25 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Enter'){ confirmaNome(); e.preventDefault(); }
     return;
   }
-  if (!$('#dlg-tipo').hidden){ if (e.key === 'Escape') cancelarTipo(); return; }
-  if (!$('#dlg-menu').hidden){ if (e.key === 'Escape') $('#dlg-menu').hidden = true; return; }
   if (!$('#dlg-ajuda').hidden){ if (e.key === 'Escape' || e.key === 'Enter') $('#dlg-ajuda').hidden = true; return; }
 
   const k = e.key;
 
-  // Experimento de fundo: F alterna o fundo da tela, C o fundo do card.
-  if (k === 'f' || k === 'F'){
-    const ns = Object.keys(FUNDOS); FUNDO = ns[(ns.indexOf(FUNDO)+1) % ns.length];
-    desenhar(); return;
-  }
-  if (k === 'c' || k === 'C'){
-    const ns = Object.keys(CARDS); CARD = ns[(ns.indexOf(CARD)+1) % ns.length];
-    desenhar(); return;
-  }
-  // T cicla o DESENHO da barra de abas. É o experimento desta rodada.
-  if (k === 't' || k === 'T'){
-    ABA_ESTILO = ESTILOS_ABA[(ESTILOS_ABA.indexOf(ABA_ESTILO)+1) % ESTILOS_ABA.length];
-    if (ABA_ESTILO === 'nenhuma') aba = 0;
-    iCol = 0; desenhar(); return;
+  // O modal come o controle inteiro enquanto está aberto, como no C++: UMA ação
+  // por quadro, e nada da tela de baixo responde.
+  if (menu){
+    if      (k === 'ArrowDown') menu.foco = (menu.foco + 1) % menu.itens.length;
+    else if (k === 'ArrowUp')   menu.foco = (menu.foco - 1 + menu.itens.length) % menu.itens.length;
+    else if (k === 'Enter'){ escolherNoMenu(); e.preventDefault(); return; }
+    else if (k === 'Escape' || k === 'b' || k === 'B'){ menu = null; }
+    else return;
+    desenhar(); e.preventDefault(); return;
   }
 
   if (tela === 'colecoes' || tela === 'origens'){
     const escolhendo = tela === 'origens';
     const L = listaDeColecoes();
-    const PL = escolhendo ? COL_POR_LINHA : colPorLinha();
+    const PL = COL_POR_LINHA;
     if (k === 'ArrowRight') iCol = Math.min(L.length-1, iCol+1);
     else if (k === 'ArrowLeft') iCol = Math.max(0, iCol-1);
     else if (k === 'ArrowDown') iCol = Math.min(L.length-1, iCol+PL);
@@ -1321,7 +1347,6 @@ document.addEventListener('keydown', e => {
     // LB/RB: trocar de aba. A home é o ÚNICO lugar onde eles estão livres -- na
     // grade de jogos são o salto por letra, e escolhendo origens a aba não vale.
     else if ((k === 'q' || k === 'Q' || k === 'e' || k === 'E') && !escolhendo){
-      if (ABA_ESTILO === 'nenhuma') return;
       const A = abasPresentes();
       if (A.length < 2) return;
       const d = (k === 'q' || k === 'Q') ? -1 : 1;
@@ -1337,9 +1362,12 @@ document.addEventListener('keydown', e => {
     else if (k === 'x' || k === 'X') { if (!escolhendo) abrirNome(null); return; }
     else if (k === 'm' || k === 'M') {
       if (escolhendo) fecharOrigens(true);
-      else if (L[iCol]) abrirMenu();
+      else abrirMenuColecao();
       return;
     }
+    // O Back. Só na tela de coleções: escolhendo origens ele não vale, ali se
+    // escolhe coleção e o exportar não tem nada a ver com a escolha.
+    else if (k === 'Backspace') { if (!escolhendo) abrirMenuExportar(); e.preventDefault(); return; }
     else return;
     desenhar(); e.preventDefault();
   } else {
@@ -1360,7 +1388,7 @@ document.addEventListener('keydown', e => {
     }
     else if (k === 'm' || k === 'M'){
       if (tela === 'adicionar') concluirAdicionar();
-      else if (lista().length && !composta(atual)) abrirOpcoesJogo();
+      else if (lista().length && !composta(atual)) abrirMenuJogo();
     }
     else return;
     e.preventDefault();
@@ -1391,14 +1419,10 @@ function confirmaNome(){
   // Criar virou DUAS etapas: nome, depois tipo. Nada é criado entre uma e outra --
   // uma composta sem origem seria apagada na leitura seguinte.
   nomeNovo = t.slice(0,28);
-  $('#dt-tit').textContent = nomeNovo;
-  $('#dlg-tipo').hidden = false;
+  abrirMenuTipo();      // no console o tipo é o MESMO modal, desenhado no canvas
 }
 
-function cancelarTipo(){ $('#dlg-tipo').hidden = true; nomeNovo = ''; }
-
 function criarDoTipo(tipo){
-  $('#dlg-tipo').hidden = true;
   const c = {id: proximoId(), tipo: tipo, nome: nomeNovo, ids: [], origens: []};
   cols.push(c);
   nomeNovo = '';
@@ -1416,40 +1440,8 @@ function criarDoTipo(tipo){
   }
 }
 
-function abrirMenu(){
-  const c = colFoco();
-  $('#dm-tit').textContent = c.nome;
-  $('#dm-colecao').hidden = false; $('#dm-jogo').hidden = true;
-  // Trocar as origens só existe para composta; coleção de jogos não tem o que
-  // escolher ali.
-  $('#dm-origens').hidden = !composta(c);
-  $('#dm-origens').textContent = c.tipo === 'uniao' ? 'Escolher coleções (junção)'
-                                                    : 'Escolher coleções (cruzamento)';
-  $('#dlg-menu').hidden = false;
-}
-function abrirOpcoesJogo(){
-  const g = lista()[iJogo]; if (!g) return;
-  $('#dm-tit').textContent = g.nome;
-  $('#dm-colecao').hidden = true; $('#dm-jogo').hidden = false;
-  $('#dlg-menu').hidden = false;
-}
-
 $('#dn-cancelar').onclick = () => { $('#dlg-nome').hidden = true; editando = null; };
 $('#dn-ok').onclick = confirmaNome;
-$('#dm-fechar').onclick = () => $('#dlg-menu').hidden = true;
-$('#dt-cancelar').onclick = cancelarTipo;
-$('#dt-jogos').onclick = () => criarDoTipo('jogos');
-$('#dt-uniao').onclick = () => criarDoTipo('uniao');
-$('#dt-inter').onclick = () => criarDoTipo('intersecao');
-$('#dm-origens').onclick = () => { $('#dlg-menu').hidden = true; abrirOrigens(colFoco()); };
-$('#dm-renomear').onclick = () => { $('#dlg-menu').hidden = true; abrirNome(colFoco()); };
-$('#dm-remover').onclick = () => { $('#dlg-menu').hidden = true; removerDaColecao(); };
-$('#dm-apagar').onclick = () => {
-  const c = colFoco(); cols.splice(cols.indexOf(c),1);
-  limparCompostas();
-  salvar();
-  $('#dlg-menu').hidden = true; iCol = Math.max(0, iCol-1); desenhar();
-};
 
 // Tira das compostas as origens que não existem mais, e APAGA a que ficou sem
 // nenhuma. Repete até estabilizar, e aqui isso DEIXOU de ser teórico: apagar uma
@@ -1487,7 +1479,12 @@ cv.addEventListener('click', e => {
   for (const z of zonas){
     if (x < z.x || x > z.x + z.w || y < z.y || y > z.y + z.h) continue;
 
-    if (z.tipo === 'colecao'){
+    if (z.tipo === 'menu'){
+      if (z.dado !== menu.foco){ menu.foco = z.dado; desenhar(); }
+      else escolherNoMenu();
+    }
+    else if (menu) return;              // o modal come o clique, como come a tecla
+    else if (z.tipo === 'colecao'){
       // Clicar no que já está em foco abre (ou marca); clicar em outro só move o
       // foco. É o mesmo gesto de duas etapas do protótipo, e evita abrir sem querer.
       if (z.dado !== iCol){ iCol = z.dado; desenhar(); }
@@ -1546,6 +1543,11 @@ $('#bt-zerar').onclick = () => {
   cols=[]; salvar(); tela='colecoes'; iCol=0;
   editandoComposta=null; origens=null; desenhar();
 };
+
+// A fonte local precisa estar carregada antes da primeira medida, senão a
+// calibração sai errada e tudo nasce com a largura torta.
+calibrar();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { calibrar(); desenhar(); });
 
 for (let i = 0; i < POR_PAGINA + COLUNAS; i++) capa(i);
 desenhar();

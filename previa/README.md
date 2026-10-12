@@ -27,26 +27,50 @@ recortadas, e duplicar isso seria mais uma coisa para divergir.
 
 ## O contrato
 
-As constantes no topo do `<script>` são **cópias** de `app/main.cpp` — geometria, cores, o recorte
-de 46,8% da frente. Mudou lá, muda aqui. A prévia não inventa layout; ela reproduz.
+As constantes no topo do `<script>` são **cópias** de `app/main.cpp` — geometria, cores, escalas de
+fonte. Mudou lá, muda aqui. A prévia não inventa layout; ela reproduz. (O recorte de 46,8% da
+frente do encarte não está aqui: ele é aplicado offline, pelo `prototipo/extrair.py`, nas imagens
+que esta página carrega já recortadas.)
 
-O corte do nome usa `measureText` para reproduzir o `ATGFONT_TRUNCATED`, que corta por **largura
-em pixels** e não por contagem de caracteres.
+### A medida do texto é a do console, não a do navegador
 
-A fonte não bate exatamente: no console é o `Arial_16` da ATG, um atlas de bitmap de 27 px de
-altura, e aqui é uma sans do navegador aproximada em tamanho. Comprimento de texto pode variar
-alguns pixels.
+O desenho das letras é da fonte local, mas a **largura não é aproximada**. A página embute os
+avanços de cada caractere (`wOffset + wAdvance`) lidos do próprio `app/media/Arial_16.xpr`, que é o
+arquivo que o app carrega, e estica cada string para ocupar exatamente o que ocuparia na TV. É com
+esses números que o `GetTextExtent` responde e que o `ATGFONT_TRUNCATED` decide onde cortar.
 
-## O app inteiro, não só o que já existe
+Medir com a sans do navegador subestimava a largura em **~22%**, e isso não era detalhe: a prévia
+mostrava `Call of Duty: Wor...` onde o console mostra `Call of Duty: `, cinco ou seis caracteres a
+mais em cada nome da grade. Uma tela que parecia legível não era.
 
-A prévia mostra o aplicativo **como foi decidido** em
-[`../docs/interface.md`](../docs/interface.md), e é aqui que se itera antes de escrever C++ — não
-o contrário. A primeira versão desta prévia espelhava o estado do código e por isso abria na grade
-de jogos; está errado. **A tela inicial é a de coleções**, como sempre foi o desenho.
+**Nada aqui é negrito**, porque o atlas tem um peso só.
 
-O que está aqui e ainda não está no console: a tela de coleções, o índice alfabético, a tela de
-escolher jogos, o menu do `☰`. O que está no console e é fiel aqui: a grade de 5 por linha, a
-geometria toda, o corte de nome por largura e o rodapé.
+### O que o atlas não tem, a página denuncia
+
+Caractere sem glifo vira quadradinho na TV. Em vez de prometer que não há nenhum, a página conta: o
+que aparecer é listado na barra de cima, em vermelho. A tabela cobre o Latin-1 e o Latin ext-A, que
+é tudo o que o atlas tem fora do ASCII — **a pontuação tipográfica inteira está fora dele**: nem
+`’` `‘` `“` `–` `—` `…`, nem `®` `©` `™`.
+
+## Espelho, não proposta
+
+Esta página é o **espelho do que o `.xex` desenha hoje**. Não há mais nada aqui marcado como
+"proposta": tudo o que ela mostra está no C++, e o que foi comparado no caminho e não venceu saiu
+da página e ficou no histórico — os cinco desenhos de barra de categoria no commit `f3d8d8b`, os
+fundos e cards alternativos e o tique de "escolhida" junto com eles, os cinco desenhos de modal no
+`c783678`.
+
+Sai caro manter as duas coisas na mesma tela: nada distinguia "o console faz assim" de "isto é só
+uma ideia", e quem critica a partir daqui acaba aprovando ou reprovando a tela errada. Para
+comparar desenho **antes** de decidir, a saída é uma página avulsa, como a `modais.html` foi.
+
+Duas coisas continuam sendo substituto assumido, e nenhuma delas se vê na tela:
+
+- **A categoria de cada jogo sai do caminho da pasta**, porque o `games.json` não tem a coluna
+  `ContentItemTab` que o `biblioteca.cpp` lê. Dá o mesmo resultado neste acervo.
+- **O teclado** é um `<input>` de HTML; no console é o teclado do sistema, que desenha por cima do
+  app. O balão de aviso do sistema (`XNotifyQueueUI`) também não é coisa que o canvas desenhe, e
+  por isso aparece na barra da página.
 
 ### Coleções compostas
 
@@ -245,3 +269,16 @@ No console, o único lugar que fala de botão é o rodapé da própria tela. A j
 nela mesma, para não confundir quem abrir a prévia sem contexto.
 
 As coleções ficam no `localStorage` do navegador.
+
+## O que esta página já pegou
+
+Coisas que só apareceram depois que a medida passou a ser a do atlas:
+
+- **Dez nomes da biblioteca têm caractere que o atlas não desenha** e saem com um quadradinho na
+  TV: `Army of Two™: TFD`, `Dante's Inferno™`, `Far Cry® 3`, `Rainbow Six® Vegas 2`,
+  `Rayman® Legends`, `Need for Speed™ Carbon`, `Spider-Man™: FoF`,
+  `Tom Clancy's Splinter Cell® Blacklist™`, `Tom Clancy’s Splinter Cell® Conviction` (com
+  apóstrofo tipográfico) e `BLAZBLUE　CONTINUUM SHIFT EXTEND` (espaço ideográfico). São `™`, `®`,
+  `’` e `U+3000`.
+- **A marca de "coleção escolhida" é o mesmo verde do anel de foco**, com 2 px contra 3. Escolhendo
+  origens, distinguir a marcada da focada depende da espessura do traço.
