@@ -649,37 +649,6 @@ namespace
         // trocar a aba não resolveu nada. Desfaz, para não mexer no que funcionava.
         g_aba = abaAntes;
     }
-
-    // "em todas: Co-op, Não zerado" -- o que responde "por que este jogo está aqui?".
-    //
-    // Por EXTENSO, e não com os símbolos de conjunto: o atlas Arial_16.xpr vai só até
-    // U+20AC e a tabela de tradução manda tudo acima disso para o glifo 0, o
-    // "desconhecido". Um '∩' sairia como quadradinho na TV. O mesmo vale para o '✓' e
-    // para as reticências U+2026 -- as do ATGFONT_TRUNCATED são três pontos de
-    // verdade, montados a partir do L'.', então essas continuam valendo.
-    std::string Formula(const colecoes::Colecao *c)
-    {
-        if (!colecoes::Composta(c)) return std::string();
-
-        // O MESMO PodeSerOrigem que o Tem() usa, nao so "existe": o rotulo e o
-        // calculo tem de concordar, senao o subtitulo cita uma origem que o resultado
-        // ignora. Hoje a poda roda antes e os dois dariam igual -- mas depender disso
-        // e depender de ordem de chamada, e o resto deste commit faz questao de nao.
-        std::string s;
-        for (size_t i = 0; i < c->origens.size(); i++)
-        {
-            const colecoes::Colecao *o = colecoes::PorId(c->origens[i]);
-            if (!colecoes::PodeSerOrigem(o, c->tipo)) continue;
-            if (!s.empty()) s += ", ";
-            s += o->nome;
-        }
-        if (s.empty()) return std::string();
-
-        // As mesmas palavras do menu que criou a coleção, de propósito: quem escolheu
-        // "só o que estiver em todas elas" reencontra "em todas" aqui.
-        return (c->tipo == colecoes::TIPO_UNIAO ? "em qualquer uma: " : "em todas: ") + s;
-    }
-
     bool ColecaoEscolhida(int id)
     {
         for (size_t i = 0; i < g_escolhidas.size(); i++)
@@ -868,11 +837,18 @@ namespace
                              ATGFONT_TRUNCATED, 1180.0f - ((FLOAT)MARGEM_X + 260.0f));
     }
 
+    // UM TERCO MENOR. O par glifo+palavra vinha na altura do texto de conteudo e
+    // pesava mais que a grade a que serve -- o glifo do Start sozinho tem o dobro da
+    // altura de uma letra. Desce 4 px para continuar centrado na mesma faixa.
+    const float RODAPE_ESCALA = 0.67f;
+
     void Rodape(const WCHAR *esquerda, const WCHAR *direita)
     {
-        g_fonte.DrawText((FLOAT)MARGEM_X, 656.0f, COR_APAGADO, esquerda, 0);
+        g_fonte.SetScaleFactors(RODAPE_ESCALA, RODAPE_ESCALA);
+        g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO, esquerda, 0);
         if (direita != NULL && direita[0] != L'\0')
-            g_fonte.DrawText(1180.0f, 656.0f, COR_FRACO, direita, ATGFONT_RIGHT);
+            g_fonte.DrawText(1180.0f, 660.0f, COR_FRACO, direita, ATGFONT_RIGHT);
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
     }
 
     // ---- primitivas de desenho -------------------------------------------------
@@ -1558,17 +1534,26 @@ namespace
     // existe, e volta sozinha quando não existe.
     //
     // 96 + 244 + 32 + 244 = 616, e o rodapé só começa em 656. Cabe sem apertar nada.
-    const int ABA_Y = 26, ABA_ALT = 32, ABA_PAD = 14, ABA_GAP = 10;
+    // UM TERCO MENOR que o primeiro desenho (altura 32, folga 14, vao 10, chip de
+    // 34x22, rotulo em tamanho cheio). A barra e orientacao, nao conteudo: ela estava
+    // ocupando a altura de um titulo para dizer em que aba se esta.
+    const int ABA_Y = 30, ABA_ALT = 22, ABA_PAD = 10, ABA_GAP = 8;
     const int COL_TOPO_ABA = 96;
-    const int CHIP_L = 34, CHIP_ALT = 22;          // a caixinha do LB e do RB
-    const D3DCOLOR COR_SOBRE_ANEL = D3DCOLOR_XRGB(11, 16, 4);
+    const int CHIP_L = 24, CHIP_ALT = 16;          // a caixinha do LB e do RB
+    const float ABA_ESCALA  = 0.72f;               // rotulo da pilula
+    const float CHIP_ESCALA = 0.52f;               // "LB" e "RB"
 
     struct PilulaAba { int x, l, aba; };
 
-    // A fileira ocupa a faixa entre os dois chips. Com as sete categorias da
-    // FreeStyle mais o Soltos ela soma 989 px numa faixa de 980: passa por NOVE, e
-    // esconde uma pilula. Neste console, que tem seis categorias, sao 882 e nada
-    // rola. Entao a rolagem e rede de seguranca, nao compromisso diario.
+    // A faixa util vai de um chip ao outro, e e simetrica: 1280-1140 = 140 = ABA_X0.
+    // Por isso centrar a fileira nunca empurra um chip para fora -- a fileira mais
+    // larga que cabe e justamente a que ocupa a faixa inteira.
+    //
+    // Medido contra o atlas, com as pilulas um terco menores: as sete categorias da
+    // FreeStyle mais o Todos e o Soltos somam 713 px numa faixa de 1000, e este
+    // console (seis categorias) soma 636. ANTES da reducao o pior caso dava 989 em
+    // 980 e escondia uma pilula; agora nao ha arranjo que role. A rolagem fica, mas
+    // como rede de seguranca contra um nome de aba maior, nao como coisa do dia.
     const int ABA_X0  = MARGEM_X + CHIP_L + 16;
     const int ABA_FIM = 1180 - CHIP_L - 16;
 
@@ -1595,6 +1580,11 @@ namespace
         const int n = (int)g_abas.size();
         if (n <= 0) { *xRB = ABA_X0; return 0; }
 
+        // MEDE NA ESCALA EM QUE DESENHA: GetTextExtent ja multiplica pelo fator de
+        // escala corrente (AtgFont.cpp:550). Medir a 1,0 e desenhar a 0,72 daria
+        // pilula larga demais, com o rotulo boiando -- a mesma pegadinha que a
+        // largura do modal pegou ao contrario.
+        g_fonte.SetScaleFactors(ABA_ESCALA, ABA_ESCALA);
         int larg[biblioteca::ABA_QUANTAS + 1];
         for (int i = 0; i < n && i < biblioteca::ABA_QUANTAS + 1; i++)
         {
@@ -1602,6 +1592,7 @@ namespace
             g_fonte.GetTextExtent(NomeDaAba(g_abas[i]), &w, &h);
             larg[i] = (int)w + ABA_PAD * 2;
         }
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
 
         // A janela segue o foco, como o SeguirFoco da grade.
         const int foco = IndiceDaAba();
@@ -1615,7 +1606,14 @@ namespace
 
         const int ate = g_primeiraAba + AbasQueCabem(larg, n, g_primeiraAba);
 
-        int quantas = 0, x = ABA_X0;
+        // CENTRADA. Comecando colada na margem esquerda, duas ou tres abas deixavam
+        // meia tela vazia a direita e a fileira parecia ter sido cortada. Centrar
+        // tambem faz os dois chips emoldurarem a fileira em vez de marcarem bordas.
+        int total = 0;
+        for (int i = g_primeiraAba; i < ate; i++)
+            total += larg[i] + ((i > g_primeiraAba) ? ABA_GAP : 0);
+
+        int quantas = 0, x = (1280 - total) / 2;
         for (int i = g_primeiraAba; i < ate && quantas < capacidade; i++)
         {
             p[quantas].aba = g_abas[i];
@@ -1642,7 +1640,16 @@ namespace
 
         if (g_canto == NULL) return;      // sem a máscara, fica reta e pronto
 
-        const int R = CANTO_N;
+        // O RAIO NAO PASSA DA METADE DO LADO MENOR. A mascara tem 16 px fixos, e
+        // numa pilula de 22 de altura os quads de cima e de baixo se sobreporiam por
+        // 10 px: cada um pinta o fundo no que esta FORA da sua curva, e na faixa
+        // comum os dois comem o mesmo pedaco da lateral -- a pilula sairia roida dos
+        // lados em vez de arredondada. Encolher o quad reamostra a mascara, que e
+        // sampleada de 0 a 1 na propria geometria; nada de textura nova.
+        int R = CANTO_N;
+        if (R > l / 2) R = l / 2;
+        if (R > a / 2) R = a / 2;
+        if (R <= 0) return;
         const float u[2] = { 0.0f, 1.0f };
         const int px[4] = { x, x + l - R, x,         x + l - R };
         const int py[4] = { y, y,         y + a - R, y + a - R };
@@ -1672,31 +1679,47 @@ namespace
 
     void AbasFundo(const PilulaAba *p, int n, int xRB)
     {
-        Caixa(MARGEM_X, ABA_Y + 5, CHIP_L, CHIP_ALT, false);
-        Caixa(xRB,      ABA_Y + 5, CHIP_L, CHIP_ALT, false);
+        if (n <= 0) return;
+        Caixa(p[0].x - 16 - CHIP_L, ABA_Y + 3, CHIP_L, CHIP_ALT, false);
+        Caixa(xRB,                  ABA_Y + 3, CHIP_L, CHIP_ALT, false);
 
         for (int i = 0; i < n; i++)
             if (p[i].aba == g_aba)
-                PilulaCheia(p[i].x, ABA_Y, p[i].l, ABA_ALT, COR_ANEL);
+            {
+                // FOCO NEUTRO, o mesmo vocabulario do modal: faixa clara de fundo e
+                // uma barra verde embaixo. O verde chapado com o rotulo escuro por
+                // cima -- o desenho anterior -- fica ilegivel na TV: o
+                // antisserrilhado engorda o traco escuro contra o fundo claro e a
+                // palavra vira borrao. Agora o verde marca, e quem le e o branco.
+                PilulaCheia(p[i].x, ABA_Y, p[i].l, ABA_ALT,
+                            D3DCOLOR_ARGB(26, 233, 240, 235));
+                D3DRECT r;
+                r.x1 = p[i].x + 6;          r.y1 = ABA_Y + ABA_ALT;
+                r.x2 = p[i].x + p[i].l - 6; r.y2 = r.y1 + 3;
+                Preencher(r, COR_ANEL);
+            }
     }
 
     // Dentro do Begin da fonte.
     void AbasTexto(const PilulaAba *p, int n, int xRB)
     {
-        g_fonte.SetScaleFactors(0.72f, 0.72f);
-        g_fonte.DrawText((FLOAT)MARGEM_X + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
+        if (n <= 0) return;
+        const FLOAT xLB = (FLOAT)(p[0].x - 16 - CHIP_L);
+        g_fonte.SetScaleFactors(CHIP_ESCALA, CHIP_ESCALA);
+        g_fonte.DrawText(xLB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 4.0f,
                          g_lbVivo ? COR_FRACO : COR_LINHA, L"LB", ATGFONT_CENTER_X);
-        g_fonte.DrawText((FLOAT)xRB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 7.0f,
+        g_fonte.DrawText((FLOAT)xRB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 4.0f,
                          g_rbVivo ? COR_FRACO : COR_LINHA, L"RB", ATGFONT_CENTER_X);
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
 
+        g_fonte.SetScaleFactors(ABA_ESCALA, ABA_ESCALA);
         for (int i = 0; i < n; i++)
         {
             const bool ativa = (p[i].aba == g_aba);
-            g_fonte.DrawText((FLOAT)(p[i].x + ABA_PAD), (FLOAT)ABA_Y + 3.0f,
-                             ativa ? COR_SOBRE_ANEL : COR_APAGADO,
+            g_fonte.DrawText((FLOAT)(p[i].x + ABA_PAD), (FLOAT)ABA_Y + 1.0f,
+                             ativa ? COR_TEXTO : COR_APAGADO,
                              NomeDaAba(p[i].aba), 0);
         }
+        g_fonte.SetScaleFactors(1.0f, 1.0f);
     }
 
     void TelaColecoes()
@@ -1909,13 +1932,16 @@ namespace
                 D3DRECT r;
                 r.x1 = 1204; r.y1 = (LONG)y;
                 r.x2 = 1232; r.y2 = (LONG)(y + passo);
-                Preencher(r, D3DCOLOR_ARGB(190, 20, 34, 16));
+                Preencher(r, D3DCOLOR_ARGB(215, 20, 34, 16));
                 g_fonte.End();          // o retângulo trocou estado; refaz o lote
                 g_fonte.Begin();
             }
 
             WCHAR letra[2] = { (WCHAR)((i == 26) ? L'#' : (L'A' + i)), L'\0' };
-            g_fonte.DrawText(1218.0f, yLetra, acesa ? COR_ANEL
+            // A acesa sai em BRANCO, nao no verde: verde sobre a caixa escura tem
+            // pouco contraste nesse corpo de letra, e era tao dificil de ler quanto a
+            // aba. Quem diz "e aqui" e a caixa; quem se le e a letra.
+            g_fonte.DrawText(1218.0f, yLetra, acesa ? COR_TEXTO
                              : (tem[i] ? COR_APAGADO : COR_LINHA), letra, ATGFONT_CENTER_X);
         }
         g_fonte.End();
@@ -2076,32 +2102,15 @@ namespace
         {
             Larga(g_atual->nome, texto, 256);
 
-            // Numa composta o subtítulo é a lista das origens; numa de jogos não há o
-            // que dizer, e o cabeçalho fica como sempre foi.
-            WCHAR formula[256];
-            formula[0] = L'\0';
-            const std::string f = Formula(g_atual);
-            if (!f.empty()) Larga(f, formula, 256);
-
-            // A ABA tem de aparecer aqui. Ela foi escolhida na tela anterior, e uma
-            // coleção de 40 jogos mostrando 6 sem dizer por quê parece defeito. Entra
-            // junto da fórmula, que responde a mesma pergunta pelo outro lado. O '·'
-            // é U+00B7, que ESTÁ no atlas Arial_16 (glifo 107).
-            if (g_aba != biblioteca::ABA_AUTOMATICA)
-            {
-                // A fórmula entra CORTADA em 199, e não inteira: swprintf_s com
-                // buffer curto não trunca -- chama o invalid parameter handler, que
-                // por padrão derruba o processo. Um colecoes.txt editado à mão com
-                // muitas origens basta para chegar lá. 199 + 5 + 13 + 1 cabe nos 256.
-                WCHAR curto[200], tudo[256];
-                wcsncpy(curto, formula, 199);
-                curto[199] = L'\0';
-                swprintf_s(tudo, 256, L"%s%s%s", curto,
-                           (curto[0] != L'\0') ? L"  ·  " : L"", NomeDaAba(g_aba));
-                wcsncpy(formula, tudo, 255);
-                formula[255] = L'\0';
-            }
-            Cabecalho(texto, formula);
+            // SEM A FORMULA DA COMPOSTA. O subtitulo listava as origens ("em todas:
+            // co-op 2 players, nao zerados") e isso era texto de explicacao dentro da
+            // tela: quem abriu a colecao acabou de escolhe-la pelo nome, e a lista
+            // repetia na tela de conteudo o que a tela anterior ja disse.
+            //
+            // A ABA fica, e nao e explicacao: ela foi escolhida na tela anterior e
+            // uma colecao de 40 jogos mostrando 6 sem dizer por que parece defeito.
+            Cabecalho(texto, (g_aba != biblioteca::ABA_AUTOMATICA)
+                             ? NomeDaAba(g_aba) : L"");
         }
 
         for (int k = 0; k < qtdNomes; k++)

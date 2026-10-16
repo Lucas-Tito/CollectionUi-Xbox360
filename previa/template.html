@@ -593,24 +593,6 @@ function clampAba(){
 }
 const composta = c => !!c && c.tipo !== 'jogos';
 
-// A fórmula que o cabeçalho mostra. É o que responde "por que este jogo está aqui?"
-// sem precisar abrir nada.
-//
-// Por EXTENSO, e não com ∩ e ∪: o atlas Arial_16.xpr do console vai só até U+20AC, e
-// a tabela de tradução manda tudo acima disso para o glifo 0, o "desconhecido". Os
-// dois símbolos sairiam como quadradinho na TV. Aqui no navegador apareceriam
-// certinho, que é exatamente o tipo de mentira que a prévia existe para não contar.
-// (As reticências continuam valendo: o ATGFONT_TRUNCATED monta as dele com três
-// pontos de verdade, não com o U+2026, que também está fora.)
-function formula(c){
-  if (!composta(c)) return '';
-  const nomes = c.origens.map(porId).filter(Boolean).map(x => x.nome);
-  if (!nomes.length) return '';
-  // As MESMAS palavras do menu que criou a coleção, de propósito: quem escolheu
-  // "só em todas elas" reencontra "em todas" aqui.
-  return (c.tipo === 'uniao' ? 'em qualquer uma: ' : 'em todas: ') + nomes.join(', ');
-}
-
 // O que a grade mostra. Escolhendo origens, entra só quem a escada permite -- e
 // nunca a própria coleção em edição.
 function listaDeColecoes(){
@@ -733,22 +715,28 @@ function glifoBotao(qual, cor){
   return c;
 }
 
-function glifo(x, y, qual, cor){
-  ctx.drawImage(glifoBotao(qual, cor), x, y);
-  return LARG_GLIFO[qual];
+function glifo(x, y, qual, cor, e){
+  e = e || 1;
+  const img = glifoBotao(qual, cor);
+  ctx.drawImage(img, x, y, LARG_GLIFO[qual]*e, ALT_GLIFO*e);
+  return LARG_GLIFO[qual]*e;
 }
 
 // No C++ o rodapé é UMA string só: glifo + " Abrir" + cinco espaços + glifo + ...
 // Reproduzir a emenda importa, porque são os espaços do atlas que dão o ritmo.
 const EMENDA = '     ';
+// UM TERCO MENOR, o RODAPE_ESCALA do main.cpp. No C++ o glifo e um caractere da
+// fonte e encolhe junto com a palavra; aqui ele e uma imagem, entao a escala vai
+// na largura e na altura do drawImage para dar no mesmo.
+const RODAPE_ESCALA = 0.67, RODAPE_Y = 660;
 function rodape(itens, direita){
   let x = MARGEM_X;
   for (const [b, t] of itens){
-    x += glifo(x, 656, b, COR_APAGADO);
-    texto(' ' + t, x, 656, COR_APAGADO, 1);
-    x += medir(' ' + t, 1) + medir(EMENDA, 1);
+    x += glifo(x, RODAPE_Y, b, COR_APAGADO, RODAPE_ESCALA);
+    texto(' ' + t, x, RODAPE_Y, COR_APAGADO, RODAPE_ESCALA);
+    x += medir(' ' + t, RODAPE_ESCALA) + medir(EMENDA, RODAPE_ESCALA);
   }
-  if (direita) texto(direita, 1180, 656, COR_FRACO, 1, 'right');
+  if (direita) texto(direita, 1180, RODAPE_Y, COR_FRACO, RODAPE_ESCALA, 'right');
 }
 
 function cabecalho(titulo, sub){
@@ -764,9 +752,9 @@ function cabecalho(titulo, sub){
 // CHIP_ALT. Os outros quatro desenhos que foram comparados (steam, seletor,
 // coluna, nenhuma) saíram daqui quando a pílula foi escolhida -- ficam no commit
 // f3d8d8b. A prévia reproduz o que o console desenha, e o console desenha um só.
-const ABA_Y = 26, ABA_ALT = 32, ABA_PAD = 14, ABA_GAP = 10;
-const CHIP_L = 34, CHIP_ALT = 22;
-const COR_SOBRE_ANEL = 'rgb(11,16,4)';
+const ABA_Y = 30, ABA_ALT = 22, ABA_PAD = 10, ABA_GAP = 8;
+const CHIP_L = 24, CHIP_ALT = 16;
+const ABA_ESCALA = 0.72, CHIP_ESCALA = 0.52;
 
 // A caixinha do LB e do RB: retângulo cheio com contorno de 1 px, que é o Caixa()
 // do C++. Canto reto de propósito -- a máscara de canto é de 16 px e não cabe em
@@ -775,7 +763,7 @@ function chip(x, y, txt){
   ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, CHIP_L, CHIP_ALT);
   ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, CHIP_L - 1, CHIP_ALT - 1);
-  texto(txt, x + CHIP_L/2, ABA_Y + 7, COR_FRACO, 0.72, 'center');
+  texto(txt, x + CHIP_L/2, ABA_Y + 4, COR_FRACO, CHIP_ESCALA, 'center');
 }
 
 function desenharAbas(){
@@ -784,26 +772,33 @@ function desenharAbas(){
 
   // Mede primeiro, desenha depois: no C++ as pílulas são retângulos e os rótulos
   // são texto, e o Begin/End da fonte não pode ser intercalado com retângulo.
-  let x = MARGEM_X + CHIP_L + 16;
-  const pilulas = A.map(a => {
-    const l = medir(a.nome, 1) + ABA_PAD*2;
-    const p = { x, l, aba: a.id, nome: a.nome };
-    x += l + ABA_GAP;
+  // CENTRADA, como o main.cpp: mede a fileira inteira e só então a posiciona.
+  const largs = A.map(a => medir(a.nome, ABA_ESCALA) + ABA_PAD*2);
+  const total = largs.reduce((s, l) => s + l, 0) + ABA_GAP*(largs.length - 1);
+  let x = Math.round((1280 - total) / 2);
+  const pilulas = A.map((a, i) => {
+    const p = { x, l: largs[i], aba: a.id, nome: a.nome };
+    x += largs[i] + ABA_GAP;
     return p;
   });
   const xRB = x - ABA_GAP + 16;
 
-  chip(MARGEM_X, ABA_Y + 5, 'LB');
-  chip(xRB,      ABA_Y + 5, 'RB');
+  chip(pilulas[0].x - 16 - CHIP_L, ABA_Y + 3, 'LB');
+  chip(xRB,                        ABA_Y + 3, 'RB');
 
   for (const p of pilulas){
     const ativa = p.aba === aba;
     if (ativa){
-      // Raio 16 = o CANTO_N do main.cpp, a mesma máscara que arredonda os cards.
-      caminhoArredondado(ctx, p.x, ABA_Y, p.l, ABA_ALT, 16);
-      ctx.fillStyle = COR_ANEL; ctx.fill();
+      // FOCO NEUTRO: faixa clara e barra verde embaixo, o vocabulário do modal.
+      // Raio limitado à metade do lado menor -- a máscara de 16 px do C++ não cabe
+      // numa pílula de 22 de altura, e os cantos de cima e de baixo se comeriam.
+      caminhoArredondado(ctx, p.x, ABA_Y, p.l, ABA_ALT, Math.min(16, ABA_ALT/2));
+      ctx.fillStyle = 'rgba(233,240,235,0.102)'; ctx.fill();
+      ctx.fillStyle = COR_ANEL;
+      ctx.fillRect(p.x + 6, ABA_Y + ABA_ALT, p.l - 12, 3);
     }
-    texto(p.nome, p.x + ABA_PAD, ABA_Y + 3, ativa ? COR_SOBRE_ANEL : COR_APAGADO, 1);
+    texto(p.nome, p.x + ABA_PAD, ABA_Y + 1,
+          ativa ? COR_TEXTO : COR_APAGADO, ABA_ESCALA);
     zona(p.x, ABA_Y, p.l, ABA_ALT, 'aba', p.aba);
   }
 }
@@ -943,7 +938,7 @@ function telaJogos(){
   const subAba = (!escolhendo && aba !== 0) ? nomeAba(aba) : '';
   cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
             escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
-                       : [formula(atual), subAba].filter(Boolean).join('  ·  '));
+                       : subAba);
 
   const base = primeiraLinha * COLUNAS;
   const tem = new Set(escolhendo ? selecao : (atual ? atual.ids : []));
@@ -1022,13 +1017,15 @@ function indiceAlfabetico(L){
     if (presentes.has(letras[i])) zona(1204, y, 28, passo, 'letra', letras[i]);
 
     // Caixa ESCURA com a letra clara, não o contrário: letra escura sobre verde
-    // forte fica com cara de negrito borrado nesse tamanho. Era o inverso aqui.
+    // forte fica com cara de negrito borrado nesse tamanho. E a letra acesa sai em
+    // BRANCO, não no verde -- verde sobre a caixa escura tem pouco contraste nesse
+    // corpo de letra, e era tão difícil de ler quanto a aba acesa era.
     if (acesa){
-      ctx.fillStyle = 'rgba(20,34,16,0.745)';    // ARGB(190,20,34,16)
+      ctx.fillStyle = 'rgba(20,34,16,0.843)';    // ARGB(215,20,34,16)
       ctx.fillRect(1204, y, 28, passo);
     }
     texto(letras[i], 1218, y + (passo - ALT_LETRA)/2,
-          acesa ? COR_ANEL : (presentes.has(letras[i]) ? COR_APAGADO : COR_LINHA),
+          acesa ? COR_TEXTO : (presentes.has(letras[i]) ? COR_APAGADO : COR_LINHA),
           ESCALA, 'center');
   }
 }
