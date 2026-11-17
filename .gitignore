@@ -3,3 +3,7 @@
 
 # Cópias do colecoes.txt tiradas do console. Dados do usuário, não do projeto.
 backups/
+
+# Fotos do console e o que mais nao se versiona (tem capa de jogo)
+/local/
+__pycache__/

@@ -1,0 +1,102 @@
+# Todas as telas do app, para conferir o desenho. Formato em app/src/roteiro.h.
+# Só abre, fotografa e cancela: nenhum passo confirma nada que grave (o fotos-console.py
+# confere que o colecoes.txt saiu igual). Abas da barra: Soltos, Todos, categorias.
+#
+# Supõe a grade de coleções de hoje: a 1a é composta (tem "Escolher coleções") e a 2a é
+# manual (tem menu de jogo e tela de adicionar). Composta não tem nenhum dos dois.
+
+espera 2500
+espera capas 15000
+espera 800
+foto 01-colecoes-todos
+
+# menu da coleção em foco (composta), e a confirmação de apagar (abre com Cancelar em foco)
+aperta START
+espera 600
+foto 02-menu-colecao
+aperta CIMA          # a destrutiva é sempre a última; o menu dá a volta
+espera 300
+aperta A
+espera 600
+foto 03-confirma-apagar
+aperta B
+espera 400
+
+# exportar (Back)
+aperta BACK
+espera 600
+foto 04-menu-exportar
+aperta B
+espera 400
+
+# nova coleção: o roteiro responde o teclado; o menu de tipo não cria nada
+teclado Nova coleção
+aperta X
+espera 800
+foto 05-menu-tipo
+aperta B
+espera 400
+
+# escolher coleções da composta em foco
+aperta START
+espera 400
+aperta BAIXO
+espera 300
+aperta A
+espera 500
+espera capas 15000
+espera 600
+foto 06-origens
+aperta B
+espera 600
+
+# uma coleção manual: os jogos, o menu do jogo e a tela de adicionar
+aperta DIREITA
+espera 400
+aperta A
+espera 500
+espera capas 15000
+espera 800
+foto 07-jogos
+aperta START
+espera 600
+foto 08-menu-jogo
+aperta B
+espera 400
+aperta X
+espera 500
+espera capas 15000
+espera 800
+foto 09-adicionar
+aperta B
+espera 600
+aperta B
+espera 600
+
+# abas de categoria (RB), voltando ao Todos
+aperta RB
+espera 500
+espera capas 15000
+espera 600
+foto 10-aba-categoria-1
+aperta RB
+espera 500
+espera capas 15000
+espera 600
+foto 11-aba-categoria-2
+aperta LB 2
+espera 600
+
+# soltos (a aba antes do Todos) e o arquivar de um jogo
+aperta LB
+espera 500
+espera capas 15000
+espera 800
+foto 12-soltos
+aperta X
+espera 800
+foto 13-arquivar
+aperta B
+espera 600
+
+sai
