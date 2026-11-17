@@ -246,7 +246,11 @@ JOGOS.forEach(g => {
   g.cat = g.rom ? 5 : (RAIZ_ABA[raiz] !== undefined ? RAIZ_ABA[raiz] : 6);
 });
 
-const nomeAba = id => (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
+// O Soltos não é categoria da FreeStyle: é a aba à esquerda do Todos com os jogos que
+// não estão em coleção nenhuma (fa59339). No C++ é ABA_SOLTOS e a TELA_SOLTOS.
+const ABA_SOLTOS = -1;
+const nomeAba = id => id === ABA_SOLTOS ? 'Soltos'
+                    : (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
 
 // O APP SEMPRE ABRE EM "TODOS". Esta variável mora na memória e em lugar nenhum
 // além dela: não vai para o colecoes.txt, não vai para o config, não sobrevive a
@@ -673,13 +677,32 @@ function abasPresentes(){
   // Com UMA categoria só, "Todos" e ela são a mesma lista, e a barra viraria dois
   // botões que fazem a mesma coisa. Um acervo inteiro de Xbox 360 fica com a tela
   // de hoje -- que é o que "a aba só aparece quando se aplica" quer dizer no limite.
-  return reais.length < 2 ? [ABAS_FSD[0]] : [ABAS_FSD[0]].concat(reais);
+  const A = reais.length < 2 ? [ABAS_FSD[0]] : [ABAS_FSD[0]].concat(reais);
+  // O Soltos entra À ESQUERDA do Todos enquanto houver o que arquivar, mesmo sem
+  // categoria nenhuma: "Soltos" e "Todos" já são escolha de verdade.
+  return soltos().length ? [{ id: ABA_SOLTOS, nome: 'Soltos' }].concat(A) : A;
+}
+
+// "Em coleção" é estar numa coleção DE JOGOS, pelo TitleId (AtualizarCobertos e
+// EmAlgumaColecao do C++): composta não conta, o conteúdo dela vem das origens.
+function soltos(){
+  const chave = g => g.tid ? 'T' + g.tid.toUpperCase() : 'I' + g.id;
+  const porItem = {};
+  JOGOS.forEach(g => { porItem[g.id] = g; });
+  const em = new Set();
+  for (const c of cols) if (c.tipo === 'jogos')
+    for (const id of c.ids) if (porItem[id]) em.add(chave(porItem[id]));
+  return porNome(JOGOS.filter(g => !em.has(chave(g))));
 }
 
 // Apagar uma colecao pode apagar a aba em que se esta. Sem isto o foco fica numa
 // aba que nao existe mais e a tela some.
 function clampAba(){
-  if (!abasPresentes().some(a => a.id === aba)) aba = 0;
+  if (!abasPresentes().some(a => a.id === aba)){
+    aba = 0;
+    // Arquivar o último solto apaga a aba em que se está (ClampFoco do C++).
+    if (tela === 'soltos') tela = 'colecoes';
+  }
 }
 const composta = c => !!c && c.tipo !== 'jogos';
 
@@ -687,6 +710,8 @@ const composta = c => !!c && c.tipo !== 'jogos';
 // nunca a própria coleção em edição.
 function listaDeColecoes(){
   const todas = ordenadas();
+  // Arquivar é escolher coleção que RECEBE jogo: composta não recebe.
+  if (tela === 'arquivar') return todas.filter(c => c.tipo === 'jogos');
   if (tela === 'origens')
     // A ABA NAO VALE AQUI. Escolher origem e escolher COLECAO, e sumir com uma
     // porque a aba corrente a esvazia esconderia uma origem legitima -- a composta
@@ -698,7 +723,9 @@ function listaDeColecoes(){
   // junto, os dois garantem que nenhuma tecla leva a uma tela vazia.
   return aba === 0 ? todas : todas.filter(c => conta(c) > 0);
 }
-const marcada = c => !!origens && origens.indexOf(c.id) >= 0;
+let alvo = null, escolhidas = null;   // arquivando: o jogo e as coleções marcadas
+const marcada = c => tela === 'arquivar' ? escolhidas.indexOf(c.id) >= 0
+                                         : !!origens && origens.indexOf(c.id) >= 0;
 
 // A escada num lugar só, como no C++. Estava escrita inline em três lugares, que é o
 // oposto do que o lado C++ faz questão de fazer.
@@ -717,7 +744,9 @@ const contaRascunho = () =>
 // Ao ADICIONAR jogos a aba nao filtra: marcar o que a aba corrente mostra e
 // marcar as cegas -- o jogo entraria na colecao e sumiria da tela ao voltar para
 // Todos. O escolhedor mostra a biblioteca inteira, como hoje.
-const lista = () => tela === 'adicionar' ? porNome(JOGOS) : (atual ? jogosDe(atual) : []);
+const lista = () => tela === 'adicionar' ? porNome(JOGOS)
+                   : tela === 'soltos' ? soltos()
+                   : (atual ? jogosDe(atual) : []);
 
 // ATGFONT_TRUNCATED: corta por LARGURA em pixels, não por contagem de caracteres,
 // e monta as reticências com três pontos de verdade (o U+2026 está fora do atlas).
@@ -811,11 +840,12 @@ const ABA_ESCALA = 0.72, CHIP_ESCALA = 0.52;
 // A caixinha do LB e do RB: retângulo cheio com contorno de 1 px, que é o Caixa()
 // do C++. Canto reto de propósito -- a máscara de canto é de 16 px e não cabe em
 // 22 de altura.
-function chip(x, y, txt){
+function chip(x, y, txt, vivo){
   ctx.fillStyle = COR_PAINEL; ctx.fillRect(x, y, CHIP_L, CHIP_ALT);
   ctx.strokeStyle = COR_LINHA; ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, CHIP_L - 1, CHIP_ALT - 1);
-  texto(txt, x + CHIP_L/2, ABA_Y + 4, COR_FRACO, CHIP_ESCALA, 'center');
+  // Apagado (COR_LINHA) quando não há para onde ir: g_lbVivo e g_rbVivo do C++.
+  texto(txt, x + CHIP_L/2, ABA_Y + 4, vivo ? COR_FRACO : COR_LINHA, CHIP_ESCALA, 'center');
 }
 
 function desenharAbas(){
@@ -825,9 +855,10 @@ function desenharAbas(){
   // Mede primeiro, desenha depois: no C++ as pílulas são retângulos e os rótulos
   // são texto, e o Begin/End da fonte não pode ser intercalado com retângulo.
   // CENTRADA, como o main.cpp: mede a fileira inteira e só então a posiciona.
-  const largs = A.map(a => medir(a.nome, ABA_ESCALA) + ABA_PAD*2);
+  // Inteiros como no MedirAbas: (int)w + ABA_PAD*2, e a divisão por 2 trunca.
+  const largs = A.map(a => Math.trunc(medir(a.nome, ABA_ESCALA)) + ABA_PAD*2);
   const total = largs.reduce((s, l) => s + l, 0) + ABA_GAP*(largs.length - 1);
-  let x = Math.round((1280 - total) / 2);
+  let x = Math.trunc((1280 - total) / 2);
   const pilulas = A.map((a, i) => {
     const p = { x, l: largs[i], aba: a.id, nome: a.nome };
     x += largs[i] + ABA_GAP;
@@ -835,8 +866,9 @@ function desenharAbas(){
   });
   const xRB = x - ABA_GAP + 16;
 
-  chip(pilulas[0].x - 16 - CHIP_L, ABA_Y + 3, 'LB');
-  chip(xRB,                        ABA_Y + 3, 'RB');
+  const foco = Math.max(0, A.findIndex(a => a.id === aba));
+  chip(pilulas[0].x - 16 - CHIP_L, ABA_Y + 3, 'LB', foco > 0);
+  chip(xRB,                        ABA_Y + 3, 'RB', foco < A.length - 1);
 
   for (const p of pilulas){
     const ativa = p.aba === aba;
@@ -881,19 +913,26 @@ function seguirFocoColecao(){
 }
 
 function telaColecoes(){
-  const escolhendo = tela === 'origens';
+  // Arquivando, a aba não vale (AbaEmVigor do C++): a aba corrente é o Soltos, e sem
+  // isto toda coleção sairia com a colagem vazia e "( 0 )".
+  if (tela === 'arquivar' && aba !== 0){
+    const abaAntes = aba; aba = 0;
+    try { telaColecoes(); } finally { aba = abaAntes; }
+    return;
+  }
+  const arquivando = tela === 'arquivar';
+  const escolhendo = tela === 'origens' || arquivando;
   const L = listaDeColecoes();
   pintarFundo(ctx);
 
   // SEM CABEÇALHO nas duas telas -- o C++ não chama Cabecalho em nenhuma delas.
   // A barra de categorias ocupa o alto que esta tela nunca teve; escolhendo
   // origens ela não aparece, porque ali a aba não vale.
-  if (!escolhendo) desenharAbas();
-
   if (!L.length){
     // Cruzamento aceita junção como origem, junção não aceita -- a frase tem de
     // dizer o que FALTA, e não a mesma coisa para os dois.
     texto(!escolhendo ? 'Nenhuma coleção ainda'
+        : arquivando ? 'Nenhuma coleção para arquivar'
         : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
         :                                     'Nenhuma coleção para cruzar',
           640, 320, COR_APAGADO, 1.3, 'center');
@@ -902,6 +941,10 @@ function telaColecoes(){
                       : [['X','Nova coleção'],['BACK','Exportar']], '');
     return;
   }
+
+  // A barra vem DEPOIS do ramo vazio, como no TelaColecoes do C++: sem coleção
+  // nenhuma ela não aparece, mesmo com o Soltos tendo o que mostrar.
+  if (!escolhendo) desenharAbas();
 
   iCol = Math.min(iCol, L.length-1);
   seguirFocoColecao();
@@ -949,7 +992,22 @@ function telaColecoes(){
           COR_FRACO, 1, 'center');
   }
 
-  if (escolhendo){
+  if (arquivando){
+    // Sem cabeçalho, como a de origens: quem diz QUAL jogo está sendo arquivado é o
+    // rodapé, cortado em 420 px do jeito do C++ (encolhe e troca os três últimos
+    // caracteres por pontos a cada passo).
+    let nome = Array.from(alvo ? alvo.nome : '');
+    if (medir(nome.join(''), 1) > 420){
+      let n = nome.length;
+      while (n > 1 && medir(nome.join(''), 1) > 420){
+        nome = nome.slice(0, --n);
+        if (n >= 3) nome.splice(n - 3, 3, '.', '.', '.');
+      }
+    }
+    const q = escolhidas.length;
+    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']],
+           `${nome.join('')} · ${q} ${q === 1 ? 'coleção' : 'coleções'}`);
+  } else if (escolhendo){
     // O resultado AO VIVO enquanto se marca. Um cruzamento esvazia fácil, e o
     // "( 0 )" descoberto depois de gravar é tarde. Plural fixo, como o C++.
     rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']],
@@ -966,6 +1024,11 @@ function telaJogos(){
   pintarFundo(ctx);
 
   const escolhendo = tela === 'adicionar';
+  // A grade dos soltos é esta mesma, com três diferenças (TelaJogos do C++): no
+  // lugar do cabeçalho vai a barra de categorias, a frase de vazio é outra e o
+  // rodapé oferece arquivar.
+  const naSoltos = tela === 'soltos';
+  if (naSoltos) desenharAbas();
 
   if (!total){
     // Este ramo VOLTA ANTES DO CABEÇALHO, como no C++ -- e é por isso que a frase
@@ -976,9 +1039,11 @@ function telaJogos(){
       else if (atual.tipo === 'uniao')      vazia = 'Nenhum jogo nas coleções escolhidas';
     }
     if (!escolhendo && aba !== 0) vazia = `Nenhum jogo de ${nomeAba(aba)} nesta coleção`;
+    if (naSoltos) vazia = 'Nenhum jogo fora das coleções';
 
     texto(escolhendo ? 'A biblioteca está vazia' : vazia, 640, 320, COR_APAGADO, 1.3, 'center');
-    rodape(escolhendo ? [['B','Cancelar']]
+    rodape(naSoltos ? [['B','Voltar']]
+         : escolhendo ? [['B','Cancelar']]
          : composta(atual) ? [['B','Voltar'],['START','Opções']]
          :                   [['B','Voltar'],['X','Adicionar jogos']], '');
     return;
@@ -988,9 +1053,10 @@ function telaJogos(){
   // que responde "por que este jogo está aqui?". A ABA entra junto: uma coleção de
   // 40 jogos mostrando 6 sem dizer por quê parece defeito.
   const subAba = (!escolhendo && aba !== 0) ? nomeAba(aba) : '';
-  cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
-            escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
-                       : subAba);
+  if (!naSoltos)
+    cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
+              escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
+                         : subAba);
 
   const base = primeiraLinha * COLUNAS;
   const tem = new Set(escolhendo ? selecao : (atual ? atual.ids : []));
@@ -1043,6 +1109,8 @@ function telaJogos(){
 
   if (escolhendo)
     rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']], `${selecao.length} marcados`);
+  else if (naSoltos)
+    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar a coleções']], `${iJogo+1} de ${total}`);
   else if (composta(atual))
     // Sem "Adicionar jogos": numa composta o jogo está aqui por causa de uma origem,
     // e para tirá-lo tira-se da origem.
@@ -1243,7 +1311,7 @@ function desenhar(){
   // Apagar coleção pode apagar a aba em que se está. Mesmo papel do ClampFoco do
   // C++: um lugar só, antes de desenhar, em vez de espalhado por quem edita.
   clampAba();
-  if (tela === 'colecoes' || tela === 'origens') telaColecoes(); else telaJogos();
+  if (tela === 'colecoes' || tela === 'origens' || tela === 'arquivar') telaColecoes(); else telaJogos();
   if (menu) desenharMenu();
 
   if (tela === 'origens')
@@ -1263,6 +1331,44 @@ function desenhar(){
     av.hidden = false;
     av.textContent = 'FORA DO ATLAS: ' + Array.from(SEM_GLIFO).join(' ');
   }
+}
+
+// TrocarAba do C++: o Soltos é uma TELA alcançada por uma aba; entrar nele troca a
+// grade de coleções pela de capas, e sair dele devolve.
+function irParaAba(id){
+  aba = id; iCol = 0; primeiraLinhaCol = 0;
+  if (id === ABA_SOLTOS){ tela = 'soltos'; iJogo = 0; primeiraLinha = 0; }
+  else if (tela === 'soltos') tela = 'colecoes';
+}
+function trocarAba(d){
+  const A = abasPresentes();
+  if (A.length < 2) return false;
+  const i = Math.max(0, A.findIndex(a => a.id === aba));
+  // SEM dar a volta: com a volta, segurar o botão passa reto pelo Todos.
+  const j = Math.min(A.length-1, Math.max(0, i + d));
+  if (j === i) return false;
+  irParaAba(A[j].id);
+  return true;
+}
+function abrirArquivar(){
+  const L = soltos();
+  if (!L.length || iJogo >= L.length) return;
+  alvo = L[iJogo]; escolhidas = [];
+  tela = 'arquivar'; iCol = 0; primeiraLinhaCol = 0;
+}
+function fecharArquivar(gravar){
+  if (gravar && alvo && escolhidas.length){
+    for (const id of escolhidas){
+      const c = porId(id);
+      if (c && c.ids.indexOf(alvo.id) < 0) c.ids.push(alvo.id);
+    }
+    salvar();
+  }
+  alvo = null; escolhidas = null;
+  tela = 'soltos'; iCol = 0; primeiraLinhaCol = 0;
+  const n = soltos().length;
+  iJogo = Math.max(0, Math.min(iJogo, n - 1));
+  clampAba();
 }
 
 function moverJogo(delta){
@@ -1376,8 +1482,9 @@ document.addEventListener('keydown', e => {
     desenhar(); e.preventDefault(); return;
   }
 
-  if (tela === 'colecoes' || tela === 'origens'){
-    const escolhendo = tela === 'origens';
+  if (tela === 'colecoes' || tela === 'origens' || tela === 'arquivar'){
+    const arquivando = tela === 'arquivar';
+    const escolhendo = tela === 'origens' || arquivando;
     const L = listaDeColecoes();
     const PL = COL_POR_LINHA;
     if (k === 'ArrowRight') iCol = Math.min(L.length-1, iCol+1);
@@ -1387,17 +1494,15 @@ document.addEventListener('keydown', e => {
     // LB/RB: trocar de aba. A home é o ÚNICO lugar onde eles estão livres -- na
     // grade de jogos são o salto por letra, e escolhendo origens a aba não vale.
     else if ((k === 'q' || k === 'Q' || k === 'e' || k === 'E') && !escolhendo){
-      const A = abasPresentes();
-      if (A.length < 2) return;
-      const d = (k === 'q' || k === 'Q') ? -1 : 1;
-      const i = Math.max(0, A.findIndex(a => a.id === aba));
-      // SEM dar a volta: com a volta, segurar o botão passa reto pelo Todos e a
-      // pessoa perde a referência de onde a lista inteira está.
-      const j = Math.min(A.length-1, Math.max(0, i + d));
-      if (j === i) return;
-      aba = A[j].id; iCol = 0;
+      if (!trocarAba((k === 'q' || k === 'Q') ? -1 : 1)) return;
+    }
+    else if (k === 'Enter' && arquivando){
+      const c = L[iCol];
+      if (c){ const i = escolhidas.indexOf(c.id); i >= 0 ? escolhidas.splice(i, 1) : escolhidas.push(c.id); }
     }
     else if (k === 'Enter'){ if (escolhendo) alternaOrigem(); else if (L[iCol]) abrir(L[iCol]); return; }
+    else if ((k === 'Escape' || k === 'b' || k === 'B') && arquivando) fecharArquivar(false);
+    else if ((k === 'm' || k === 'M') && arquivando) fecharArquivar(true);
     else if (k === 'Escape' || k === 'b' || k === 'B'){ if (escolhendo) fecharOrigens(false); return; }
     else if (k === 'x' || k === 'X') { if (!escolhendo) abrirNome(null); return; }
     else if (k === 'm' || k === 'M') {
@@ -1410,6 +1515,20 @@ document.addEventListener('keydown', e => {
     else if (k === 'Backspace') { if (!escolhendo) abrirMenuExportar(); e.preventDefault(); return; }
     else return;
     desenhar(); e.preventDefault();
+  } else if (tela === 'soltos'){
+    // LB/RB continuam sendo a BARRA, não o salto por letra: a barra está na tela
+    // dizendo o que eles fazem. O salto continua no segurar ↓ (C++, TELA_SOLTOS).
+    if (k === 'ArrowRight') moverJogo(1);
+    else if (k === 'ArrowLeft') moverJogo(-1);
+    else if (k === 'ArrowDown') e.repeat ? saltoLetra(1) : moverJogo(COLUNAS);
+    else if (k === 'ArrowUp') e.repeat ? saltoLetra(-1) : moverJogo(-COLUNAS);
+    else if (k === 'q' || k === 'Q' || k === 'e' || k === 'E'){
+      if (trocarAba((k === 'q' || k === 'Q') ? -1 : 1)) desenhar();
+    }
+    else if (k === 'Escape' || k === 'b' || k === 'B'){ irParaAba(0); desenhar(); }   // volta para o Todos
+    else if (k === 'x' || k === 'X'){ abrirArquivar(); desenhar(); }
+    else return;
+    e.preventDefault();
   } else {
     if (k === 'ArrowRight') moverJogo(1);
     else if (k === 'ArrowLeft') moverJogo(-1);
@@ -1536,7 +1655,7 @@ cv.addEventListener('click', e => {
       else { moverJogo(z.dado - iJogo); }
     }
     else if (z.tipo === 'aba'){
-      if (z.dado !== aba){ aba = z.dado; iCol = 0; desenhar(); }
+      if (z.dado !== aba){ irParaAba(z.dado); desenhar(); }
     }
     else if (z.tipo === 'letra'){
       const L = lista();

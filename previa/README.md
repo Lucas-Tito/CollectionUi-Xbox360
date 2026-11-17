@@ -70,21 +70,32 @@ vence o que o navegador guardou; `--vault` traz homebrew e ROM. A biblioteca (jo
 vem da extração do `prototipo/extrair.py` sobre a cópia em `CollectionUI-dados`, que é de quando o
 console tinha 120 itens: o `montar.py` diz quantos TitleIds das coleções ficaram sem item.
 
+Igualar os dados não é objetivo. Para a barra de cima e as contagens saírem como no console,
+`--mock` (com `--colecoes`) põe um item falso no lugar de cada TitleId que falta (`previa/mock.py`):
+nome e capa do xbox-vault quando ele conhece o jogo; Xbox clássico quando o id tem as duas letras de
+editora; e, no resto, que tem cara do id sintético que o app dá a homebrew e ROM, metade de cada.
+Sem `--vault` as contagens saem maiores que as do console: o `colecoes.txt` guarda também TitleIds de
+jogos que saíram do console, e só o `vault.txt` diz quais ainda estão lá.
+
+```bash
+python3 previa/montar.py --colecoes colecoes.txt --mock [--vault vault.txt]
+```
+
 ## Proposta: por cima, nunca dentro
 
 Como a prévia é o espelho, proposta entra **por cima**, num arquivo à parte, e gera outra página:
 
 ```bash
-python3 previa/montar.py --vault ~/Downloads/vault.txt \
-        --proposta previa/soltos.js --saida previa/build/soltos.html
+python3 previa/montar.py --proposta previa/minha-ideia.js --saida previa/build/ideia.html
 ```
 
 O `.js` é carregado depois do `<script>` da prévia e reescreve as funções que precisa. Assim há uma
 implementação só do desenho, a prévia continua mostrando só o que o `.xex` faz, e a proposta vive
-num arquivo cujo nome diz o que ela é — some junto quando a decisão for tomada.
+num arquivo cujo nome diz o que ela é, e some junto quando a decisão for tomada.
 
-Hoje há uma: **`soltos.js`**, a aba à esquerda do "Todos" com os jogos que não estão em coleção
-nenhuma, e o arquivamento de um jogo em várias coleções de uma vez.
+Hoje não há nenhuma. A última, `soltos.js` (a aba Soltos e o arquivar), foi para o C++ no `fa59339`
+e entrou na prévia em 17/11, refeita a partir do C++ de hoje: o arquivo tinha ficado para trás da
+barra do `b6d78a9` e nem carregava mais.
 
 ## Espelho, não proposta
 

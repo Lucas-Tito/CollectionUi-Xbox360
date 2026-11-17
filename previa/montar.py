@@ -8,6 +8,7 @@ import argparse, base64, json, os, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import atlas
+import mock
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -79,6 +80,9 @@ def main():
     ap.add_argument('--saida', default=os.path.join(AQUI, 'build', 'previa.html'))
     ap.add_argument('--vault', help='vault.txt exportado pelo console; traz homebrew e ROM')
     ap.add_argument('--colecoes', help='colecoes.txt do console; vence o que o navegador guardou')
+    ap.add_argument('--mock', action='store_true',
+                    help='com --colecoes: itens falsos no lugar de cada TitleId que a prévia não tem '
+                         '(previa/mock.py), para as abas e as contagens saírem como no console')
     ap.add_argument('--proposta', help='.js carregado POR CIMA da prévia, para ver uma '
                                        'proposta sem sujar o espelho do console')
     a = ap.parse_args()
@@ -86,9 +90,20 @@ def main():
     jogos = json.load(open(os.path.join(a.build, 'games.json'), encoding='utf-8'))
     if a.vault:
         jogos += do_vault(a.vault)
+    if a.mock:
+        if not a.colecoes:
+            ap.error('--mock precisa de --colecoes')
+        presentes = None
+        if a.vault:
+            presentes = {l.split('|')[1].strip().upper() for l in open(a.vault, encoding='utf-8', errors='replace')
+                         if l.count('|') >= 1 and not l.startswith('#')}
+        falsos = mock.completar(a.colecoes, jogos, presentes)
+        print('mock: %d itens falsos (%d com capa do vault)' % (len(falsos), sum(1 for j in falsos if j.get('cap'))),
+              file=sys.stderr)
+        jogos += falsos
     for j in jogos:
         j.pop('bg', None)
-        if j.get('cap'):
+        if j.get('cap') and not j['cap'].startswith('data:'):
             with open(os.path.join(a.build, j['cap']), 'rb') as f:
                 j['cap'] = 'data:image/webp;base64,' + base64.b64encode(f.read()).decode()
         for k in [k for k, v in list(j.items()) if v in (None, '')]:
