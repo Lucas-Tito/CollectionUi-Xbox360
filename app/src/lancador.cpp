@@ -67,8 +67,35 @@ namespace
     }
 }
 
+namespace
+{
+    // NORETURN como a de cima: sai para a dashboard e nunca volta.
+    DWORD WINAPI ParaDashboard(LPVOID)
+    {
+        XLaunchNewImage(NULL, 0);
+    }
+}
+
 namespace lancador
 {
+    void Dashboard()
+    {
+        diario::Escrever("saindo para a dashboard");
+        diario::Fechar();
+
+        HANDLE h = CreateThread(NULL, 0, ParaDashboard, NULL, 0, NULL);
+        if (h == NULL)
+        {
+            diario::Reabrir();
+            diario::Escrever("ERRO: sem thread para sair para a dashboard");
+            return;
+        }
+        WaitForSingleObject(h, INFINITE);   // dando certo, nunca termina
+        CloseHandle(h);
+        diario::Reabrir();
+        diario::Escrever("ERRO: XLaunchNewImage(NULL) voltou");
+    }
+
     std::string Resolver(const std::string &caminhoRelativo)
     {
         int quantos = 0;

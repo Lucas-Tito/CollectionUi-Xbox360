@@ -1,5 +1,6 @@
 #include "teclado.h"
 #include "diario.h"
+#include "roteiro.h"
 #include <xtl.h>
 #include <string.h>
 
@@ -19,6 +20,11 @@ namespace
     WCHAR       g_saida[MAX];
     XOVERLAPPED g_ov;
     bool        g_aberto = false;
+
+    // Roteiro de controle (roteiro.h): a Guide não se dirige por botão sintético, então
+    // o roteiro dá a resposta e o teclado termina no quadro seguinte sem aparecer.
+    bool        g_simulado = false;
+    std::string g_respostaSimulada;
 
     // Ver o Larga de main.cpp: literal estreito do fonte vem em ANSI, nao em UTF-8, e
     // CP_UTF8 parava no primeiro acento -- o titulo "Nova colecao" chegava ao teclado
@@ -69,6 +75,23 @@ namespace teclado
         if (g_aberto)
             return false;
 
+        if (roteiro::RespostaDoTeclado(g_respostaSimulada))
+        {
+            diario::Escrever("teclado: resposta do roteiro, sem abrir a Guide");
+            g_simulado = true;
+            g_aberto = true;
+            return true;
+        }
+
+        // Com roteiro e sem resposta pronta, NÃO abre: a Guide tomaria o controle e o resto
+        // do roteiro apertaria botões no vazio (foi o que fez a segunda rodada parar na
+        // grade de coleções, com o teclado aberto na TV).
+        if (roteiro::Ativo())
+        {
+            diario::Escrever("roteiro: teclado pedido sem 'teclado' antes; nao abro a Guide");
+            return false;
+        }
+
         Larga(titulo, g_titulo, 128);
         Larga(descricao, g_descricao, 256);
         Larga(textoInicial, g_inicial, MAX);
@@ -96,6 +119,15 @@ namespace teclado
 
     bool Terminou(bool *confirmou, std::string &saida)
     {
+        if (g_aberto && g_simulado)
+        {
+            g_aberto = false;
+            g_simulado = false;
+            saida = g_respostaSimulada;
+            *confirmou = !saida.empty();
+            return true;
+        }
+
         if (!g_aberto || !XHasOverlappedIoCompleted(&g_ov))
             return false;
 

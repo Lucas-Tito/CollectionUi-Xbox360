@@ -32,6 +32,11 @@ namespace lancador
     // Quem chama tem de ter parado antes toda a I/O pendente: a doc do XDK proibe
     // lancar com leitura de disco em voo.
     bool Lancar(const biblioteca::Jogo &jogo, std::string &erro);
+
+    // Volta à dashboard (XLaunchNewImage(NULL, 0), de outra thread, como o Lancar).
+    // Só o roteiro de controle usa: para quem joga, sair do app continua sendo pela
+    // Guide. Quem chama solta antes a I/O e as texturas, como no Lancar.
+    void Dashboard();
 }
 
 #endif

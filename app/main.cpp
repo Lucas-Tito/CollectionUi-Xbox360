@@ -22,6 +22,7 @@
 #include "fsda.h"
 #include "lancador.h"
 #include "som.h"
+#include "roteiro.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
 #include "AtgDebugDraw.h"
@@ -2297,6 +2298,90 @@ namespace
         XNotifyQueueUI(XNOTIFY_GENERIC, XUSER_INDEX_ANY, XNOTIFY_PRIORIDADE_ALTA, largo, NULL);
     }
 
+    // ---- foto (roteiro de controle) ---------------------------------------------
+    // O quadro inteiro, como está no render target, resolvido numa textura antes do
+    // Present. O Resolve grava em blocos (tiling) MESMO numa textura D3DFMT_LIN_: a
+    // primeira rodada saiu em listras, com as cores certas. Então a textura é a comum e o
+    // tiling se desfaz com o XGUntileSurface, como o BT3_SHOT do bt3xbx. Só existe com roteiro: a textura de 3,5 MB
+    // nasce no primeiro pedido. Grava BMP de 24 bits, de baixo para cima, num WriteFile
+    // só (no bt3xbx, uma escrita por linha custava 260 ms por captura). O PowerPC é
+    // big-endian: os campos do cabeçalho vão byte a byte, em little-endian.
+    D3DTexture *g_fotoTex = NULL;
+
+    void Poe16(unsigned char *p, unsigned v) { p[0] = (unsigned char)v; p[1] = (unsigned char)(v >> 8); }
+    void Poe32(unsigned char *p, unsigned v) { Poe16(p, v & 0xFFFF); Poe16(p + 2, v >> 16); }
+
+    bool TirarFoto(const char *nome)
+    {
+        const int W = 1280, H = 720;
+        ATG::D3DDevice *d = ATG::g_pd3dDevice;
+        if (g_fotoTex == NULL &&
+            FAILED(d->CreateTexture(W, H, 1, 0, D3DFMT_X8R8G8B8, 0, &g_fotoTex, NULL)))
+        {
+            diario::Escrever("foto: sem textura linear");
+            g_fotoTex = NULL;
+            return false;
+        }
+        d->Resolve(D3DRESOLVE_RENDERTARGET0, NULL, g_fotoTex, NULL, 0, 0, NULL, 0.0f, 0, NULL);
+        d->BlockUntilIdle();
+
+        static DWORD *linear = NULL;
+        if (linear == NULL) linear = (DWORD *)malloc(W * H * 4);
+        D3DLOCKED_RECT r;
+        if (linear == NULL || FAILED(g_fotoTex->LockRect(0, &r, NULL, D3DLOCK_READONLY)))
+        {
+            diario::Escrever("foto: sem memoria ou LockRect falhou");
+            return false;
+        }
+        XGUntileSurface(linear, W * 4, NULL, r.pBits, W, H, NULL, 4);
+        g_fotoTex->UnlockRect(0);
+
+        const unsigned tamLinha = W * 3, tamDados = tamLinha * H, tam = 54 + tamDados;
+        static unsigned char *bmp = NULL;
+        if (bmp == NULL) bmp = (unsigned char *)malloc(tam);
+        if (bmp == NULL)
+        {
+            diario::Escrever("foto: sem memoria");
+            return false;
+        }
+        ZeroMemory(bmp, 54);
+        bmp[0] = 'B'; bmp[1] = 'M';
+        Poe32(bmp + 2, tam); Poe32(bmp + 10, 54); Poe32(bmp + 14, 40);
+        Poe32(bmp + 18, W); Poe32(bmp + 22, H); Poe16(bmp + 26, 1); Poe16(bmp + 28, 24);
+        Poe32(bmp + 34, tamDados); Poe32(bmp + 38, 2835); Poe32(bmp + 42, 2835);
+
+        unsigned fnv = 2166136261u;
+        for (int y = 0; y < H; y++)
+        {
+            const DWORD *src = linear + (H - 1 - y) * W;
+            unsigned char *o = bmp + 54 + y * tamLinha;
+            for (int x = 0; x < W; x++, o += 3)
+            {
+                DWORD c = src[x];                     // X8R8G8B8 como u32 nativo
+                o[0] = (unsigned char)c;              // B
+                o[1] = (unsigned char)(c >> 8);       // G
+                o[2] = (unsigned char)(c >> 16);      // R
+                fnv = ((fnv ^ o[0]) * 16777619u ^ o[1]) * 16777619u;
+            }
+        }
+
+        CreateDirectory("game:\\fotos", NULL);
+        char caminho[96];
+        _snprintf(caminho, sizeof(caminho), "game:\\fotos\\%s.bmp", nome);
+        caminho[sizeof(caminho) - 1] = '\0';
+        HANDLE h = CreateFile(caminho, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE)
+        {
+            diario::Escrever("foto: nao abriu %s", caminho);
+            return false;
+        }
+        DWORD n = 0;
+        BOOL ok = WriteFile(h, bmp, tam, &n, NULL) && n == tam;
+        CloseHandle(h);
+        diario::Escrever("foto: %s %s (fnv %08x)", caminho, ok ? "gravada" : "INCOMPLETA", fnv);
+        return ok != FALSE;
+    }
+
     void Desenhar()
     {
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
@@ -2315,6 +2400,10 @@ namespace
 
         if (g_menuAberto)
             DesenharMenu();
+
+        // A foto antes do Present: o Resolve lê o render target, que o Present troca.
+        if (const char *foto = roteiro::FotoPedida())
+            roteiro::FotoTirada(TirarFoto(foto));
 
         d->Present(NULL, NULL, NULL, NULL);
     }
@@ -3218,6 +3307,9 @@ void __cdecl main()
         diario::Escrever("anel do marcado DESLIGADO pelo .ini");
 
 
+    // Roteiro de controle (roteiro.h): só com game:\roteiro.txt, que é de uma vez.
+    roteiro::Iniciar();
+
     XINPUT_STATE anterior;
     ZeroMemory(&anterior, sizeof(anterior));
     int   direcaoX = 0, direcaoY = 0, ombroAtual = 0;
@@ -3245,6 +3337,11 @@ void __cdecl main()
             if (abs(e.Gamepad.sThumbLY) > abs(agora.Gamepad.sThumbLY))
                 agora.Gamepad.sThumbLY = e.Gamepad.sThumbLY;
         }
+
+        // O roteiro aperta junto com os controles, pelo mesmo caminho: o app não sabe
+        // a diferença, e o que se fotografa é o que a mão veria.
+        if (roteiro::Ativo())
+            agora.Gamepad.wButtons |= roteiro::Quadro(GetTickCount(), g_emVoo.empty());
 
         WORD novos = agora.Gamepad.wButtons & ~anterior.Gamepad.wButtons;
         anterior = agora;
@@ -3453,6 +3550,13 @@ void __cdecl main()
         PedirOQueFalta();
         RecolherCarregadas();
         Desenhar();
+
+        if (roteiro::QuerSair())
+        {
+            SoltarTudo();
+            lancador::Dashboard();   // dando certo, não volta
+            for (;;) Sleep(1000);    // não deu: parado, com o diário dizendo por quê
+        }
 
         if (tAgora - ultimoRelato > 5000)
         {
