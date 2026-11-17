@@ -4,7 +4,10 @@
 Reaproveita a extração do protótipo antigo (mesmos dados, mesmas capas já
 recortadas): rode antes `python3 prototipo/extrair.py`.
 """
-import argparse, base64, json, os
+import argparse, base64, json, os, sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import atlas
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -39,12 +42,43 @@ def do_vault(caminho):
     return saida
 
 
+def do_colecoes(caminho, jogos):
+    """O colecoes.txt do console no formato da prévia. O console guarda TitleId (hexa) e
+    a prévia guarda o id do item, então cada TitleId vira TODOS os itens que o têm, como
+    no app (os dois discos de um multi-disco). TitleId sem item na prévia fica de fora,
+    e é dito: é dado da prévia desatualizado, não regra do app."""
+    por_tid = {}
+    for j in jogos:
+        if j.get('tid'):
+            por_tid.setdefault(j['tid'].upper(), []).append(j['id'])
+    cols, sem = [], set()
+    for linha in open(caminho, encoding='utf-8', errors='replace'):
+        linha = linha.rstrip('\r\n')
+        if not linha or linha.startswith('#') or linha.count('|') < 3:
+            continue
+        cid, tipo, nome, conteudo = linha.split('|', 3)
+        c = {'id': int(cid), 'tipo': tipo, 'nome': nome, 'ids': [], 'origens': []}
+        itens = [x for x in conteudo.split(',') if x]
+        if tipo == 'jogos':
+            for t in itens:
+                if t.upper() in por_tid: c['ids'] += por_tid[t.upper()]
+                else: sem.add(t.upper())
+        else:
+            c['origens'] = [int(x) for x in itens]
+        cols.append(c)
+    if sem:
+        print('colecoes: %d TitleIds sem item na prévia (biblioteca da prévia mais velha que a do console)'
+              % len(sem), file=sys.stderr)
+    return cols
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--build', default=os.path.join(RAIZ, 'prototipo', 'build'),
                     help='saída de prototipo/extrair.py')
     ap.add_argument('--saida', default=os.path.join(AQUI, 'build', 'previa.html'))
     ap.add_argument('--vault', help='vault.txt exportado pelo console; traz homebrew e ROM')
+    ap.add_argument('--colecoes', help='colecoes.txt do console; vence o que o navegador guardou')
     ap.add_argument('--proposta', help='.js carregado POR CIMA da prévia, para ver uma '
                                        'proposta sem sujar o espelho do console')
     a = ap.parse_args()
@@ -62,6 +96,9 @@ def main():
 
     dados = json.dumps(jogos, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
     html = open(os.path.join(AQUI, 'template.html'), encoding='utf-8').read().replace('__DADOS__', dados)
+    cols = do_colecoes(a.colecoes, jogos) if a.colecoes else None
+    html = html.replace('__COLECOES__', json.dumps(cols, ensure_ascii=False).replace('</', '<\\/'))
+    html = html.replace('__FONTE__', json.dumps(atlas.ler(), separators=(',', ':')))
 
     # A prévia é o ESPELHO do que o console desenha. Proposta não entra nela: entra
     # por cima, num arquivo cujo nome diz o que é, e que gera uma página separada.

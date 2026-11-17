@@ -16,6 +16,9 @@ python3 previa/montar.py         # gera previa/build/previa.html
 
 # com homebrew e ROM (sem capa), para as abas de categoria existirem:
 python3 previa/montar.py --vault ~/Downloads/vault.txt
+
+# com as coleções do console (o colecoes.txt tirado por FTP), que vencem as do navegador:
+python3 previa/montar.py --vault vault.txt --colecoes colecoes.txt
 ```
 
 O `--vault` é opcional e existe por um motivo só: o `games.json` sai do `content.db`, que **não
@@ -32,25 +35,40 @@ fonte. Mudou lá, muda aqui. A prévia não inventa layout; ela reproduz. (O rec
 frente do encarte não está aqui: ele é aplicado offline, pelo `prototipo/extrair.py`, nas imagens
 que esta página carrega já recortadas.)
 
-### A medida do texto é a do console, não a do navegador
+### O texto é o do atlas, desenhado como a GPU desenha
 
-O desenho das letras é da fonte local, mas a **largura não é aproximada**. A página embute os
-avanços de cada caractere (`wOffset + wAdvance`) lidos do próprio `app/media/Arial_16.xpr`, que é o
-arquivo que o app carrega, e estica cada string para ocupar exatamente o que ocuparia na TV. É com
-esses números que o `GetTextExtent` responde e que o `ATGFONT_TRUNCATED` decide onde cortar.
+A página traz o próprio `app/media/Arial_16.xpr`, lido pelo `previa/atlas.py` na montagem: a
+textura 4_4_4_4, os glifos e a tabela de tradução. O `texto()` refaz o `DrawText` da ATG glifo a
+glifo (cursor no floor da origem, deslocamento, largura, avanço, meio pixel do vertex shader) e o
+pixel shader dela pixel a pixel: amostra bilinear, **depois** o corte (acima de 0,5 é a letra,
+abaixo é a sombra preta com alfa), vezes a cor, teste de alfa e mistura. Por isso a sombra que o
+atlas traz aparece aqui como na TV, e os botões do rodapé são os glifos coloridos do próprio
+atlas (máscara 0), na mesma string que o C++ monta.
 
-Medir com a sans do navegador subestimava a largura em **~22%**, e isso não era detalhe: a prévia
-mostrava `Call of Duty: Wor...` onde o console mostra `Call of Duty: `, cinco ou seis caracteres a
-mais em cada nome da grade. Uma tela que parecia legível não era.
+Conferido contra a foto do console tirada pelo roteiro (17/11): o rodapé e o menu ficam a no máximo
+10 de 255, com 96 a 99% dos pixels a até 2. Antes, com a Arial do navegador esticada, a largura
+batia mas a forma, o peso e a sombra não.
 
-**Nada aqui é negrito**, porque o atlas tem um peso só.
+O que o atlas não tem sai como o glifo 0 (quadradinho) e é listado na barra de cima, em vermelho.
+A pontuação tipográfica inteira está fora dele: nem `’` `‘` `“` `–` `—` `…`, nem `®` `©` `™`.
 
-### O que o atlas não tem, a página denuncia
+### As cores são os números do C++
 
-Caractere sem glifo vira quadradinho na TV. Em vez de prometer que não há nenhum, a página conta: o
-que aparecer é listado na barra de cima, em vermelho. A tabela cobre o Latin-1 e o Latin ext-A, que
-é tudo o que o atlas tem fora do ASCII — **a pontuação tipográfica inteira está fora dele**: nem
-`’` `‘` `“` `–` `—` `…`, nem `®` `©` `™`.
+Até 17/11 não eram. O `bdeac35` clareou o fundo e o card do console por uma curva de 1/1,3 (uma
+rampa de gama suposta, nunca medida) e deixou na prévia os números de antes, então a prévia era
+mais escura que o console no mesmo pixel. Agora a prévia usa os números do C++, e o fundo é o quad
+com cor por vértice que o C++ desenha, `t = (x/1280 + y/720) / 2`, não o gradiente do canvas ao
+longo da diagonal (que dá outro tom no meio da tela). Na foto, o fundo bate até 1 de 255.
+
+O que a TV faz com a imagem depois (gama, nível de preto) a prévia não reproduz, nem a foto do
+roteiro mostra: as duas são o que o app desenha.
+
+### Os dados
+
+A prévia só é o espelho com os dados do console. `--colecoes` embute o `colecoes.txt` dele, que
+vence o que o navegador guardou; `--vault` traz homebrew e ROM. A biblioteca (jogos e capas) ainda
+vem da extração do `prototipo/extrair.py` sobre a cópia em `CollectionUI-dados`, que é de quando o
+console tinha 120 itens: o `montar.py` diz quantos TitleIds das coleções ficaram sem item.
 
 ## Proposta: por cima, nunca dentro
 

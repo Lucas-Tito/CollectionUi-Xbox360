@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Prévia CollectionUI</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
@@ -187,13 +188,15 @@ const COR_FUNDO   = 'rgb(13,17,15)';
 // por uma rampa que o navegador não aplica, então o main.cpp guarda estes mesmos
 // tons corrigidos por 1/1,3 (9,24,17 vira 19,40,31). Os dois conjuntos existem
 // para a TV e o monitor MOSTRAREM a mesma coisa.
-const FUNDO_DE = 'rgb(9,24,17)', FUNDO_PARA = 'rgb(26,52,38)';
+// Os números do C++ (main.cpp, FUNDO_DE e FUNDO_PARA). Até 17/11 a prévia guardava os
+// de antes da correção de gama que o bdeac35 aplicou só no console.
+const FUNDO_DE = [19, 40, 31], FUNDO_PARA = [43, 73, 57];
 
 // --- o card de coleção -------------------------------------------------------
 // Colagem de três capas inclinadas a -30°, tom por cima e véu embaixo para o
 // texto. Os números são os do DesenharCard() do main.cpp, pré-gama como o fundo.
 const CARD = { r:16, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
-               tomG:['rgba(9,20,13,0.66)', 'rgba(14,30,20,0.38)'] };
+               tomG:['rgba(19,36,26,0.659)', 'rgba(27,49,36,0.38)'] };   // ARGB(168,19,36,26) e (97,27,49,36)
 
 // ===========================================================================
 // AS ABAS DE CATEGORIA (decisão 144, já no C++)
@@ -279,7 +282,7 @@ function pintarCard(ctx, x, y, l, a, selecionado, col) {
   // O fundo do card é CHAPADO e mais claro que o fundo da tela. Coleção vazia
   // fica só nisto -- o tom e o véu abaixo são da colagem, e no C++ moram dentro
   // do `if (n > 0)`. É o que faz o card ( 0 ) ser uma placa lisa e visível.
-  ctx.fillStyle = 'rgb(18,28,22)';
+  ctx.fillStyle = 'rgb(33,47,39)';     // XRGB(33,47,39)
   ctx.fillRect(x, y, l, a);
 
   // As capas saem do que a coleção MOSTRA, não do que ela guarda: uma junção e um
@@ -318,8 +321,8 @@ function pintarCard(ctx, x, y, l, a, selecionado, col) {
 
     // Véu embaixo: é o que mantém nome e contagem legíveis sobre a arte.
     const v = ctx.createLinearGradient(0, y + a * 0.42, 0, y + a);
-    v.addColorStop(0, 'rgba(8,14,10,0)');
-    v.addColorStop(1, 'rgba(8,14,10,0.94)');
+    v.addColorStop(0, 'rgba(18,27,21,0)');            // ARGB(0,18,27,21)
+    v.addColorStop(1, 'rgba(18,27,21,0.941)');        // ARGB(240,18,27,21)
     ctx.fillStyle = v; ctx.fillRect(x, y + a * 0.42, l, a * 0.58);
   }
   ctx.restore();
@@ -375,16 +378,26 @@ function emblema(ctx, x, y, lado, tipo){
 
   // VERDE, o mesmo COR_ANEL do anel de foco -- é o que o QuadTex do C++ passa.
   // Branco aqui escondia que há dois verdes competindo no canto de um card em foco.
-  desenha(1, 1, 'rgba(6,10,8,0.75)');     // sombra: sem ela o emblema some em capa clara
+  desenha(1, 1, 'rgba(0,0,0,0.667)');    // ARGB(170,0,0,0)     // sombra: sem ela o emblema some em capa clara
   desenha(0, 0, COR_ANEL);
 }
 
+// O Gradiente do C++ é UM quad com cor por vértice: DE no canto de cima à esquerda,
+// PARA no de baixo à direita e a média nos outros dois. Isso é linear em x e y,
+// t = (x/1280 + y/720) / 2, e não o gradiente do canvas ao longo da diagonal, que
+// dá outro tom no meio da tela. Calculado pixel a pixel uma vez e reaproveitado.
+let FUNDO_IMG = null;
 function pintarFundo(ctx) {
-  const g = ctx.createLinearGradient(0, 0, 1280, 720);
-  g.addColorStop(0, FUNDO_DE);
-  g.addColorStop(1, FUNDO_PARA);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 1280, 720);
+  if (!FUNDO_IMG){
+    FUNDO_IMG = ctx.createImageData(1280, 720);
+    const d = FUNDO_IMG.data;
+    for (let y = 0; y < 720; y++) for (let x = 0; x < 1280; x++){
+      const t = 0.5 * (x / 1280 + y / 720), k = (y * 1280 + x) * 4;
+      for (let c = 0; c < 3; c++) d[k + c] = Math.round(FUNDO_DE[c] + (FUNDO_PARA[c] - FUNDO_DE[c]) * t);
+      d[k + 3] = 255;
+    }
+  }
+  ctx.putImageData(FUNDO_IMG, 0, 0);
 }
 const COR_PAINEL  = 'rgb(21,27,24)';
 const COR_TEXTO   = 'rgb(231,237,233)';
@@ -410,49 +423,120 @@ const COR_ANEL    = 'rgb(155,203,60)';
 // ASCII: a PONTUAÇÃO TIPOGRÁFICA INTEIRA está fora dele (nem ’ ‘ “ – — …, nem
 // ® © ™), e por isso o que não estiver aqui é mesmo quadradinho na TV.
 // ===========================================================================
-const ATLAS = {"desconhecido":18,"avanco":{"32":6,"33":7,"34":10,"35":12,"36":12,"37":17,"38":15,"39":5,"40":7,"41":7,"42":8,"43":12,"44":6,"45":7,"46":6,"47":6,"48":12,"49":12,"50":12,"51":12,"52":12,"53":12,"54":12,"55":12,"56":12,"57":12,"58":7,"59":7,"60":12,"61":12,"62":12,"63":13,"64":20,"65":15,"66":15,"67":15,"68":15,"69":14,"70":13,"71":16,"72":14,"73":5,"74":12,"75":15,"76":13,"77":17,"78":14,"79":16,"80":14,"81":16,"82":15,"83":14,"84":13,"85":14,"86":13,"87":21,"88":14,"89":13,"90":12,"91":7,"92":6,"93":7,"94":12,"95":12,"96":7,"97":12,"98":13,"99":12,"100":13,"101":12,"102":7,"103":13,"104":13,"105":5,"106":5,"107":12,"108":5,"109":19,"110":13,"111":13,"112":13,"113":13,"114":8,"115":12,"116":7,"117":13,"118":13,"119":15,"120":12,"121":11,"122":11,"123":8,"124":6,"125":8,"126":12,"161":7,"162":12,"163":12,"165":12,"167":12,"170":8,"171":12,"176":8,"178":7,"179":7,"181":12,"183":6,"185":7,"186":8,"187":12,"191":13,"192":15,"193":15,"194":15,"195":15,"196":15,"198":21,"199":15,"200":14,"201":14,"202":14,"203":14,"204":5,"205":5,"206":5,"207":5,"209":14,"210":16,"211":16,"212":16,"213":16,"214":16,"216":16,"217":14,"218":14,"219":14,"220":14,"221":13,"223":13,"224":12,"225":12,"226":12,"227":12,"228":12,"230":19,"231":12,"232":12,"233":12,"234":12,"235":12,"236":5,"237":5,"238":5,"239":5,"241":13,"242":13,"243":13,"244":13,"245":13,"246":13,"248":13,"249":13,"250":13,"251":13,"252":13,"253":11,"255":11,"256":27,"257":27,"258":27,"259":27,"260":27,"261":27,"262":27,"263":27,"264":27,"265":27,"266":27,"267":27,"268":27,"269":27,"270":27,"271":27,"320":27,"321":27,"322":27,"323":27,"324":27,"325":27,"326":27,"327":27,"328":27,"329":27,"330":27,"331":27,"332":27,"333":27,"334":27,"335":27,"338":21,"339":20,"376":13,"8364":11}};
-const PILHA = 'Arial, Helvetica, sans-serif';
-const ALT_GLIFO = 27;                 // altura da caixa do glifo, a 1,0
-let F_BASE = 22.5;                    // px equivalentes; calibrado no arranque
+// O atlas inteiro, lido do .xpr por previa/atlas.py no montar.py: a textura 4_4_4_4,
+// os glifos (tu1, tv1, tu2, tv2, deslocamento, largura, avanço, máscara) e a tabela
+// de tradução. É o mesmo arquivo que o app carrega, então a largura, o corte, a forma
+// das letras e a SOMBRA que vem nelas saem iguais.
+const FONTE = __FONTE__;
+const ALT_GLIFO = FONTE.alturaFonte;  // 27: altura da caixa do glifo, a 1,0
+const FT = (() => {
+  const b = atob(FONTE.texels), w = new Uint16Array(b.length / 2);
+  for (let i = 0; i < w.length; i++) w[i] = (b.charCodeAt(2*i) << 8) | b.charCodeAt(2*i + 1);
+  return w;
+})();
 
-// Tudo o que o atlas não tem sai como quadradinho na TV. Em vez de prometer que
-// não há nenhum, a página CONTA: o que cair aqui aparece na barra de baixo.
+// Tudo o que o atlas não tem sai como quadradinho na TV (o glifo 0). Em vez de
+// prometer que não há nenhum, a página CONTA: o que cair aqui aparece na barra.
 const SEM_GLIFO = new Set();
-function medir(txt, e){
-  let w = 0;
-  for (const ch of String(txt)){
-    const a = ATLAS.avanco[ch.codePointAt(0)];
-    if (a === undefined){ SEM_GLIFO.add(ch); w += ATLAS.desconhecido; }
-    else w += a;
-  }
-  return w * (e || 1);
+function glifoDe(ch){
+  const g = FONTE.mapa[ch.codePointAt(0)];
+  if (g === undefined){ SEM_GLIFO.add(ch); return FONTE.glifos[0]; }
+  return FONTE.glifos[g];
 }
-function calibrar(){
-  const amostra = 'Exportar para o Vault Castlevania 0123 coleção';
-  ctx.font = '100px ' + PILHA;
-  const m = ctx.measureText(amostra).width;
-  if (m > 0) F_BASE = 100 * medir(amostra, 1) / m;
-}
-// As escalas são as MESMAS do C++: SetScaleFactors(0.72) para as miudezas,
-// 1,0 para o corpo, 1,3 para as frases de tela vazia, 1,5 para o cabeçalho.
-function fonte(e){ ctx.font = (F_BASE * (e || 1)).toFixed(2) + 'px ' + PILHA; }
 
-// O DrawText da ATG recebe o TOPO da caixa do glifo, não a linha de base -- é por
-// isso que os y daqui são os mesmos números do main.cpp.
+// GetTextExtent: soma de deslocamento + avanço, vezes a escala.
+function medir(txt, e){
+  let w = 0, maior = 0;
+  for (const ch of String(txt)){ const g = glifoDe(ch); w += g[4] + g[6]; if (w > maior) maior = w; }
+  return maior * (e || 1);
+}
+
+// Um canal de 4 bits do texel, com o endereçamento CLAMP do sampler da ATG.
+function canal(x, y, nib){
+  x = x < 0 ? 0 : (x >= FONTE.largura ? FONTE.largura - 1 : x);
+  y = y < 0 ? 0 : (y >= FONTE.altura ? FONTE.altura - 1 : y);
+  return ((FT[y * FONTE.passo + x] >> (4 * nib)) & 15) / 15;
+}
+// Filtro LINEAR (D3DTEXF_LINEAR na ATG): u e v em texels, centros em i + 0,5.
+function amostra(u, v, nib){
+  const tx = u - 0.5, ty = v - 0.5, x0 = Math.floor(tx), y0 = Math.floor(ty);
+  const fx = tx - x0, fy = ty - y0;
+  return (canal(x0, y0, nib) * (1 - fx) + canal(x0 + 1, y0, nib) * fx) * (1 - fy) +
+         (canal(x0, y0 + 1, nib) * (1 - fx) + canal(x0 + 1, y0 + 1, nib) * fx) * fy;
+}
+
+const COR_CACHE = {};
+function rgbaDe(cor){
+  if (COR_CACHE[cor]) return COR_CACHE[cor];
+  const m = String(cor).match(/[\d.]+/g).map(Number);
+  return (COR_CACHE[cor] = [m[0] / 255, m[1] / 255, m[2] / 255, m.length > 3 ? m[3] : 1]);
+}
+
+// O DrawText da ATG, glifo por glifo, e o pixel shader dela, pixel por pixel, direto
+// no canvas (getImageData), na mesma ordem em que a GPU mistura:
+//   - o cursor começa no floor da origem; centro e direita, no floor de origem - w/2
+//     ou origem - w; cada glifo anda deslocamento, desenha a largura, anda o avanço;
+//   - o quad vai de X1 - 0,5 a X3 - 0,5 (o vertex shader tira meio pixel);
+//   - a amostra é bilinear e SÓ DEPOIS passa pelo corte: valor > 0,5 é a letra (luz
+//     2v - 1, opaca), abaixo é sombra preta com alfa 2v; máscara 0 é texel colorido
+//     (os botões); tudo vezes a cor; teste de alfa em 8/255; mistura SRCALPHA.
+// O y é o TOPO da caixa do glifo, não a linha de base: os y daqui são os do main.cpp.
 function texto(txt, x, y, cor, e, alin){
-  e = e || 1;
-  fonte(e);
-  const alvo = medir(txt, e), tem = ctx.measureText(txt).width;
-  let x0 = x;
-  if      (alin === 'center') x0 = x - alvo/2;
-  else if (alin === 'right')  x0 = x - alvo;
-  ctx.fillStyle = cor;
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-  ctx.save();
-  ctx.translate(x0, y + ALT_GLIFO*e/2);
-  if (tem > 0) ctx.scale(alvo/tem, 1);    // resíduo: a fonte local não é a mesma
-  ctx.fillText(txt, 0, 0);
-  ctx.restore();
+  e = e || 1; txt = String(txt);
+  if (!txt) return;
+  const [cr, cg, cb, ca0] = rgbaDe(cor);
+  const ca = ca0 * ctx.globalAlpha;
+  const T = ctx.getTransform();
+  x += T.e; y += T.f;
+
+  let cx = Math.floor(x);
+  if      (alin === 'center') cx = Math.floor(x - medir(txt, e) * 0.5);
+  else if (alin === 'right')  cx = Math.floor(x - medir(txt, e));
+  const cy = Math.floor(y), h = e * ALT_GLIFO;
+
+  const quads = [];
+  for (const ch of txt){
+    const g = glifoDe(ch);
+    cx += e * g[4];
+    quads.push([cx, cx + e * g[5], g]);
+    cx += e * g[6];
+  }
+  if (!quads.length) return;
+  const bx = Math.max(0, Math.floor(quads[0][0] - 2)), by = Math.max(0, cy - 2);
+  const bx2 = Math.min(1280, Math.ceil(Math.max(...quads.map(q => q[1])) + 2));
+  const by2 = Math.min(720, Math.ceil(cy + h + 2));
+  if (bx2 <= bx || by2 <= by) return;
+  const img = ctx.getImageData(bx, by, bx2 - bx, by2 - by), d = img.data, bw = bx2 - bx;
+  const y0 = cy - 0.5, y1 = cy + h - 0.5;
+
+  for (const [x1, x3, g] of quads){
+    const [tu1, tv1, tu2, tv2, , , , mask] = g;
+    const nib = mask & 0xF000 ? 3 : mask & 0x0F00 ? 2 : mask & 0x00F0 ? 1 : mask & 0x000F ? 0 : -1;
+    const qx0 = x1 - 0.5, qx1 = x3 - 0.5;
+    const su = (tu2 - tu1) / (x3 - x1), sv = (tv2 - tv1) / h;
+    for (let py = Math.max(by, Math.ceil(y0)); py < Math.min(by2, y1); py++){
+      const v = tv1 + (py - y0) * sv;
+      for (let px = Math.max(bx, Math.ceil(qx0)); px < Math.min(bx2, qx1); px++){
+        const u = tu1 + (px - qx0) * su;
+        let r, gg, b, a;
+        if (nib >= 0){
+          const val = amostra(u, v, nib);
+          const luz = val > 0.5 ? 2 * val - 1 : 0;
+          r = luz * cr; gg = luz * cg; b = luz * cb;
+          a = Math.min(1, 2 * (val > 0.5 ? 1 : val) * ca);
+        } else {
+          a = Math.min(1, amostra(u, v, 3) * ca);
+          r = amostra(u, v, 2) * cr; gg = amostra(u, v, 1) * cg; b = amostra(u, v, 0) * cb;
+        }
+        if (a < 8 / 255) continue;           // D3DRS_ALPHAREF 0x08, GREATEREQUAL
+        const k = ((py - by) * bw + (px - bx)) * 4;
+        d[k]     = Math.round(Math.min(1, r)  * 255 * a + d[k]     * (1 - a));
+        d[k + 1] = Math.round(Math.min(1, gg) * 255 * a + d[k + 1] * (1 - a));
+        d[k + 2] = Math.round(Math.min(1, b)  * 255 * a + d[k + 2] * (1 - a));
+      }
+    }
+  }
+  ctx.putImageData(img, bx, by);
 }
 
 // Coleções: quadrados de 244, QUATRO por linha, centralizados por cálculo.
@@ -465,7 +549,8 @@ const COL_MARGEM = (1280 - (COL_POR_LINHA*COL_LADO + (COL_POR_LINHA-1)*COL_GAP))
 // só começa em 656.
 const COL_TOPO_ABA = 96;
 
-const cv = document.getElementById('tela'), ctx = cv.getContext('2d');
+// willReadFrequently: o texto lê e regrava pixels (getImageData) a cada string.
+const cv = document.getElementById('tela'), ctx = cv.getContext('2d', { willReadFrequently: true });
 
 // Zonas clicáveis, remontadas a cada desenho. No console não existe ponteiro, mas
 // aqui o mouse é o que torna a prévia utilizável para iterar.
@@ -477,6 +562,11 @@ const imgs = {};
 const CHAVE = 'collectionui.previa';
 let cols = [];
 try { cols = JSON.parse(localStorage.getItem(CHAVE)) || []; } catch(e) { cols = []; }
+// Com --colecoes no montar.py, as coleções do console vêm na página e VENCEM o que o
+// navegador guardou: a prévia é o espelho do console, e o que se mexe aqui não volta
+// para lá. Sem a opção, continua como era (exemplos ou o que foi criado à mão).
+const COLECOES_CONSOLE = __COLECOES__;
+if (COLECOES_CONSOLE) cols = JSON.parse(JSON.stringify(COLECOES_CONSOLE));
 
 // Coleção agora tem TIPO, e são três:
 //
@@ -681,46 +771,10 @@ function capa(indice){
 // Aqui eram bolinhas coloridas de tutorial de PC, que é um rodapé que o console
 // não desenha. Medidos no atlas: A/B/X/Y ocupam 27 px, Start e Back 54 (são dois
 // caracteres cada).
-const LARG_GLIFO = { A:27, B:27, X:27, Y:27, START:54, BACK:54 };
-const glifos = {};
-
-function glifoBotao(qual, cor){
-  const chave = qual + cor;
-  if (glifos[chave]) return glifos[chave];
-  const w = LARG_GLIFO[qual], h = ALT_GLIFO;
-  const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  const g = c.getContext('2d');
-  g.fillStyle = cor;
-
-  if (qual === 'START' || qual === 'BACK'){
-    // Oval pequeno, como o do controle. A palavra fica VAZADA, que é o que uma
-    // máscara de alfa faz: o furo mostra o que estiver atrás.
-    const bw = 30, bh = 16, bx = (w - bw)/2, by = (h - bh)/2;
-    g.beginPath();
-    g.ellipse(bx + bw/2, by + bh/2, bw/2, bh/2, 0, 0, Math.PI*2);
-    g.fill();
-    g.globalCompositeOperation = 'destination-out';
-    g.font = '600 8px ' + PILHA;
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(qual, w/2, h/2 + 0.5);
-  } else {
-    g.beginPath(); g.arc(w/2, h/2, 9.5, 0, Math.PI*2); g.fill();
-    g.globalCompositeOperation = 'destination-out';
-    g.font = '600 12px ' + PILHA;
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(qual, w/2, h/2 + 0.5);
-  }
-  glifos[chave] = c;
-  return c;
-}
-
-function glifo(x, y, qual, cor, e){
-  e = e || 1;
-  const img = glifoBotao(qual, cor);
-  ctx.drawImage(img, x, y, LARG_GLIFO[qual]*e, ALT_GLIFO*e);
-  return LARG_GLIFO[qual]*e;
-}
+// Códigos dos glifos de botão no atlas (GLYPH_A_BUTTON = L"\400" e companhia). Os
+// coloridos têm máscara 0: o shader usa a cor do próprio texel, vezes a cor do texto.
+const BOTAO = { A:'\u0100', B:'\u0101', X:'\u0102', Y:'\u0103',
+                START:'\u0108\u0109', BACK:'\u010A\u010B' };
 
 // No C++ o rodapé é UMA string só: glifo + " Abrir" + cinco espaços + glifo + ...
 // Reproduzir a emenda importa, porque são os espaços do atlas que dão o ritmo.
@@ -729,13 +783,11 @@ const EMENDA = '     ';
 // fonte e encolhe junto com a palavra; aqui ele e uma imagem, entao a escala vai
 // na largura e na altura do drawImage para dar no mesmo.
 const RODAPE_ESCALA = 0.67, RODAPE_Y = 660;
+function linhaDeBotoes(itens){
+  return itens.map(([b, t]) => BOTAO[b] + ' ' + t).join(EMENDA);
+}
 function rodape(itens, direita){
-  let x = MARGEM_X;
-  for (const [b, t] of itens){
-    x += glifo(x, RODAPE_Y, b, COR_APAGADO, RODAPE_ESCALA);
-    texto(' ' + t, x, RODAPE_Y, COR_APAGADO, RODAPE_ESCALA);
-    x += medir(' ' + t, RODAPE_ESCALA) + medir(EMENDA, RODAPE_ESCALA);
-  }
+  texto(linhaDeBotoes(itens), MARGEM_X, RODAPE_Y, COR_APAGADO, RODAPE_ESCALA);
   if (direita) texto(direita, 1180, RODAPE_Y, COR_FRACO, RODAPE_ESCALA, 'right');
 }
 
@@ -1046,11 +1098,7 @@ const RODAPE_MODAL = [['A','Escolher'],['B','Fechar']];
 // menu = { de, rotulo, titulo, itens, foco, perigo }
 let menu = null;
 
-function largRodape(itens){
-  let w = 0;
-  for (const [b, t] of itens) w += LARG_GLIFO[b] + medir(' ' + t, 1) + medir(EMENDA, 1);
-  return w - medir(EMENDA, 1);
-}
+function largRodape(itens){ return medir(linhaDeBotoes(itens), 1); }
 
 function larguraDoModal(m){
   let maior = medir(m.titulo, 1.3);
@@ -1105,12 +1153,7 @@ function desenharMenu(){
 
   // Dentro da caixa: no rodapé da tela ficaria por cima do rodapé que a tela de
   // baixo continua desenhando.
-  let bx = x + MOD_PAD;
-  for (const [b, t] of RODAPE_MODAL){
-    bx += glifo(bx, y + A - 42, b, COR_FRACO);
-    texto(' ' + t, bx, y + A - 42, COR_FRACO, 1);
-    bx += medir(' ' + t, 1) + medir(EMENDA, 1);
-  }
+  texto(linhaDeBotoes(RODAPE_MODAL), x + MOD_PAD, y + A - 42, COR_FRACO, 1);
 }
 
 function abrirMenuColecao(){
@@ -1540,11 +1583,6 @@ $('#bt-zerar').onclick = () => {
   cols=[]; salvar(); tela='colecoes'; iCol=0;
   editandoComposta=null; origens=null; desenhar();
 };
-
-// A fonte local precisa estar carregada antes da primeira medida, senão a
-// calibração sai errada e tudo nasce com a largura torta.
-calibrar();
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { calibrar(); desenhar(); });
 
 for (let i = 0; i < POR_PAGINA + COLUNAS; i++) capa(i);
 desenhar();
