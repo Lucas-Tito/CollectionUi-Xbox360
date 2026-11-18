@@ -1614,3 +1614,30 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      pode ser clampado enquanto a tela de arquivar está aberta: ele é a posição na lista dos
      soltos, para onde se volta, e clampá-lo contra a lista de jogos (vazia ali, porque `g_atual` é
      nulo) zerava o foco por baixo.
+
+147. **Indie abre pelo lançador XNA do sistema, não pelo pacote.** Os indies davam erro ao abrir pelo
+     app e abriam normalmente pela FreeStyle. A decisão 39 tirou a lista branca de `contentType` e
+     deixou o indie seguir o caminho dos containers: `XContentLaunchImageFromFile(pacote,
+     "default.xex")`. Só que o pacote de um indie não tem xex nenhum. Ele traz o `GameInfo.xml` e os
+     assemblies XNA, e pertence ao título `584E07D2` (o hospedeiro "Community Game"), tipo
+     `00000002` (marketplace). Por isso todos ficam em `\Content\0000000000000000\584E07D2\00000002\`.
+
+     Quem abre é o `Xna_TitleLauncher.xex` da partição estendida do sistema
+     (`\Device\Harddisk0\SystemExtPartition\32000100\`), e o jogo vai pelos dados de lançamento:
+     `XSetLaunchData` com 0x34 bytes, que são o número `0xCAFEBABE`, o nome-hash do pacote e o
+     `XCONTENTDEVICEID` do aparelho onde ele está. Depois vem `XLaunchNewImage(lançador, 0)`, porque
+     a flag 0 mantém os dados. É o que o instalador do Dash Launch faz (`installer/dashLaunch.cpp`,
+     `LaunchItem`). A struct é a `XLAUNCHDATA_CAFEBABE` do xkelib (`xam/_xamext.h`), e o XeniOS
+     reproduz o mesmo formato (`kernel/xam/indie_game.cc`). O código fechado da FreeStyle 3 não foi
+     lido; o comportamento dela é inferido.
+
+     Duas adaptações ao nosso XDK:
+     - O 2.0.21256 não tem o `XContentCreateDeviceEnumerator` que o Dash Launch usa (ele é do
+       xkelib). Então o id do aparelho sai de sondar `XContentGetDeviceData` de 1 a 32 e ficar com o
+       do tipo certo. No HD vale o do HD; no pendrive, só se houver um.
+     - A pasta `32000100` é a versão do sistema. Ela é procurada em `xsep:` (montado em
+       `\Device\Harddisk0\SystemExtPartition`) em vez de fixada, e só se tenta o 32000100 primeiro.
+
+     Ainda falta conferir no console. O Dash Launch liga o `fakelive` antes de abrir um indie, a
+     menos que o `autofake` do `launch.ini` esteja ligado; o `autocont` cuida da licença do
+     conteúdo. O app não chama a API do Dash Launch, então depende dessas opções no `launch.ini`.

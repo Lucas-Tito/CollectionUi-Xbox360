@@ -15,6 +15,10 @@ namespace dispositivos
     // nao ter pendrive, e a maquina continua util so com o HD.
     void MontarTodos();
 
+    // Um apelido avulso ("xsep:" -> "\\Device\\Harddisk0\\SystemExtPartition"), para
+    // quem precisa de um caminho fora dos quatro de sempre. Devolve se montou.
+    bool Montar(const char *apelido, const char *dispositivo);
+
     // Lista, para diagnostico, quais apelidos responderam.
     const char *const *Apelidos(int *quantos);
 }

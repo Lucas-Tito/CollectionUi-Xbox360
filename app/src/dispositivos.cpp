@@ -55,6 +55,11 @@ namespace
 
 namespace dispositivos
 {
+    bool Montar(const char *apelido, const char *dispositivo)
+    {
+        return SUCCEEDED(::Montar(apelido, dispositivo));
+    }
+
     void MontarTodos()
     {
         QUANTOS_VIVOS = 0;

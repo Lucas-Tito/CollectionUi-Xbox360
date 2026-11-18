@@ -76,8 +76,89 @@ namespace
     }
 }
 
+namespace
+{
+    // ---- indies (Xbox Live Indie Games) -----------------------------------------
+    //
+    // Um indie NAO tem xex: o pacote traz o GameInfo.xml e os assemblies XNA, e e do
+    // titulo 584E07D2 (o hospedeiro "Community Game"), tipo 00000002 (marketplace).
+    // XContentLaunchImageFromFile(pacote, "default.xex") falhava por isso, enquanto a
+    // FreeStyle abria normalmente.
+    //
+    // Quem abre e o Xna_TitleLauncher.xex da particao estendida do sistema, e o jogo
+    // vai pelos dados de lancamento: 0xCAFEBABE, o nome-hash do pacote e o id do
+    // aparelho onde ele esta (0x34 bytes). E o que o Dash Launch faz no instalador
+    // (installer/dashLaunch.cpp, LaunchItem; a struct e a XLAUNCHDATA_CAFEBABE do
+    // xkelib, _xamext.h), e o XeniOS reproduz o mesmo formato (indie_game.cc).
+    //
+    // O pacote PRECISA estar na pasta de conteudo do 584E07D2/00000002: o lancador o
+    // procura por (aparelho, nome) la dentro.
+    const char INDIE[] = "\\Content\\0000000000000000\\584E07D2\\00000002\\";
+
+    struct DadosIndie
+    {
+        DWORD id;            // 0x00 = 0xCAFEBABE
+        char  nome[0x2C];    // 0x04 = o nome-hash do arquivo do pacote
+        DWORD aparelho;      // 0x30 = XCONTENTDEVICEID
+    };
+
+    // O XDK 2.0.21256 nao tem o enumerador de aparelhos (XContentCreateDeviceEnumerator
+    // e do xkelib); tem o XContentGetDeviceData, que responde por id. Os ids sao
+    // pequenos: sonda-se de 1 a 32 e fica o do TIPO pedido. Pendrive: so se houver um.
+    DWORD AparelhoDoTipo(XCONTENTDEVICETYPE tipo)
+    {
+        DWORD achado = 0xFFFFFFFF;
+        int quantos = 0;
+        for (DWORD id = 1; id <= 32; id++)
+        {
+            XDEVICE_DATA d;
+            ZeroMemory(&d, sizeof(d));
+            if (XContentGetDeviceData(id, &d) != ERROR_SUCCESS) continue;
+            diario::Escrever("indie: aparelho id=%u tipo=%u", (unsigned)id, (unsigned)d.DeviceType);
+            if (d.DeviceType == tipo) { achado = id; quantos++; }
+        }
+        if (tipo != XCONTENTDEVICETYPE_HDD && quantos > 1)
+        {
+            diario::Escrever("indie: %d aparelhos do tipo %u, nao sei qual", quantos, (unsigned)tipo);
+            return 0xFFFFFFFF;
+        }
+        return achado;
+    }
+
+    // A pasta do lancador e a versao do sistema (32000100 neste console, o numero que o
+    // Dash Launch fixa); procura em vez de fixar, para nao quebrar noutra versao.
+    bool AcharLancadorXna(char *saida, size_t tam)
+    {
+        if (!dispositivos::Montar("xsep:", "\\Device\\Harddisk0\\SystemExtPartition"))
+        {
+            diario::Escrever("indie: nao montou xsep:");
+            return false;
+        }
+        _snprintf(saida, tam, "xsep:\\32000100\\Xna_TitleLauncher.xex");
+        if (GetFileAttributes(saida) != 0xFFFFFFFF) return true;
+
+        WIN32_FIND_DATA f;
+        HANDLE h = FindFirstFile("xsep:\\*", &f);
+        if (h == INVALID_HANDLE_VALUE) return false;
+        bool ok = false;
+        do
+        {
+            if (!(f.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+            _snprintf(saida, tam, "xsep:\\%s\\Xna_TitleLauncher.xex", f.cFileName);
+            if (GetFileAttributes(saida) != 0xFFFFFFFF) { ok = true; break; }
+        } while (FindNextFile(h, &f));
+        FindClose(h);
+        return ok;
+    }
+}
+
 namespace lancador
 {
+    bool EhIndie(const biblioteca::Jogo &jogo)
+    {
+        return _strnicmp(jogo.caminho.c_str(), INDIE, sizeof(INDIE) - 1) == 0;
+    }
+
     void Dashboard()
     {
         diario::Escrever("saindo para a dashboard");
@@ -125,6 +206,60 @@ namespace lancador
 
         Pedido p;
         ZeroMemory(&p, sizeof(p));
+
+        if (EhIndie(jogo))
+        {
+            const char *nome = jogo.caminho.c_str() + sizeof(INDIE) - 1;
+            const XCONTENTDEVICETYPE tipo = (_strnicmp(caminho.c_str(), "Hdd:", 4) == 0)
+                                          ? XCONTENTDEVICETYPE_HDD : XCONTENTDEVICETYPE_MU;
+            char lancadorXna[MAX_PATH];
+            DadosIndie d;
+            ZeroMemory(&d, sizeof(d));
+            d.id = 0xCAFEBABE;
+            d.aparelho = AparelhoDoTipo(tipo);
+            if (strlen(nome) >= sizeof(d.nome) || strchr(nome, '\\') != NULL)
+            {
+                erro = "Pacote do indie com nome inesperado";
+                diario::Escrever("indie: nome do pacote fora do formato: %s", nome);
+                return false;
+            }
+            strcpy(d.nome, nome);
+            if (d.aparelho == 0xFFFFFFFF)
+            {
+                erro = "Nao achei o aparelho do indie";
+                return false;
+            }
+            if (!AcharLancadorXna(lancadorXna, sizeof(lancadorXna)))
+            {
+                erro = "Falta o Xna_TitleLauncher.xex do sistema";
+                diario::Escrever("indie: Xna_TitleLauncher.xex nao encontrado em xsep:");
+                return false;
+            }
+            DWORD r = XSetLaunchData(&d, sizeof(d));
+            diario::Escrever("indie: %s aparelho=%u pacote=%s XSetLaunchData=0x%08X",
+                             lancadorXna, (unsigned)d.aparelho, d.nome, (unsigned)r);
+            if (r != ERROR_SUCCESS)
+            {
+                erro = "O sistema recusou os dados de lancamento do indie";
+                return false;
+            }
+            // Daqui em diante e o caminho do xex solto (tipo 1): XLaunchNewImage com o
+            // lancador, flags 0, que MANTEM os dados de lancamento.
+            _snprintf(p.caminho, sizeof(p.caminho), "%s", lancadorXna);
+            p.caminho[sizeof(p.caminho) - 1] = '\0';
+            p.tipo = 1;
+            diario::Escrever("lancando indie: %s", jogo.caminho.c_str());
+            diario::Fechar();
+
+            HANDLE h = CreateThread(NULL, 0, Disparar, &p, 0, NULL);
+            if (h == NULL) { diario::Reabrir(); erro = "Nao consegui criar a thread de lancamento"; return false; }
+            WaitForSingleObject(h, INFINITE);   // dando certo, nunca termina
+            CloseHandle(h);
+            diario::Reabrir();
+            diario::Escrever("FALHOU: XLaunchNewImage do lancador XNA voltou: %s", lancadorXna);
+            erro = "O indie nao abriu";
+            return false;
+        }
 
         // Atributos crus do caminho ANTES de lancar: biblioteca::Existe devolve true
         // para DIRETORIO tambem, entao "o arquivo existe" nao prova que e arquivo.

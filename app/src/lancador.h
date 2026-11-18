@@ -33,6 +33,10 @@ namespace lancador
     // lancar com leitura de disco em voo.
     bool Lancar(const biblioteca::Jogo &jogo, std::string &erro);
 
+    // Indie (Xbox Live Indie Games): pacote do 584E07D2/00000002, sem xex; abre pelo
+    // Xna_TitleLauncher.xex do sistema com dados de lancamento (ver lancador.cpp).
+    bool EhIndie(const biblioteca::Jogo &jogo);
+
     // Volta à dashboard (XLaunchNewImage(NULL, 0), de outra thread, como o Lancar).
     // Só o roteiro de controle usa: para quem joga, sair do app continua sendo pela
     // Guide. Quem chama solta antes a I/O e as texturas, como no Lancar.
