@@ -178,7 +178,7 @@ const MARGEM_X = 100, TOPO = 92;            // MARGEM_X é do texto, não da gra
 const GRID_MARGEM = (1280 - (COLUNAS * CAPA_L + (COLUNAS - 1) * ESPACO_X)) / 2;
 const POR_PAGINA = COLUNAS * LINHAS;
 
-const COR_FUNDO   = 'rgb(13,17,15)';
+let COR_FUNDO   = 'rgb(13,17,15)';
 
 // --- o fundo da tela ---------------------------------------------------------
 // Gradiente na diagonal, cor por vértice -- zero arquivo, zero carregamento e sem
@@ -190,7 +190,7 @@ const COR_FUNDO   = 'rgb(13,17,15)';
 // para a TV e o monitor MOSTRAREM a mesma coisa.
 // Os números do C++ (main.cpp, FUNDO_DE e FUNDO_PARA). Até 17/11 a prévia guardava os
 // de antes da correção de gama que o bdeac35 aplicou só no console.
-const FUNDO_DE = [19, 40, 31], FUNDO_PARA = [43, 73, 57];
+let FUNDO_DE = [19, 40, 31], FUNDO_PARA = [43, 73, 57];
 
 // --- o card de coleção -------------------------------------------------------
 // Colagem de três capas inclinadas a -30°, tom por cima e véu embaixo para o
@@ -403,12 +403,12 @@ function pintarFundo(ctx) {
   }
   ctx.putImageData(FUNDO_IMG, 0, 0);
 }
-const COR_PAINEL  = 'rgb(21,27,24)';
-const COR_TEXTO   = 'rgb(231,237,233)';
-const COR_APAGADO = 'rgb(142,156,148)';
-const COR_FRACO   = 'rgb(92,104,98)';
-const COR_LINHA   = 'rgb(43,53,47)';
-const COR_ANEL    = 'rgb(155,203,60)';
+let COR_PAINEL  = 'rgb(21,27,24)';
+let COR_TEXTO   = 'rgb(231,237,233)';
+let COR_APAGADO = 'rgb(142,156,148)';
+let COR_FRACO   = 'rgb(92,104,98)';
+let COR_LINHA   = 'rgb(43,53,47)';
+let COR_ANEL    = 'rgb(155,203,60)';
 
 // ===========================================================================
 // A FONTE. O console desenha com o atlas app/media/Arial_16.xpr, 27 px de altura
@@ -469,6 +469,13 @@ function amostra(u, v, nib){
          (canal(x0, y0 + 1, nib) * (1 - fx) + canal(x0 + 1, y0 + 1, nib) * fx) * fy;
 }
 
+// As cores acima são let, não const, para uma proposta (--proposta) poder trocá-las
+// por cima sem reescrever o desenho. No espelho elas são as do C++ e não mudam.
+//
+// FONTE_SOMBRA: a sombra preta que vem no atlas (o valor abaixo de 0,5). É o que o
+// console desenha hoje; uma proposta pode desligar, e aí a letra é só a cor com o
+// alfa do antisserrilhado (2v - 1), que no C++ é uma linha no pixel shader da ATG.
+let FONTE_SOMBRA = true;
 const COR_CACHE = {};
 function rgbaDe(cor){
   if (COR_CACHE[cor]) return COR_CACHE[cor];
@@ -526,8 +533,13 @@ function texto(txt, x, y, cor, e, alin){
         if (nib >= 0){
           const val = amostra(u, v, nib);
           const luz = val > 0.5 ? 2 * val - 1 : 0;
-          r = luz * cr; gg = luz * cg; b = luz * cb;
-          a = Math.min(1, 2 * (val > 0.5 ? 1 : val) * ca);
+          if (FONTE_SOMBRA){
+            r = luz * cr; gg = luz * cg; b = luz * cb;
+            a = Math.min(1, 2 * (val > 0.5 ? 1 : val) * ca);
+          } else {
+            r = cr; gg = cg; b = cb;
+            a = Math.min(1, luz * ca);
+          }
         } else {
           a = Math.min(1, amostra(u, v, 3) * ca);
           r = amostra(u, v, 2) * cr; gg = amostra(u, v, 1) * cg; b = amostra(u, v, 0) * cb;
@@ -1160,7 +1172,7 @@ function indiceAlfabetico(L){
 // tem cor própria parada: é igual às outras até receber o foco.
 const MOD_PAD = 26, MOD_ALT = 48, MOD_CABECA = 128, MOD_PE = 80;
 const MOD_MIN = 460, MOD_MAX = 760;
-const COR_PERIGO = 'rgb(201,66,58)';
+let COR_PERIGO = 'rgb(201,66,58)';
 const RODAPE_MODAL = [['A','Escolher'],['B','Fechar']];
 
 // menu = { de, rotulo, titulo, itens, foco, perigo }

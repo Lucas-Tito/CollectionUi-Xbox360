@@ -93,7 +93,30 @@ O `.js` é carregado depois do `<script>` da prévia e reescreve as funções qu
 implementação só do desenho, a prévia continua mostrando só o que o `.xex` faz, e a proposta vive
 num arquivo cujo nome diz o que ela é, e some junto quando a decisão for tomada.
 
-Hoje não há nenhuma. A última, `soltos.js` (a aba Soltos e o arquivar), foi para o C++ no `fa59339`
+Hoje há uma: **`metro.js`**, o app na linguagem do dashboard Metro do Xbox 360. Cada tela segue a
+tela equivalente do Metro, com as cores medidas nela; o topo do arquivo diz qual tela de qual e as
+regras que valem em todas. As referências são capturas diretas do Metro com o tema padrão: o
+"My Games" e o "my apps" e o painel de opções de um item em techsolutions.support.com (how-to
+10439), o diálogo "Delete Profile" (11521), os ladrilhos ✗/✓ da configuração inicial (10834), o
+hub de games de 2012 (imagem de imprensa, Ars Technica) e o recorte de baixo do File:Xbox_360_uis.jpg
+da Wikipedia:
+
+```bash
+python3 previa/montar.py --colecoes colecoes.txt --mock --proposta previa/metro.js \
+        --saida previa/build/metro.html
+```
+
+A tela de detalhes do jogo (Y na grade de jogos e no Soltos; o A continua jogando direto) não tem
+tela equivalente no Metro: a organização vem do tema Reprise do Pegasus, com a capa no lugar da
+arte, e o desenho e a paleta são os do Metro. Os dados vêm do `previa/ficha.py`, que lê o xbox-vault
+(`~/Documentos/xbx/data`) pelo TitleId e cai no que a FreeStyle guarda quando o vault não tem. O
+co-op é só o do Co-Optimus e só o local: jogo que ele não lista fica sem co-op e sem número de
+jogadores na tela, sem dizer que não tem.
+
+Para ela, as cores do espelho viraram `let` e a sombra da fonte uma chave (`FONTE_SOMBRA`); no
+espelho continuam as do C++, e as oito telas saíram idênticas pixel a pixel antes e depois.
+
+A anterior, `soltos.js` (a aba Soltos e o arquivar), foi para o C++ no `fa59339`
 e entrou na prévia em 17/11, refeita a partir do C++ de hoje: o arquivo tinha ficado para trás da
 barra do `b6d78a9` e nem carregava mais.
 

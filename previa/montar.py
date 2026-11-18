@@ -9,6 +9,7 @@ import argparse, base64, json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import atlas
 import mock
+import ficha
 
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
@@ -101,6 +102,11 @@ def main():
         print('mock: %d itens falsos (%d com capa do vault)' % (len(falsos), sum(1 for j in falsos if j.get('cap'))),
               file=sys.stderr)
         jogos += falsos
+    # A ficha de cada jogo (previa/ficha.py): só o que a tela de detalhes mostra.
+    fichas = ficha.fichas(jogos)
+    for j in jogos:
+        if j['id'] in fichas: j['ficha'] = fichas[j['id']]
+    print('fichas: %d de %d itens com dados' % (len(fichas), len(jogos)), file=sys.stderr)
     for j in jogos:
         j.pop('bg', None)
         if j.get('cap') and not j['cap'].startswith('data:'):
