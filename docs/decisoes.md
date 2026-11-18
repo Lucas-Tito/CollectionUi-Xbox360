@@ -1641,3 +1641,16 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      Ainda falta conferir no console. O Dash Launch liga o `fakelive` antes de abrir um indie, a
      menos que o `autofake` do `launch.ini` esteja ligado; o `autocont` cuida da licença do
      conteúdo. O app não chama a API do Dash Launch, então depende dessas opções no `launch.ini`.
+
+148. **A interface em inglês.** Pedido de 18/11: todo texto que o app põe na tela passou para o
+     inglês, no C++ e na prévia, que é o espelho dele. Isso vale para as categorias, os vazios, os
+     rodapés, os menus, os títulos do teclado do sistema e os avisos. As categorias viraram "All",
+     "Unsorted", "XBLA", "Xbox 360", "Xbox OG", "Homebrew", "Emulators" e "Other". O Xbox original é
+     "Xbox OG", como se diz dele, e não o "Xbox Originals" da Microsoft, que não fazia sentido como
+     nome de aba. Os tipos de coleção viraram "Manual collection", "Union" e "Intersection", e as
+     ações do rodapé, "Play", "Back", "Select", "Done", "Options" e "Export", como no console.
+
+     Ficaram como estavam o log (`collectionui.log`), os comentários do `colecoes.txt` e do
+     `vault.txt` e o código. Os nomes das coleções são do usuário e não se traduzem. Da prévia, só
+     a moldura (a barra de cima, a ajuda e o rodapé da página) continua em português, porque não é
+     tela do app. O atlas `Arial_16` já tinha tudo o que o inglês usa, inclusive o apóstrofo.

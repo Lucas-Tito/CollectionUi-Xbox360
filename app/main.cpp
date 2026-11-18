@@ -311,13 +311,13 @@ namespace
         {
         case biblioteca::ABA_XBLA:     return L"XBLA";
         case biblioteca::ABA_X360:     return L"Xbox 360";
-        case biblioteca::ABA_CLASSICO: return L"Xbox Clássico";
+        case biblioteca::ABA_CLASSICO: return L"Xbox OG";
         case biblioteca::ABA_HOMEBREW: return L"Homebrew";
-        case biblioteca::ABA_EMULADOR: return L"Emulador";
-        case biblioteca::ABA_OUTROS:   return L"Outros";
-        case ABA_SOLTOS:               return L"Soltos";
+        case biblioteca::ABA_EMULADOR: return L"Emulators";
+        case biblioteca::ABA_OUTROS:   return L"Other";
+        case ABA_SOLTOS:               return L"Unsorted";
         }
-        return L"Todos";
+        return L"All";
     }
 
     // ONDE A ABA VALE, num lugar so. Escolhendo origens ela NAO vale: ali se escolhe
@@ -331,7 +331,7 @@ namespace
     int AbaEmVigor()
     {
         // Arquivar um jogo e escolher COLECAO, igual a escolher origem -- e a aba
-        // corrente ali e justamente "Soltos", que nao e categoria de jogo nenhum.
+        // corrente ali e justamente "Unsorted", que nao e categoria de jogo nenhum.
         // Sem esta linha, toda colecao sairia com a colagem vazia e `( 0 )`.
         if (g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR) return biblioteca::ABA_AUTOMATICA;
         // Na tela dos soltos a pergunta e sobre a biblioteca inteira, nao sobre uma
@@ -381,7 +381,7 @@ namespace
     // levaria a uma tela vazia. Do jeito daqui, aba que existe tem conteudo, e por
     // construcao NAO DA para parar numa tela vazia.
     //
-    // E no limite: com UMA categoria so, "Todos" e ela sao a mesma lista, e a barra
+    // E no limite: com UMA categoria so, "All" e ela sao a mesma lista, e a barra
     // viraria dois botoes que fazem a mesma coisa. Ai nao ha barra nenhuma, e um
     // console so de Xbox 360 fica com a tela de sempre, sem saber que isto existe.
     void AtualizarAbas()
@@ -413,7 +413,7 @@ namespace
         // tem conteudo, entao nenhuma tecla leva a uma tela vazia.
         //
         // Entra DEPOIS do insert do Todos, porque fica a esquerda dele -- e vale
-        // mesmo sem categoria nenhuma: "Soltos" e "Todos" ja sao escolha de verdade.
+        // mesmo sem categoria nenhuma: "Unsorted" e "All" ja sao escolha de verdade.
         AtualizarCobertos();
         g_temSoltos = false;
         for (size_t j = 0; j < g_jogos.size() && !g_temSoltos; j++)
@@ -1627,7 +1627,7 @@ namespace
 
         // Chip apagado na ponta: LB na primeira aba e RB na ultima nao fazem nada, e
         // a tela tem de dizer isso antes de a pessoa apertar. Vale desde sempre, sem
-        // o Soltos: no "Todos" o LB ja nao fazia nada e nada avisava.
+        // o Soltos: no "All" o LB ja nao fazia nada e nada avisava.
         g_lbVivo = (foco > 0);
         g_rbVivo = (foco < n - 1);
         return quantas;
@@ -1734,19 +1734,19 @@ namespace
             g_fonte.SetScaleFactors(1.3f, 1.3f);
             // Interseção aceita junção como origem, junção não aceita -- então a
             // frase tem de dizer o que FALTA, e não a mesma coisa para os dois.
-            const WCHAR *vazia = L"Nenhuma coleção ainda";
+            const WCHAR *vazia = L"No collections yet";
             if (g_tela == TELA_ARQUIVAR)
-                vazia = L"Nenhuma coleção para arquivar";
+                vazia = L"No collections to add it to";
             else if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
                 vazia = (g_editandoComposta->tipo == colecoes::TIPO_UNIAO)
-                      ? L"Nenhuma coleção de jogos para juntar"
-                      : L"Nenhuma coleção para cruzar";
+                      ? L"No game collections to combine"
+                      : L"No collections to intersect";
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, vazia, ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
             // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
             Rodape((g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
-                   ? GLYPH_B_BUTTON L" Cancelar"
-                   : GLYPH_X_BUTTON L" Nova coleção     " GLYPH_BACK_BUTTON L" Exportar",
+                   ? GLYPH_B_BUTTON L" Cancel"
+                   : GLYPH_X_BUTTON L" New collection     " GLYPH_BACK_BUTTON L" Export",
                    L"");
             g_fonte.End();
             return;
@@ -1754,7 +1754,7 @@ namespace
 
         // A barra de categorias, quando houver categoria para escolher. Nas telas de
         // origens e de arquivar ela não aparece: ali a aba não vale, e mostrá-la
-        // acesa no "Soltos" enquanto se escolhe coleção seria dizer que a lista
+        // acesa no "Unsorted" enquanto se escolhe coleção seria dizer que a lista
         // abaixo está filtrada por ela -- não está.
         PilulaAba pilulas[biblioteca::ABA_QUANTAS + 1];   // +1: o Soltos
         int xRB = 0, nAbas = 0;
@@ -1835,7 +1835,7 @@ namespace
                              texto, ATGFONT_CENTER_X);
         }
 
-        swprintf_s(texto, 256, L"%d de %d", g_iCol + 1, (int)L.size());
+        swprintf_s(texto, 256, L"%d of %d", g_iCol + 1, (int)L.size());
         if (g_tela == TELA_ARQUIVAR)
         {
             // Sem cabeçalho, como a tela de origens -- quem diz QUAL jogo está sendo
@@ -1857,9 +1857,9 @@ namespace
             }
             const int q = (int)g_escolhidas.size();
             swprintf_s(texto, 256, L"%s · %d %s", nome, q,
-                       (q == 1) ? L"coleção" : L"coleções");
-            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
-                   GLYPH_START_BUTTON L" Concluir", texto);
+                       (q == 1) ? L"collection" : L"collections");
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
+                   GLYPH_START_BUTTON L" Done", texto);
         }
         else if (g_tela == TELA_ORIGENS)
         {
@@ -1883,14 +1883,14 @@ namespace
                     quantos++;
 
             WCHAR sub[64];
-            swprintf_s(sub, 64, L"%d escolhidas · %d jogos",
+            swprintf_s(sub, 64, L"%d chosen · %d games",
                        (int)g_origens.size(), quantos);
-            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
-                   GLYPH_START_BUTTON L" Concluir", sub);
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
+                   GLYPH_START_BUTTON L" Done", sub);
         }
         else
-            Rodape(GLYPH_A_BUTTON L" Abrir     " GLYPH_X_BUTTON L" Nova coleção     "
-                   GLYPH_START_BUTTON L" Opções     " GLYPH_BACK_BUTTON L" Exportar", texto);
+            Rodape(GLYPH_A_BUTTON L" Open     " GLYPH_X_BUTTON L" New collection     "
+                   GLYPH_START_BUTTON L" Options     " GLYPH_BACK_BUTTON L" Export", texto);
         g_fonte.End();
     }
 
@@ -1976,11 +1976,11 @@ namespace
             // Composta vazia nao se resolve adicionando jogos -- nao ha o que
             // adicionar nela. O cruzamento vazio e o caso que mais vai acontecer,
             // entao ele diz o porque em vez de so dizer que esta vazio.
-            const WCHAR *vazia = L"Nenhum jogo nesta coleção";
+            const WCHAR *vazia = L"No games in this collection";
             if (!adicionando && g_atual != NULL)
             {
-                if      (g_atual->tipo == colecoes::TIPO_INTERSECAO) vazia = L"Nenhum jogo está em todas elas";
-                else if (g_atual->tipo == colecoes::TIPO_UNIAO)      vazia = L"Nenhum jogo nas coleções escolhidas";
+                if      (g_atual->tipo == colecoes::TIPO_INTERSECAO) vazia = L"No game is in all of them";
+                else if (g_atual->tipo == colecoes::TIPO_UNIAO)      vazia = L"No games in the chosen collections";
             }
 
             // A ABA pode ter esvaziado a coleção por dentro -- tire o último jogo de
@@ -1991,24 +1991,24 @@ namespace
             WCHAR porCausaDaAba[128];
             if (!adicionando && g_aba != biblioteca::ABA_AUTOMATICA)
             {
-                swprintf_s(porCausaDaAba, 128, L"Nenhum jogo de %s nesta coleção",
+                swprintf_s(porCausaDaAba, 128, L"No %s games in this collection",
                            NomeDaAba(g_aba));
                 vazia = porCausaDaAba;
             }
 
-            if (soltos) vazia = L"Nenhum jogo fora das coleções";
+            if (soltos) vazia = L"No games outside your collections";
 
             g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
-                             adicionando ? L"A biblioteca está vazia" : vazia,
+                             adicionando ? L"The library is empty" : vazia,
                              ATGFONT_CENTER_X);
             g_fonte.SetScaleFactors(1.0f, 1.0f);
             Rodape(soltos
-                   ? GLYPH_B_BUTTON L" Voltar"
+                   ? GLYPH_B_BUTTON L" Back"
                    : (adicionando
-                   ? GLYPH_B_BUTTON L" Cancelar"
+                   ? GLYPH_B_BUTTON L" Cancel"
                    : (colecoes::Composta(g_atual)
-                      ? GLYPH_B_BUTTON L" Voltar     " GLYPH_START_BUTTON L" Opções"
-                      : GLYPH_B_BUTTON L" Voltar     " GLYPH_X_BUTTON L" Adicionar jogos")),
+                      ? GLYPH_B_BUTTON L" Back     " GLYPH_START_BUTTON L" Options"
+                      : GLYPH_B_BUTTON L" Back     " GLYPH_X_BUTTON L" Add games")),
                    L"");
             g_fonte.End();
             return;
@@ -2096,8 +2096,8 @@ namespace
         }
         else if (adicionando)
         {
-            swprintf_s(sub, 64, L"%d de %d marcados", ItensMarcados(), (int)g_jogos.size());
-            Cabecalho(L"Adicionar jogos", sub);
+            swprintf_s(sub, 64, L"%d of %d selected", ItensMarcados(), (int)g_jogos.size());
+            Cabecalho(L"Add games", sub);
         }
         else
         {
@@ -2124,30 +2124,30 @@ namespace
 
         if (adicionando)
         {
-            swprintf_s(texto, 256, L"%d marcados", ItensMarcados());
-            Rodape(GLYPH_A_BUTTON L" Marcar     " GLYPH_B_BUTTON L" Cancelar     "
-                   GLYPH_START_BUTTON L" Concluir", texto);
+            swprintf_s(texto, 256, L"%d selected", ItensMarcados());
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
+                   GLYPH_START_BUTTON L" Done", texto);
         }
         else if (soltos)
         {
-            swprintf_s(texto, 256, L"%d de %d", g_iJogo + 1, total);
+            swprintf_s(texto, 256, L"%d of %d", g_iJogo + 1, total);
             // O B volta para Todos. Nas outras abas ele não faz nada, mas esta é uma
             // TELA, e sair dela por onde se sai de toda tela é mais barato que
             // lembrar do LB.
-            Rodape(GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
-                   GLYPH_X_BUTTON L" Adicionar a coleções", texto);
+            Rodape(GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
+                   GLYPH_X_BUTTON L" Add to collections", texto);
         }
         else
         {
-            swprintf_s(texto, 256, L"%d de %d", g_iJogo + 1, total);
+            swprintf_s(texto, 256, L"%d of %d", g_iJogo + 1, total);
             // Sem "Adicionar jogos" numa composta: o jogo está ali por causa de uma
             // origem, e para tirá-lo tira-se da origem. Oferecer o botão seria
             // oferecer um que não faz nada.
             Rodape(colecoes::Composta(g_atual)
-                   ? GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
-                     GLYPH_START_BUTTON L" Opções"
-                   : GLYPH_A_BUTTON L" Jogar     " GLYPH_B_BUTTON L" Voltar     "
-                     GLYPH_X_BUTTON L" Adicionar jogos     " GLYPH_START_BUTTON L" Opções",
+                   ? GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
+                     GLYPH_START_BUTTON L" Options"
+                   : GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
+                     GLYPH_X_BUTTON L" Add games     " GLYPH_START_BUTTON L" Options",
                    texto);
         }
         g_fonte.End();
@@ -2182,7 +2182,7 @@ namespace
     const D3DCOLOR COR_FAIXA_MAL = D3DCOLOR_ARGB( 56, 201, 66, 58);     // vermelho a 22%
     const D3DCOLOR COR_TEXTO_MAL = D3DCOLOR_XRGB(255, 226, 223);
 
-    const WCHAR *RODAPE_MODAL = GLYPH_A_BUTTON L" Escolher     " GLYPH_B_BUTTON L" Fechar";
+    const WCHAR *RODAPE_MODAL = GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Close";
 
     // Largura pelo CONTEUDO, e nao os 460 fixos de antes: com um item so sobrava caixa
     // vazia, e um nome de jogo comprido era cortado. GetTextExtent e CPU pura (le a
@@ -2567,7 +2567,7 @@ namespace
         // escolhedor de jogos.
         if (L[g_iJogo]->titleId == 0)
         {
-            Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");
+            Avisar("This game has no TitleId and can't go in a collection");
             return;
         }
 
@@ -2673,7 +2673,7 @@ namespace
     // alguns quadros depois -- o laço não pode parar enquanto a Guide está na tela.
     void NovaColecao()
     {
-        if (teclado::Abrir("Nova coleção", "Como se chama?", ""))
+        if (teclado::Abrir("New collection", "What's it called?", ""))
         {
             som::Tocar(som::SOM_CONFIRMA);
             g_pedido = PEDIDO_NOVA;
@@ -2688,7 +2688,7 @@ namespace
         // Guarda o PONTEIRO, não o índice: até o teclado voltar, g_iCol pode não
         // apontar mais para esta coleção.
         g_renomeando = L[g_iCol];
-        if (teclado::Abrir("Renomear", "Novo nome", g_renomeando->nome.c_str()))
+        if (teclado::Abrir("Rename", "New name", g_renomeando->nome.c_str()))
             g_pedido = PEDIDO_RENOMEAR;
         else
             g_renomeando = NULL;
@@ -2729,10 +2729,10 @@ namespace
             // coleções à vista e a contagem ao vivo no rodapé, que explica melhor do
             // que qualquer frase no menu.
             g_menuDe = MENU_TIPO;
-            g_menuRotulo = "Nova coleção";
-            g_menuItens[0] = "Coleção Manual";
-            g_menuItens[1] = "Junção";
-            g_menuItens[2] = "Interseção";
+            g_menuRotulo = "New collection";
+            g_menuItens[0] = "Manual collection";
+            g_menuItens[1] = "Union";
+            g_menuItens[2] = "Intersection";
             g_menuQtd = 3; g_menuFoco = 0; g_menuPerigo = -1; g_menuAberto = true;
         }
         else if (pedido == PEDIDO_RENOMEAR && alvo != NULL)
@@ -2771,22 +2771,22 @@ namespace
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_COLECAO;
         g_menuQtd = 0;
-        g_menuRotulo = "Coleção";
+        g_menuRotulo = "Collection";
         CopiarTitulo(L[g_iCol]->nome);
 
-        g_menuItens[g_menuQtd] = "Renomear";
+        g_menuItens[g_menuQtd] = "Rename";
         g_menuAcao [g_menuQtd] = ACAO_RENOMEAR;  g_menuQtd++;
 
         // Composta ganha a opção de trocar as origens; coleção de jogos não tem o que
         // escolher ali.
         if (colecoes::Composta(L[g_iCol]))
         {
-            g_menuItens[g_menuQtd] = "Escolher coleções";
+            g_menuItens[g_menuQtd] = "Choose collections";
             g_menuAcao [g_menuQtd] = ACAO_ORIGENS;   g_menuQtd++;
         }
 
         g_menuPerigo = g_menuQtd;                 // a destrutiva é sempre a última
-        g_menuItens[g_menuQtd] = "Apagar coleção";
+        g_menuItens[g_menuQtd] = "Delete collection";
         g_menuAcao [g_menuQtd] = ACAO_APAGAR;    g_menuQtd++;
 
         g_menuFoco = 0; g_menuAberto = true;
@@ -2802,10 +2802,10 @@ namespace
     {
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_EXPORTAR;
-        g_menuRotulo = "Exportar";
-        CopiarTitulo("Biblioteca e coleções para o Xbox Vault");
-        g_menuItens[0] = "Exportar";
-        g_menuItens[1] = "Cancelar";
+        g_menuRotulo = "Export";
+        CopiarTitulo("Library and collections for Xbox Vault");
+        g_menuItens[0] = "Export";
+        g_menuItens[1] = "Cancel";
         g_menuQtd = 2; g_menuFoco = 0; g_menuPerigo = -1;
         g_menuAberto = true;
     }
@@ -2825,7 +2825,7 @@ namespace
         CopiarTitulo(L[g_iJogo]->nome);
         som::Tocar(som::SOM_MENU);
         g_menuDe = MENU_JOGO;
-        g_menuRotulo = "Jogo";
+        g_menuRotulo = "Game";
 
         // A coleção guarda TitleId, então remover tira TODOS os itens que o
         // compartilham -- os dois discos de um multi-disco, as duas cópias de uma
@@ -2833,9 +2833,9 @@ namespace
         int quantos = ItensComTitleId(L[g_iJogo]->titleId);
         if (quantos > 1)
             _snprintf(g_menuItemBuf, sizeof(g_menuItemBuf),
-                      "Remover da coleção (%d itens)", quantos);
+                      "Remove from collection (%d items)", quantos);
         else
-            _snprintf(g_menuItemBuf, sizeof(g_menuItemBuf), "Remover da coleção");
+            _snprintf(g_menuItemBuf, sizeof(g_menuItemBuf), "Remove from collection");
         g_menuItemBuf[sizeof(g_menuItemBuf) - 1] = '\0';
 
         g_menuItens[0] = g_menuItemBuf;
@@ -2913,7 +2913,7 @@ namespace
                 // coleções o próprio exportar busca.
                 std::string erro;
                 if (exportar::ParaOVault(g_jogos, g_bancoOk, erro))
-                    Avisar("vault.txt gravado");
+                    Avisar("vault.txt saved");
                 else
                     Avisar(erro.c_str());
             }
@@ -2937,7 +2937,7 @@ namespace
         }
         else if (g_menuDe == MENU_APAGAR)
         {
-            // Segundo menu, com "Cancelar" em foco. Apagar e a unica acao do app que
+            // Segundo menu, com "Cancel" em foco. Apagar e a unica acao do app que
             // destroi algo sem volta, e estava a um A de distancia.
             if (g_menuFoco == 1)
             {
@@ -2974,9 +2974,9 @@ namespace
                 {
                     CopiarTitulo(L[g_iCol]->nome);
                     g_menuDe = MENU_APAGAR;
-                    g_menuRotulo = "Apagar";
-                    g_menuItens[0] = "Cancelar";
-                    g_menuItens[1] = "Apagar esta coleção";
+                    g_menuRotulo = "Delete";
+                    g_menuItens[0] = "Cancel";
+                    g_menuItens[1] = "Delete this collection";
                     g_menuQtd = 2;
                     g_menuFoco = 0;          // o seguro em foco
                     g_menuPerigo = 1;
@@ -3067,7 +3067,7 @@ namespace
             // silenciosa e o teste custa nada.
             if (titleId == 0)
             {
-                Avisar("Este jogo nao tem TitleId e nao pode entrar numa colecao");
+                Avisar("This game has no TitleId and can't go in a collection");
                 return;
             }
 
@@ -3274,7 +3274,7 @@ void __cdecl main()
     // Biblioteca vazia sem explicacao parece app quebrado. Com a FreeStyle varrendo, e
     // so esperar o scan acabar -- mas isso o usuario precisa ser informado.
     if (!g_bancoOk)
-        Avisar("Nao consegui ler a biblioteca. A FreeStyle esta varrendo? Tente depois.");
+        Avisar("Couldn't read the library. Is FreeStyle scanning? Try again later.");
 
     // As ROMs entram como itens comuns, e dai em diante nada no app sabe que elas sao
     // diferentes: mesma grade, mesmas colecoes, mesmo lancador. "game:" e a pasta de

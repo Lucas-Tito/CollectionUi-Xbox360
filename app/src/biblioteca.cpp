@@ -85,7 +85,7 @@ namespace biblioteca
     int AbaPorContentType(int contentType)
     {
         // XCONTENTTYPE_*. Sao os quatro que aparecem neste acervo; qualquer outro vai
-        // para "Outros", que e onde a FreeStyle tambem o poria.
+        // para "Other", que e onde a FreeStyle tambem o poria.
         switch (contentType)
         {
         case 0x7000:  return ABA_X360;        // jogo de 360

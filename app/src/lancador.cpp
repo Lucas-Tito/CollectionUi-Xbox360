@@ -198,7 +198,7 @@ namespace lancador
         std::string caminho = Resolver(jogo.caminho);
         if (caminho.empty())
         {
-            erro = "Arquivo nao encontrado em nenhum dispositivo";
+            erro = "File not found on any device";
             diario::Escrever("lancar: nao achei '%s' em dispositivo nenhum",
                              jogo.caminho.c_str());
             return false;
@@ -219,19 +219,19 @@ namespace lancador
             d.aparelho = AparelhoDoTipo(tipo);
             if (strlen(nome) >= sizeof(d.nome) || strchr(nome, '\\') != NULL)
             {
-                erro = "Pacote do indie com nome inesperado";
+                erro = "The indie package has an unexpected name";
                 diario::Escrever("indie: nome do pacote fora do formato: %s", nome);
                 return false;
             }
             strcpy(d.nome, nome);
             if (d.aparelho == 0xFFFFFFFF)
             {
-                erro = "Nao achei o aparelho do indie";
+                erro = "Couldn't find the indie's storage device";
                 return false;
             }
             if (!AcharLancadorXna(lancadorXna, sizeof(lancadorXna)))
             {
-                erro = "Falta o Xna_TitleLauncher.xex do sistema";
+                erro = "The system's Xna_TitleLauncher.xex is missing";
                 diario::Escrever("indie: Xna_TitleLauncher.xex nao encontrado em xsep:");
                 return false;
             }
@@ -240,7 +240,7 @@ namespace lancador
                              lancadorXna, (unsigned)d.aparelho, d.nome, (unsigned)r);
             if (r != ERROR_SUCCESS)
             {
-                erro = "O sistema recusou os dados de lancamento do indie";
+                erro = "The system refused the indie's launch data";
                 return false;
             }
             // Daqui em diante e o caminho do xex solto (tipo 1): XLaunchNewImage com o
@@ -252,12 +252,12 @@ namespace lancador
             diario::Fechar();
 
             HANDLE h = CreateThread(NULL, 0, Disparar, &p, 0, NULL);
-            if (h == NULL) { diario::Reabrir(); erro = "Nao consegui criar a thread de lancamento"; return false; }
+            if (h == NULL) { diario::Reabrir(); erro = "Couldn't create the launch thread"; return false; }
             WaitForSingleObject(h, INFINITE);   // dando certo, nunca termina
             CloseHandle(h);
             diario::Reabrir();
             diario::Escrever("FALHOU: XLaunchNewImage do lancador XNA voltou: %s", lancadorXna);
-            erro = "O indie nao abriu";
+            erro = "The indie game didn't start";
             return false;
         }
 
@@ -285,7 +285,7 @@ namespace lancador
         if (h == NULL)
         {
             diario::Reabrir();
-            erro = "Nao consegui criar a thread de lancamento";
+            erro = "Couldn't create the launch thread";
             return false;
         }
 
@@ -299,7 +299,7 @@ namespace lancador
         char texto[128];
         if (jogo.tipoArquivo == 3)
         {
-            _snprintf(texto, sizeof(texto), "O jogo nao abriu (erro 0x%08X)",
+            _snprintf(texto, sizeof(texto), "The game didn't start (error 0x%08X)",
                       (unsigned)p.codigo);
             if (p.tentouLongo)
                 diario::Escrever("FALHOU container: caminho curto 0x%08X, \\??\\ 0x%08X, em %s",
@@ -310,7 +310,7 @@ namespace lancador
         }
         else
         {
-            _snprintf(texto, sizeof(texto), "O jogo nao abriu");
+            _snprintf(texto, sizeof(texto), "The game didn't start");
             diario::Escrever("FALHOU: XLaunchNewImage voltou, o que nao deveria: %s",
                              caminho.c_str());
         }

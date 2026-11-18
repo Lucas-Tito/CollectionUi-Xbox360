@@ -208,12 +208,12 @@ telaColecoes = function(){
   pintarFundo(ctx);
 
   if (!L.length){
-    texto(!escolhendo ? 'Nenhuma coleção ainda'
-        : arquivando ? 'Nenhuma coleção para arquivar'
-        : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
-        :                                     'Nenhuma coleção para cruzar',
+    texto(!escolhendo ? 'No collections yet'
+        : arquivando ? 'No collections to add it to'
+        : editandoComposta.tipo === 'uniao' ? 'No game collections to combine'
+        :                                     'No collections to intersect',
           640, 320, COR_TEXTO, 1.3, 'center');
-    rodape(escolhendo ? [['B','Cancelar']] : [['X','Nova coleção'],['BACK','Exportar']], '');
+    rodape(escolhendo ? [['B','Cancel']] : [['X','New collection'],['BACK','Export']], '');
     return;
   }
 
@@ -222,18 +222,18 @@ telaColecoes = function(){
 
   if (!escolhendo){
     desenharAbas();
-    tituloDaTela('', `${iCol+1} de ${L.length}`);
+    tituloDaTela('', `${iCol+1} of ${L.length}`);
   } else if (arquivando){
     const q = escolhidas.length;
-    tituloDaTela('arquivar', `${alvo ? cortar(alvo.nome, 400, 0.8) : ''} · ${q} ${q === 1 ? 'coleção' : 'coleções'}`);
+    tituloDaTela('add to collections', `${alvo ? cortar(alvo.nome, 400, 0.8) : ''} · ${q} ${q === 1 ? 'collection' : 'collections'}`);
   } else {
-    tituloDaTela('escolher coleções', `${origens.length} escolhidas · ${contaRascunho()} jogos`);
+    tituloDaTela('choose collections', `${origens.length} chosen · ${contaRascunho()} games`);
   }
 
   desenharGrades(() => gradeColecoes(escolhendo));
 
-  if (escolhendo) rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']], '');
-  else rodape([['A','Abrir'],['X','Nova coleção'],['START','Opções'],['BACK','Exportar']], '');
+  if (escolhendo) rodape([['A','Select'],['B','Cancel'],['START','Done']], '');
+  else rodape([['A','Open'],['X','New collection'],['START','Options'],['BACK','Export']], '');
 };
 
 // A grade de coleções sozinha, com o estado atual (aba, foco, rolagem): a troca de hub
@@ -268,35 +268,35 @@ telaJogos = function(){
   if (naSoltos) desenharAbas();
 
   if (!total){
-    let vazia = 'Nenhum jogo nesta coleção';
+    let vazia = 'No games in this collection';
     if (!escolhendo && atual){
-      if      (atual.tipo === 'intersecao') vazia = 'Nenhum jogo está em todas elas';
-      else if (atual.tipo === 'uniao')      vazia = 'Nenhum jogo nas coleções escolhidas';
+      if      (atual.tipo === 'intersecao') vazia = 'No game is in all of them';
+      else if (atual.tipo === 'uniao')      vazia = 'No games in the chosen collections';
     }
-    if (!escolhendo && aba !== 0) vazia = `Nenhum jogo de ${nomeAba(aba)} nesta coleção`;
-    if (naSoltos) vazia = 'Nenhum jogo fora das coleções';
-    texto(escolhendo ? 'A biblioteca está vazia' : vazia, 640, 320, COR_TEXTO, 1.3, 'center');
-    rodape(naSoltos ? [['B','Voltar']] : escolhendo ? [['B','Cancelar']]
-         : composta(atual) ? [['B','Voltar'],['START','Opções']] : [['B','Voltar'],['X','Adicionar jogos']], '');
+    if (!escolhendo && aba !== 0) vazia = `No ${nomeAba(aba)} games in this collection`;
+    if (naSoltos) vazia = 'No games outside your collections';
+    texto(escolhendo ? 'The library is empty' : vazia, 640, 320, COR_TEXTO, 1.3, 'center');
+    rodape(naSoltos ? [['B','Back']] : escolhendo ? [['B','Cancel']]
+         : composta(atual) ? [['B','Back'],['START','Options']] : [['B','Back'],['X','Add games']], '');
     return;
   }
 
   // "show me / all games" do My Games: a aba que filtra, no alto à esquerda.
   // Só quando filtra: no Todos, que é o padrão, não diz nada (pedido de 18/11).
   if (!naSoltos && aba !== 0){
-    texto('mostrando', MARGEM_X, 18, COR_APAGADO, 0.8);
+    texto('showing', MARGEM_X, 18, COR_APAGADO, 0.8);
     texto(nomeAba(aba).toLowerCase(), MARGEM_X, 38, COR_TEXTO, 1.0);
   }
-  if (escolhendo) tituloDaTela('adicionar jogos', `${selecao.length} de ${JOGOS.length} marcados`);
-  else if (naSoltos) tituloDaTela('', `${iJogo+1} de ${total}`);
-  else tituloDaTela(atual.nome, `${iJogo+1} de ${total}`);
+  if (escolhendo) tituloDaTela('add games', `${selecao.length} of ${JOGOS.length} selected`);
+  else if (naSoltos) tituloDaTela('', `${iJogo+1} of ${total}`);
+  else tituloDaTela(atual.nome, `${iJogo+1} of ${total}`);
 
   desenharGrades(() => gradeJogos(escolhendo));
 
-  if (escolhendo) rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']], '');
-  else if (naSoltos) rodape([['A','Jogar'],['Y','Detalhes'],['B','Voltar'],['X','Adicionar a coleções']], '');
-  else if (composta(atual)) rodape([['A','Jogar'],['Y','Detalhes'],['B','Voltar'],['START','Opções']], '');
-  else rodape([['A','Jogar'],['Y','Detalhes'],['B','Voltar'],['X','Adicionar jogos'],['START','Opções']], '');
+  if (escolhendo) rodape([['A','Select'],['B','Cancel'],['START','Done']], '');
+  else if (naSoltos) rodape([['A','Play'],['Y','Details'],['B','Back'],['X','Add to collections']], '');
+  else if (composta(atual)) rodape([['A','Play'],['Y','Details'],['B','Back'],['START','Options']], '');
+  else rodape([['A','Play'],['Y','Details'],['B','Back'],['X','Add games'],['START','Options']], '');
 };
 
 function gradeJogos(escolhendo){
@@ -365,16 +365,16 @@ indiceAlfabetico = function(L){
 // é uma frase por menu, nova.
 const DIALOGO = { x: 366, l: 548, topo: 45, barra: 47, fim: 618, linha: 40 };
 // Barra de título própria e corpo só com a frase, sem a linha do nome: no exportar a
-// barra já diz o que é ("Exportar para Xbox Vault") e o nome ("Biblioteca e coleções
+// barra já diz o que é ("Export to Xbox Vault") e o nome ("Biblioteca e coleções
 // para o Xbox Vault") repetia (pedido de 18/11).
-const BARRA = { exportar: 'Exportar para Xbox Vault' };
+const BARRA = { exportar: 'Export to Xbox Vault' };
 const SEM_NOME = { exportar: true };
 const FRASE = {
-  colecao:  'O que fazer com esta coleção?',
-  jogo:     'O que fazer com este jogo nesta coleção?',
-  exportar: 'Grava as coleções em vault.txt',
-  tipo:     'Que tipo de coleção vai ser?',
-  apagar:   'Apagar esta coleção? Os jogos continuam no console; só a coleção some.',
+  colecao:  'What do you want to do with this collection?',
+  jogo:     'What do you want to do with this game in this collection?',
+  exportar: 'Saves your collections to vault.txt',
+  tipo:     'What kind of collection will it be?',
+  apagar:   'Delete this collection? The games stay on the console; only the collection goes away.',
 };
 function degrade(x, y, l, a, de, para){
   const g = ctx.createLinearGradient(0, y, 0, y + a);
@@ -537,7 +537,7 @@ let pedido = 0;
 let jogoDetalhe = null, telaAntesDetalhes = null;
 
 const horas = h => h < 1 ? Math.round(h * 60) + ' min'
-                         : (Math.round(h * 2) / 2).toString().replace('.', ',') + ' h';
+                         : (Math.round(h * 2) / 2).toString() + ' h';
 function corMetacritic(n){ return n >= 75 ? 'rgb(102,204,51)' : n >= 50 ? 'rgb(255,204,51)' : 'rgb(255,0,0)'; }
 
 // A faixa de baixo é o corpo do diálogo do Metro, o mesmo dos menus, com texto escuro
@@ -569,7 +569,7 @@ function telaDetalhes(){
   for (const ln of nome){ texto(ln, X, y, COR_TEXTO, 1.7); y += 44; }
 
   ctx.fillStyle = METRO.verde; ctx.fillRect(X, BY, BL, BA);
-  texto(linhaDeBotoes([['A', 'Jogar']]), X + 18, BY + (BA - ALT_GLIFO * 0.95) / 2, COR_TEXTO, 0.95);
+  texto(linhaDeBotoes([['A', 'Play']]), X + 18, BY + (BA - ALT_GLIFO * 0.95) / 2, COR_TEXTO, 0.95);
 
   // ---- a faixa ----
   const FY = CY + CA + 34, FF = 640;
@@ -578,8 +578,8 @@ function telaDetalhes(){
 
   // a linha de números (o "PLAYTIME / LAST PLAYED / SESSIONS / RELEASED" do Reprise)
   const nums = [];
-  if (f.coop) nums.push(['CO-OP NO SOFÁ', f.coop > 1 ? `até ${f.coop} jogadores` : `${f.coop} jogador`]);
-  if (f.ano) nums.push(['LANÇAMENTO', String(f.ano)]);
+  if (f.coop) nums.push(['COUCH CO-OP', f.coop > 1 ? `up to ${f.coop} players` : `${f.coop} player`]);
+  if (f.ano) nums.push(['RELEASED', String(f.ano)]);
   let nx = MARGEM_X;
   const NY = FY + 22;
   for (const [r, v] of nums){
@@ -593,7 +593,7 @@ function telaDetalhes(){
   const SX = MARGEM_X, SW = 720;
   let ly = nums.length ? NY + 70 : NY;
   if (f.coop && (f.coopExtras || f.coopTexto)){
-    rot('NO CO-OPTIMUS', SX, ly); ly += 22;
+    rot('ON CO-OPTIMUS', SX, ly); ly += 22;
     if (f.coopExtras) for (const ln of quebrar(f.coopExtras.join('  ·  '), SW, 2, 0.8)){ texto(ln, SX, ly, C.texto, 0.8); ly += 24; }
     if (f.coopTexto) for (const ln of quebrar(f.coopTexto, SW, 3, 0.86)){ texto(ln, SX, ly, C.texto, 0.86); ly += 25; }
     ly += 14;
@@ -601,7 +601,7 @@ function telaDetalhes(){
   if (f.descricao){
     const cabe = Math.floor((FF - 14 - ly - 24) / 25);
     if (cabe >= 2){
-      rot('SOBRE', SX, ly); ly += 24;
+      rot('ABOUT', SX, ly); ly += 24;
       for (const ln of quebrar(f.descricao, SW, cabe, 0.86)){ texto(ln, SX, ly, C.texto, 0.86); ly += 25; }
     }
   }
@@ -611,32 +611,32 @@ function telaDetalhes(){
   let ry = NY;
   const campo = (r, desenha) => { rot(r, RX, ry); ry += 22; ry = desenha(ry) + 16; };
   const linhas = (v, max) => yy => { for (const ln of quebrar(String(v), RW, max, 0.9)){ texto(ln, RX, yy, C.texto, 0.9); yy += 25; } return yy; };
-  if (f.dev) campo('DESENVOLVEDORA', linhas(f.dev, 2));
-  if (f.pub) campo('PUBLICADORA', linhas(f.pub, 2));
+  if (f.dev) campo('DEVELOPER', linhas(f.dev, 2));
+  if (f.pub) campo('PUBLISHER', linhas(f.pub, 2));
   if (f.metacritic) campo('METACRITIC', yy => {
     ctx.fillStyle = corMetacritic(f.metacritic); ctx.fillRect(RX, yy, 40, 30);
     texto(String(f.metacritic), RX + 20, yy + 2, 'rgb(20,20,20)', 0.95, 'center');
     return yy + 34;
   });
-  else if (f.jogadores_nota) campo('NOTA DOS JOGADORES', yy => {
+  else if (f.jogadores_nota) campo('USER RATING', yy => {
     const cheias = Math.round(f.jogadores_nota);
     let sx = RX;
     for (let i = 0; i < 5; i++){ texto(String.fromCharCode(0x145), sx, yy, i < cheias ? C.estrela : C.rotulo, 0.9); sx += 22; }
-    texto(String(f.jogadores_nota).replace('.', ',') + ' de 5', sx + 8, yy, C.texto, 0.9);
+    texto(String(f.jogadores_nota) + ' of 5', sx + 8, yy, C.texto, 0.9);
     return yy + 25;
   });
   if (f.tempo){
     const t = [];
-    if (f.tempo.main) t.push(['história', f.tempo.main]);
-    if (f.tempo.plus) t.push(['com extras', f.tempo.plus]);
+    if (f.tempo.main) t.push(['main story', f.tempo.main]);
+    if (f.tempo.plus) t.push(['main + extras', f.tempo.plus]);
     if (f.tempo.cem)  t.push(['100%', f.tempo.cem]);
-    campo('TEMPO PARA ZERAR', yy => {
+    campo('HOW LONG TO BEAT', yy => {
       for (const [n, h] of t){ texto(n, RX, yy, C.texto, 0.9); texto(horas(h), RX + 150, yy, C.texto, 0.9); yy += 25; }
       return yy;
     });
   }
 
-  rodape([['A','Jogar'],['B','Voltar']], '');
+  rodape([['A','Play'],['B','Back']], '');
 }
 
 document.addEventListener('keydown', e => {

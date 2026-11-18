@@ -31,13 +31,13 @@ namespace exportar
         // Entao nao se escreve -- com a FreeStyle varrendo, e so tentar depois.
         if (!bancoOk)
         {
-            erro = "Biblioteca nao foi lida; nao exportei";
+            erro = "The library wasn't read; nothing exported";
             diario::Escrever("export recusado: a leitura do banco falhou");
             return false;
         }
         if (jogos.empty())
         {
-            erro = "Biblioteca vazia; nao exportei";
+            erro = "The library is empty; nothing exported";
             diario::Escrever("export recusado: nenhum item na biblioteca");
             return false;
         }
@@ -45,7 +45,7 @@ namespace exportar
         FILE *f = fopen(ARQUIVO, "w");
         if (f == NULL)
         {
-            erro = "Nao consegui gravar vault.txt";
+            erro = "Couldn't write vault.txt";
             diario::Escrever("AVISO: nao consegui gravar %s", ARQUIVO);
             return false;
         }
@@ -166,7 +166,7 @@ namespace exportar
             ok = false;
         if (!ok)
         {
-            erro = "Escrita de vault.txt falhou; disco cheio?";
+            erro = "Writing vault.txt failed; is the disk full?";
             diario::Escrever("ERRO: escrita de %s falhou", ARQUIVO);
             return false;
         }

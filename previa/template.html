@@ -151,12 +151,12 @@ input[type=text]{width:100%;background:#1D2521;border:1px solid var(--linha);
 
 <div class="dlg" id="dlg-nome" hidden>
   <div class="cx">
-    <h3 id="dn-tit">Nova coleção</h3>
+    <h3 id="dn-tit">New collection</h3>
     <p>No console isto é o teclado do sistema.</p>
-    <input type="text" id="dn-txt" maxlength="28" placeholder="Ex.: Para jogar em dois">
+    <input type="text" id="dn-txt" maxlength="28" placeholder="E.g. Two-player games">
     <div class="acoes">
-      <button class="bt" id="dn-cancelar">Cancelar</button>
-      <button class="bt ok" id="dn-ok">Criar</button>
+      <button class="bt" id="dn-cancelar">Cancel</button>
+      <button class="bt ok" id="dn-ok">Create</button>
     </div>
   </div>
 </div>
@@ -228,13 +228,13 @@ const CARD = { r:16, giro:-30, larg:0.56, folga:0.14, alfa:0.60,
 // extrair.py foi escrito antes de ela importar. E um SUBSTITUTO que da o mesmo
 // resultado neste acervo, nao o desenho da coisa.
 const ABAS_FSD = [
-  { id:0, nome:'Todos'   },   // sempre existe; e a tela de hoje
+  { id:0, nome:'All'   },   // sempre existe; e a tela de hoje
   { id:1, nome:'XBLA'    },
   { id:2, nome:'Xbox 360'},
-  { id:3, nome:'Xbox Clássico' },
+  { id:3, nome:'Xbox OG' },
   { id:4, nome:'Homebrew'},
-  { id:5, nome:'Emulador'},
-  { id:6, nome:'Outros'  },
+  { id:5, nome:'Emulators'},
+  { id:6, nome:'Other'  },
 ];
 // A ORDEM e a da propria tabela Tabs, por TabId: XBLA vem ANTES de Xbox 360.
 // Nao e o que a intuicao pede, mas e o que a FreeStyle faz.
@@ -249,7 +249,7 @@ JOGOS.forEach(g => {
 // O Soltos não é categoria da FreeStyle: é a aba à esquerda do Todos com os jogos que
 // não estão em coleção nenhuma (fa59339). No C++ é ABA_SOLTOS e a TELA_SOLTOS.
 const ABA_SOLTOS = -1;
-const nomeAba = id => id === ABA_SOLTOS ? 'Soltos'
+const nomeAba = id => id === ABA_SOLTOS ? 'Unsorted'
                     : (ABAS_FSD.find(a => a.id === id) || ABAS_FSD[0]).nome;
 
 // O APP SEMPRE ABRE EM "TODOS". Esta variável mora na memória e em lugar nenhum
@@ -692,7 +692,7 @@ function abasPresentes(){
   const A = reais.length < 2 ? [ABAS_FSD[0]] : [ABAS_FSD[0]].concat(reais);
   // O Soltos entra À ESQUERDA do Todos enquanto houver o que arquivar, mesmo sem
   // categoria nenhuma: "Soltos" e "Todos" já são escolha de verdade.
-  return soltos().length ? [{ id: ABA_SOLTOS, nome: 'Soltos' }].concat(A) : A;
+  return soltos().length ? [{ id: ABA_SOLTOS, nome: 'Unsorted' }].concat(A) : A;
 }
 
 // "Em coleção" é estar numa coleção DE JOGOS, pelo TitleId (AtualizarCobertos e
@@ -943,14 +943,14 @@ function telaColecoes(){
   if (!L.length){
     // Cruzamento aceita junção como origem, junção não aceita -- a frase tem de
     // dizer o que FALTA, e não a mesma coisa para os dois.
-    texto(!escolhendo ? 'Nenhuma coleção ainda'
-        : arquivando ? 'Nenhuma coleção para arquivar'
-        : editandoComposta.tipo === 'uniao' ? 'Nenhuma coleção de jogos para juntar'
-        :                                     'Nenhuma coleção para cruzar',
+    texto(!escolhendo ? 'No collections yet'
+        : arquivando ? 'No collections to add it to'
+        : editandoComposta.tipo === 'uniao' ? 'No game collections to combine'
+        :                                     'No collections to intersect',
           640, 320, COR_APAGADO, 1.3, 'center');
     // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
-    rodape(escolhendo ? [['B','Cancelar']]
-                      : [['X','Nova coleção'],['BACK','Exportar']], '');
+    rodape(escolhendo ? [['B','Cancel']]
+                      : [['X','New collection'],['BACK','Export']], '');
     return;
   }
 
@@ -1017,16 +1017,16 @@ function telaColecoes(){
       }
     }
     const q = escolhidas.length;
-    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']],
-           `${nome.join('')} · ${q} ${q === 1 ? 'coleção' : 'coleções'}`);
+    rodape([['A','Select'],['B','Cancel'],['START','Done']],
+           `${nome.join('')} · ${q} ${q === 1 ? 'collection' : 'collections'}`);
   } else if (escolhendo){
     // O resultado AO VIVO enquanto se marca. Um cruzamento esvazia fácil, e o
     // "( 0 )" descoberto depois de gravar é tarde. Plural fixo, como o C++.
-    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']],
-           `${origens.length} escolhidas · ${contaRascunho()} jogos`);
+    rodape([['A','Select'],['B','Cancel'],['START','Done']],
+           `${origens.length} chosen · ${contaRascunho()} games`);
   } else {
-    rodape([['A','Abrir'],['X','Nova coleção'],['START','Opções'],['BACK','Exportar']],
-           `${iCol+1} de ${L.length}`);
+    rodape([['A','Open'],['X','New collection'],['START','Options'],['BACK','Export']],
+           `${iCol+1} of ${L.length}`);
   }
 }
 
@@ -1045,19 +1045,19 @@ function telaJogos(){
   if (!total){
     // Este ramo VOLTA ANTES DO CABEÇALHO, como no C++ -- e é por isso que a frase
     // precisa nomear a aba: o subtítulo que diria "Xbox 360" não chega a existir.
-    let vazia = 'Nenhum jogo nesta coleção';
+    let vazia = 'No games in this collection';
     if (!escolhendo && atual){
-      if      (atual.tipo === 'intersecao') vazia = 'Nenhum jogo está em todas elas';
-      else if (atual.tipo === 'uniao')      vazia = 'Nenhum jogo nas coleções escolhidas';
+      if      (atual.tipo === 'intersecao') vazia = 'No game is in all of them';
+      else if (atual.tipo === 'uniao')      vazia = 'No games in the chosen collections';
     }
-    if (!escolhendo && aba !== 0) vazia = `Nenhum jogo de ${nomeAba(aba)} nesta coleção`;
-    if (naSoltos) vazia = 'Nenhum jogo fora das coleções';
+    if (!escolhendo && aba !== 0) vazia = `No ${nomeAba(aba)} games in this collection`;
+    if (naSoltos) vazia = 'No games outside your collections';
 
-    texto(escolhendo ? 'A biblioteca está vazia' : vazia, 640, 320, COR_APAGADO, 1.3, 'center');
-    rodape(naSoltos ? [['B','Voltar']]
-         : escolhendo ? [['B','Cancelar']]
-         : composta(atual) ? [['B','Voltar'],['START','Opções']]
-         :                   [['B','Voltar'],['X','Adicionar jogos']], '');
+    texto(escolhendo ? 'The library is empty' : vazia, 640, 320, COR_APAGADO, 1.3, 'center');
+    rodape(naSoltos ? [['B','Back']]
+         : escolhendo ? [['B','Cancel']]
+         : composta(atual) ? [['B','Back'],['START','Options']]
+         :                   [['B','Back'],['X','Add games']], '');
     return;
   }
 
@@ -1066,8 +1066,8 @@ function telaJogos(){
   // 40 jogos mostrando 6 sem dizer por quê parece defeito.
   const subAba = (!escolhendo && aba !== 0) ? nomeAba(aba) : '';
   if (!naSoltos)
-    cabecalho(escolhendo ? 'Adicionar jogos' : atual.nome,
-              escolhendo ? `${selecao.length} de ${JOGOS.length} marcados`
+    cabecalho(escolhendo ? 'Add games' : atual.nome,
+              escolhendo ? `${selecao.length} of ${JOGOS.length} selected`
                          : subAba);
 
   const base = primeiraLinha * COLUNAS;
@@ -1120,16 +1120,16 @@ function telaJogos(){
   indiceAlfabetico(L);
 
   if (escolhendo)
-    rodape([['A','Marcar'],['B','Cancelar'],['START','Concluir']], `${selecao.length} marcados`);
+    rodape([['A','Select'],['B','Cancel'],['START','Done']], `${selecao.length} selected`);
   else if (naSoltos)
-    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar a coleções']], `${iJogo+1} de ${total}`);
+    rodape([['A','Play'],['B','Back'],['X','Add to collections']], `${iJogo+1} of ${total}`);
   else if (composta(atual))
     // Sem "Adicionar jogos": numa composta o jogo está aqui por causa de uma origem,
     // e para tirá-lo tira-se da origem.
-    rodape([['A','Jogar'],['B','Voltar'],['START','Opções']], `${iJogo+1} de ${total}`);
+    rodape([['A','Play'],['B','Back'],['START','Options']], `${iJogo+1} of ${total}`);
   else
-    rodape([['A','Jogar'],['B','Voltar'],['X','Adicionar jogos'],['START','Opções']],
-           `${iJogo+1} de ${total}`);
+    rodape([['A','Play'],['B','Back'],['X','Add games'],['START','Options']],
+           `${iJogo+1} of ${total}`);
 }
 
 // ---- índice alfabético na borda direita ------------------------------------
@@ -1173,7 +1173,7 @@ function indiceAlfabetico(L){
 const MOD_PAD = 26, MOD_ALT = 48, MOD_CABECA = 128, MOD_PE = 80;
 const MOD_MIN = 460, MOD_MAX = 760;
 let COR_PERIGO = 'rgb(201,66,58)';
-const RODAPE_MODAL = [['A','Escolher'],['B','Fechar']];
+const RODAPE_MODAL = [['A','Select'],['B','Close']];
 
 // menu = { de, rotulo, titulo, itens, foco, perigo }
 let menu = null;
@@ -1241,18 +1241,18 @@ function abrirMenuColecao(){
   // Sem coleção nenhuma o menu não tem o que oferecer -- o exportar saiu daqui
   // para o Back. No console isto toca o som de volta e não abre nada.
   if (!c) return;
-  const itens = ['Renomear'];
-  if (composta(c)) itens.push('Escolher coleções');
-  itens.push('Apagar coleção');
-  menu = { de:'colecao', rotulo:'Coleção', titulo:c.nome, itens,
+  const itens = ['Rename'];
+  if (composta(c)) itens.push('Choose collections');
+  itens.push('Delete collection');
+  menu = { de:'colecao', rotulo:'Collection', titulo:c.nome, itens,
            foco:0, perigo:itens.length - 1 };
   desenhar();
 }
 
 function abrirMenuJogo(){
   const g = lista()[iJogo]; if (!g) return;
-  menu = { de:'jogo', rotulo:'Jogo', titulo:g.nome,
-           itens:['Remover da coleção'], foco:0, perigo:0 };
+  menu = { de:'jogo', rotulo:'Game', titulo:g.nome,
+           itens:['Remove from collection'], foco:0, perigo:0 };
   desenhar();
 }
 
@@ -1260,15 +1260,15 @@ function abrirMenuJogo(){
 // então o rodapé diz só "Exportar" e a frase inteira fica aqui. Ele não exporta na
 // hora de propósito: o vault.txt é reescrito por cima do anterior.
 function abrirMenuExportar(){
-  menu = { de:'exportar', rotulo:'Exportar',
-           titulo:'Biblioteca e coleções para o Xbox Vault',
-           itens:['Exportar','Cancelar'], foco:0, perigo:-1 };
+  menu = { de:'exportar', rotulo:'Export',
+           titulo:'Library and collections for Xbox Vault',
+           itens:['Export','Cancel'], foco:0, perigo:-1 };
   desenhar();
 }
 
 function abrirMenuTipo(){
-  menu = { de:'tipo', rotulo:'Nova coleção', titulo:nomeNovo,
-           itens:['Coleção Manual','Junção','Interseção'], foco:0, perigo:-1 };
+  menu = { de:'tipo', rotulo:'New collection', titulo:nomeNovo,
+           itens:['Manual collection','Union','Intersection'], foco:0, perigo:-1 };
   desenhar();
 }
 
@@ -1276,7 +1276,7 @@ function escolherNoMenu(){
   const m = menu; menu = null;
 
   if (m.de === 'exportar'){
-    if (m.foco === 0) avisar('vault.txt gravado');
+    if (m.foco === 0) avisar('vault.txt saved');
     desenhar(); return;
   }
   if (m.de === 'tipo'){ criarDoTipo(['jogos','uniao','intersecao'][m.foco]); return; }
@@ -1296,12 +1296,12 @@ function escolherNoMenu(){
   // colecao
   const c = colFoco();
   const acao = m.itens[m.foco];
-  if      (acao === 'Renomear')          abrirNome(c);
-  else if (acao === 'Escolher coleções') abrirOrigens(c);
-  else if (acao === 'Apagar coleção'){
+  if      (acao === 'Rename')          abrirNome(c);
+  else if (acao === 'Choose collections') abrirOrigens(c);
+  else if (acao === 'Delete collection'){
     // Não apaga aqui: abre a confirmação, com o SEGURO em foco.
-    menu = { de:'apagar', rotulo:'Apagar', titulo:c.nome,
-             itens:['Cancelar','Apagar esta coleção'], foco:0, perigo:1 };
+    menu = { de:'apagar', rotulo:'Delete', titulo:c.nome,
+             itens:['Cancel','Delete this collection'], foco:0, perigo:1 };
     desenhar();
   }
 }
@@ -1569,8 +1569,8 @@ document.addEventListener('keydown', e => {
 // ---- diálogos (no console, teclado do sistema) -----------------------------
 function abrirNome(col){
   editando = col;
-  $('#dn-tit').textContent = col ? 'Renomear coleção' : 'Nova coleção';
-  $('#dn-ok').textContent = col ? 'Salvar' : 'Criar';
+  $('#dn-tit').textContent = col ? 'Rename' : 'New collection';
+  $('#dn-ok').textContent = col ? 'Save' : 'Create';
   $('#dn-txt').value = col ? col.nome : '';
   $('#dlg-nome').hidden = false; $('#dn-txt').focus();
 }

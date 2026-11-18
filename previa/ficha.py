@@ -61,8 +61,8 @@ def fichas(jogos):
         if c.get('local'):
             f['coop'] = c['local']
             if limpa(c.get('exp')): f['coopTexto'] = limpa(c['exp'])
-            extras = {'Splitscreen': 'tela dividida', 'Drop In/Drop Out': 'entrar e sair a qualquer hora',
-                      'Co-Op Campaign': 'campanha em co-op', 'Co-Op Specific Content': 'conteúdo só do co-op'}
+            extras = {'Splitscreen': 'split screen', 'Drop In/Drop Out': 'drop-in/drop-out',
+                      'Co-Op Campaign': 'co-op campaign', 'Co-Op Specific Content': 'co-op specific content'}
             ex = [extras[x] for x in c.get('extras', []) if x in extras]
             if ex: f['coopExtras'] = ex
 
