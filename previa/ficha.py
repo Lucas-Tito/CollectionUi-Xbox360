@@ -14,14 +14,16 @@ Fonte: o xbox-vault (~/Documentos/xbx/data), pelo TitleId; o que ele não tiver 
 a FreeStyle já guarda (o games.json da prévia traz descrição, gênero, dev, pub, nota e data).
 
 O texto passa por um filtro de pontuação: o atlas da fonte não tem ’ “ ” – — … nem ® ™, que
-sairiam como quadradinho. O gerador do fichas.txt do console vai precisar do mesmo filtro.
+sairiam como quadradinho;
+e tira o U+FFFD, o ® que já chega estragado da FreeStyle. O gerador do fichas.txt do console vai precisar do mesmo filtro.
 """
 import json, os
 
 VAULT = os.path.expanduser('~/Documentos/xbx/data')
 
 TROCAS = {'’': "'", '‘': "'", '“': '"', '”': '"', '–': '-', '—': '-',
-          '…': '...', '®': '', '™': '', ' ': ' ', '•': '-'}
+          '…': '...', '®': '', '™': '', ' ': ' ', '•': '-',
+          '\ufffd': ''}   # o ® que já chega estragado da FreeStyle
 
 
 def limpa(t):
