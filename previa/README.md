@@ -106,9 +106,10 @@ python3 previa/montar.py --colecoes colecoes.txt --mock --proposta previa/metro.
         --saida previa/build/metro.html
 ```
 
-A tela de detalhes do jogo (Y na grade de jogos e no Soltos; o A continua jogando direto) não tem
-tela equivalente no Metro: a organização vem do tema Reprise do Pegasus, com a capa no lugar da
-arte, e o desenho e a paleta são os do Metro. Os dados vêm do `previa/ficha.py`, que lê o xbox-vault
+Os detalhes do jogo (Y na grade de jogos e no Soltos; o A continua jogando direto) abrem num popup
+por cima da grade, em cinco formatos ainda em escolha (V troca na prévia; o topo do `metro.js` diz
+qual é qual). A organização vem do tema Reprise do Pegasus, com a capa no lugar da arte, e o
+desenho e a paleta são os do Metro. Os dados vêm do `previa/ficha.py`, que lê o xbox-vault
 (`~/Documentos/xbx/data`) pelo TitleId e cai no que a FreeStyle guarda quando o vault não tem. O
 co-op é só o do Co-Optimus e só o local: jogo que ele não lista fica sem co-op e sem número de
 jogadores na tela, sem dizer que não tem.

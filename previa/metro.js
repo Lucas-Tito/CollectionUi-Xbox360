@@ -87,7 +87,7 @@ pintarFundo = function(ctx){
 
 // ---- peças --------------------------------------------------------------------
 // O levantado (regra 2). r: o raio do que está em cima, para a sombra acompanhar a
-// curva do quadrado de coleção (16, o CARD.r) e ficar reta no cartão de jogo.
+// curva de algo arredondado; desde 19/11 tudo na proposta é reto (r = 0).
 function sombra(x, y, l, a, r){
   r = r || 0;
   ctx.fillStyle = 'rgba(0,0,0,0.12)';
@@ -137,22 +137,27 @@ function comAsCoresDeHoje(f){
   }
 }
 
-// O quadrado de hoje, com as MESMAS opacidades (base chapada, tom 66%->38% por cima da
-// colagem a 60%, véu 94% embaixo), só que no grafite neutro do fundo do Metro em vez do
-// verde-escuro: o verde fica para o destaque (emblema de composta, marcado), como no
-// Metro. O fundo claro do cartão de jogo foi testado e desfeito em 18/11.
+// O quadrado de hoje (colagem de três capas, tom por cima, véu embaixo do nome) no grafite
+// neutro do fundo do Metro em vez do verde-escuro: o verde fica para o destaque (emblema
+// de composta, marcado), como no Metro. O fundo claro do cartão de jogo foi testado e
+// desfeito em 18/11.
+// Pedido de 19/11: canto RETO e sombra reta, como o cartão de jogo e o resto do Metro
+// (regra 1); e a colagem aparece mais só no selecionado. "vivo" (0 a 1, o progresso do
+// foco) leva a colagem de 60% a 92% e tira metade do tom; o véu embaixo do nome fica,
+// para o nome continuar legível.
 const GRAFITE = { base: 'rgb(46,46,50)', tomDe: 'rgba(28,28,32,0.659)', tomPara: 'rgba(40,40,45,0.38)',
                   veu: [26, 26, 29], contorno: 'rgb(70,70,76)' };
-function pintarCardGrafite(x, y, l, a, col){
+function pintarCardGrafite(x, y, l, a, col, vivo){
+  vivo = vivo || 0;
   ctx.save();
-  caminhoArredondado(ctx, x, y, l, a, CARD.r); ctx.clip();
+  ctx.beginPath(); ctx.rect(x, y, l, a); ctx.clip();
   ctx.fillStyle = GRAFITE.base; ctx.fillRect(x, y, l, a);
   const ids = col ? jogosDe(col).slice(0, 3).map(g => g.id) : [];
   if (ids.length){
     ctx.save();
     ctx.translate(x + l/2, y + a/2);
     ctx.rotate(CARD.giro * Math.PI / 180);
-    ctx.globalAlpha = CARD.alfa;
+    ctx.globalAlpha = CARD.alfa + (0.92 - CARD.alfa) * vivo;
     const w = l * CARD.larg, tres = ids.map(capaPorId), prim = tres.find(Boolean);
     const h = prim ? w * (prim.height / prim.width) : w * 1.425, g = w * CARD.folga;
     const pos = [{x:-(w+g), y:-h/2}, {x:0, y:-(h+g/2)}, {x:0, y:g/2}];
@@ -160,7 +165,9 @@ function pintarCardGrafite(x, y, l, a, col){
     ctx.restore();
     const t = ctx.createLinearGradient(x, y, x, y + a);
     t.addColorStop(0, GRAFITE.tomDe); t.addColorStop(1, GRAFITE.tomPara);
+    ctx.globalAlpha = 1 - 0.5 * vivo;
     ctx.fillStyle = t; ctx.fillRect(x, y, l, a);
+    ctx.globalAlpha = 1;
     const [r, g2, b] = GRAFITE.veu;
     const v = ctx.createLinearGradient(0, y + a*0.42, 0, y + a);
     v.addColorStop(0, `rgba(${r},${g2},${b},0)`); v.addColorStop(1, `rgba(${r},${g2},${b},0.941)`);
@@ -168,7 +175,7 @@ function pintarCardGrafite(x, y, l, a, col){
   }
   ctx.restore();
   ctx.strokeStyle = GRAFITE.contorno; ctx.lineWidth = 1;
-  caminhoArredondado(ctx, x + 0.5, y + 0.5, l - 1, a - 1, CARD.r); ctx.stroke();
+  ctx.strokeRect(x + 0.5, y + 0.5, l - 1, a - 1);
 }
 
 function desenharCartao(x, y, col, sel, escolhendo){
@@ -177,14 +184,13 @@ function desenharCartao(x, y, col, sel, escolhendo){
   // levanta com sombra; sem o anel verde. O resto do quadrado é o de hoje.
   const d = Math.round(METRO.CRESCE * prog);
   const X = x - d, Y = y - d, LADO = COL_LADO + 2*d;
-  if (prog > 0.02){ ctx.save(); ctx.globalAlpha = prog; sombra(X, Y, LADO, LADO, CARD.r); ctx.restore(); }
+  if (prog > 0.02){ ctx.save(); ctx.globalAlpha = prog; sombra(X, Y, LADO, LADO, 0); ctx.restore(); }
   comAsCoresDeHoje(() => {
-    pintarCardGrafite(X, Y, LADO, LADO, col);
+    pintarCardGrafite(X, Y, LADO, LADO, col, prog);
     HOJE.emblema(ctx, X, Y, LADO, col.tipo);
     if (escolhendo && !marcada(col)){
-      // O véu de hoje, ARGB(150,6,9,8), recortado na curva do quadrado.
-      ctx.fillStyle = 'rgba(6,9,8,0.588)';
-      caminhoArredondado(ctx, X, Y, LADO, LADO, CARD.r); ctx.fill();
+      // O véu de hoje, ARGB(150,6,9,8).
+      ctx.fillStyle = 'rgba(6,9,8,0.588)'; ctx.fillRect(X, Y, LADO, LADO);
     }
     const ALT_LINHA = 28, ALT_CONT = 24, meio = X + LADO/2;
     const linhas = quebrar(paraMaiusculas(col.nome), COL_LADO - 28, 2, 1);
@@ -193,7 +199,7 @@ function desenharCartao(x, y, col, sel, escolhendo){
     linhas.forEach((ln, n) => texto(ln, meio, topoTexto + n*ALT_LINHA, cor, 1, 'center'));
     texto('( ' + conta(col) + ' )', meio, topoTexto + linhas.length*ALT_LINHA, COR_FRACO, 1, 'center');
   });
-  if (escolhendo && marcada(col)) marcadoHoje(X, Y, LADO, LADO, CARD.r);
+  if (escolhendo && marcada(col)) marcadoHoje(X, Y, LADO, LADO, 0);
 }
 
 telaColecoes = function(){
@@ -525,118 +531,324 @@ let pedido = 0;
 
 
 // ===========================================================================
-// DETALHES DO JOGO (proposta de 18/11). A ORGANIZAÇÃO vem do tema Reprise do Pegasus
-// (detalhes-ref/14); desenho e paleta continuam os do Metro. Lá a metade de cima é arte;
-// aqui só existe a capa, então ela vira o cartão de jogo grande, com o nome e o botão ao
-// lado. Embaixo, numa faixa: a linha de números (co-op no sofá e lançamento), o texto do
-// Co-Optimus, o "sobre" com a descrição e, à direita, a ficha (desenvolvedora,
-// publicadora, nota e tempo para zerar). Co-op só do Co-Optimus: sem ele, nada. Abre com Y na grade de jogos e no Soltos; o A continua lançando
-// direto, para quem não quer ver detalhe nenhum.
-// Dados: previa/ficha.py (do xbox-vault, e da FreeStyle no que ele não tiver).
+// DETALHES DO JOGO, EM POPUP (pedido de 19/11: o desenho da tela dedicada estava bom,
+// mas os dados não justificam uma tela inteira). Abre com Y na grade de jogos e no
+// Soltos, por cima da grade; B fecha; o A da grade continua lançando direto.
+// Cinco formatos para escolher (V troca na prévia):
+//   A  diálogo Metro   o mesmo painel de 548 px do menu (o "Delete Profile"), com Play e
+//                      Close embaixo como opções
+//   B  diálogo largo   o painel Metro com 1000 px e a organização da tela dedicada (a do
+//                      Reprise): capa e Play, números, co-op e sobre, a ficha à direita
+//   C  painel lateral  entra pela direita, na altura toda; a grade continua à vista
+//   D  faixa de baixo  sobe de baixo até perto do meio, com a capa saindo da borda
+//   E  cartão          o cartão de jogo do "My Games" ampliado, claro, com sombra
+// Dados: previa/ficha.py. Co-op só do Co-Optimus: sem ele, nada.
 // ===========================================================================
 let jogoDetalhe = null, telaAntesDetalhes = null;
+const DETALHE_FORMATOS = ['A', 'B', 'C', 'D', 'E'];
+let DETALHE_POPUP = 'A';
 
-const horas = h => h < 1 ? Math.round(h * 60) + ' min'
-                         : (Math.round(h * 2) / 2).toString() + ' h';
+const horas = h => h < 1 ? Math.round(h * 60) + ' min' : (Math.round(h * 2) / 2).toString() + ' h';
 function corMetacritic(n){ return n >= 75 ? 'rgb(102,204,51)' : n >= 50 ? 'rgb(255,204,51)' : 'rgb(255,0,0)'; }
 
-// A faixa de baixo é o corpo do diálogo do Metro, o mesmo dos menus, com texto escuro
-// (escolhida em 18/11 contra uma faixa escura como a metade de baixo do Reprise).
-const FAIXA = { de: 'rgb(231,234,233)', para: 'rgb(206,210,211)', texto: 'rgb(46,53,54)',
-                rotulo: 'rgb(104,112,114)', estrela: 'rgb(0,126,4)' };
-
-function telaDetalhes(){
-  const g = jogoDetalhe, f = g.ficha || {}, C = FAIXA;
-  pintarFundo(ctx);
-
-  // ---- em cima: a capa como cartão de jogo grande, e ao lado gênero, nome e botão ----
-  const CL = 150, CA = Math.round(CL * CAPA_A / CAPA_L), CX = MARGEM_X, CY = 54;
-  sombra(CX - 6, CY - 6, CL + 12, CA + 12);
-  ctx.fillStyle = METRO.cartao; ctx.fillRect(CX - 6, CY - 6, CL + 12, CA + 12);
+// As cores do corpo do diálogo do Metro (a faixa clara escolhida em 18/11).
+const PAINEL = { de: 'rgb(231,234,233)', para: 'rgb(206,210,211)', texto: 'rgb(46,53,54)',
+                 rotulo: 'rgb(104,112,114)', estrela: 'rgb(0,126,4)' };
+const rotulo = (t, x, y) => texto(t, x, y, PAINEL.rotulo, 0.7);
+function linhasEm(t, x, y, l, max, e, cor){
+  for (const ln of quebrar(String(t), l, max, e)){ texto(ln, x, y, cor || PAINEL.texto, e); y += Math.round(29 * e); }
+  return y;
+}
+function capaEm(g, x, y, l, moldura){
+  const a = Math.round(l * CAPA_A / CAPA_L);
+  if (moldura){ ctx.fillStyle = METRO.cartao; ctx.fillRect(x - moldura, y - moldura, l + 2*moldura, a + 2*moldura); }
   const img = capa(JOGOS.indexOf(g));
-  if (img) ctx.drawImage(img, CX, CY, CL, CA);
-  else { ctx.fillStyle = 'rgb(120,119,124)'; ctx.fillRect(CX, CY, CL, CA); }
+  if (img) ctx.drawImage(img, x, y, l, a); else { ctx.fillStyle = 'rgb(120,119,124)'; ctx.fillRect(x, y, l, a); }
+  return a;
+}
+// O rodapé num painel claro: na faixa da barra do diálogo, com texto branco, porque os
+// glifos dos botões pegam a cor do texto e sumiriam em escuro.
+function rodapeNoPainel(x, l, itens){
+  degrade(x, 676, l, 44, 'rgb(146,150,152)', 'rgb(130,136,139)');
+  texto(linhaDeBotoes(itens), x + 32, 676 + (44 - ALT_GLIFO*0.75)/2, COR_TEXTO, 0.75);
+}
+function botaoJogar(x, y, l, a){
+  ctx.fillStyle = METRO.verde; ctx.fillRect(x, y, l, a);
+  texto(linhaDeBotoes([['A', 'Play']]), x + 16, y + (a - ALT_GLIFO * 0.9) / 2, COR_TEXTO, 0.9);
+}
+const nomeLimpo = g => g.nome.replace(/[™®]/g, '');
 
-  // Empilhado de baixo para cima, para o botão ficar no pé da capa (como o logo e o
-  // botão do Reprise, que ficam no pé da arte).
-  const X = CX + CL + 40, W = 1180 - X;
-  const BY = CY + CA - 46, BL = 190, BA = 46;
-  const nome = quebrar(g.nome.replace(/[\u2122\u00ae]/g, ''), W, 2, 1.7);
-  let y = BY - 22 - nome.length * 44;
-  // em cima do nome, o gênero (as etiquetas de gênero do Reprise); desenvolvedora e ano
-  // ficam embaixo, sem repetir
-  if (f.genero) texto(cortar(f.genero.toLowerCase(), W, 0.85), X, y - 30, COR_APAGADO, 0.85);
-  for (const ln of nome){ texto(ln, X, y, COR_TEXTO, 1.7); y += 44; }
-
-  ctx.fillStyle = METRO.verde; ctx.fillRect(X, BY, BL, BA);
-  texto(linhaDeBotoes([['A', 'Play']]), X + 18, BY + (BA - ALT_GLIFO * 0.95) / 2, COR_TEXTO, 0.95);
-
-  // ---- a faixa ----
-  const FY = CY + CA + 34, FF = 640;
-  degrade(0, FY, 1280, FF - FY, C.de, C.para);
-  const rot = (t, x, y) => texto(t, x, y, C.rotulo, 0.7);
-
-  // a linha de números (o "PLAYTIME / LAST PLAYED / SESSIONS / RELEASED" do Reprise)
-  const nums = [];
-  if (f.coop) nums.push(['COUCH CO-OP', f.coop > 1 ? `up to ${f.coop} players` : `${f.coop} player`]);
-  if (f.ano) nums.push(['RELEASED', String(f.ano)]);
-  let nx = MARGEM_X;
-  const NY = FY + 22;
-  for (const [r, v] of nums){
-    const l = Math.max(150, medir(v, 1.2), medir(r, 0.7));
-    rot(r, nx, NY);
-    texto(cortar(v, l, 1.2), nx, NY + 22, C.texto, 1.2);
-    nx += l + 56;
-  }
-
-  // o texto do Co-Optimus, com o que é de sofá em cima; depois o "sobre"
-  const SX = MARGEM_X, SW = 720;
-  let ly = nums.length ? NY + 70 : NY;
-  if (f.coop && (f.coopExtras || f.coopTexto)){
-    rot('ON CO-OPTIMUS', SX, ly); ly += 22;
-    if (f.coopExtras) for (const ln of quebrar(f.coopExtras.join('  ·  '), SW, 2, 0.8)){ texto(ln, SX, ly, C.texto, 0.8); ly += 24; }
-    if (f.coopTexto) for (const ln of quebrar(f.coopTexto, SW, 3, 0.86)){ texto(ln, SX, ly, C.texto, 0.86); ly += 25; }
-    ly += 14;
-  }
-  if (f.descricao){
-    const cabe = Math.floor((FF - 14 - ly - 24) / 25);
-    if (cabe >= 2){
-      rot('ABOUT', SX, ly); ly += 24;
-      for (const ln of quebrar(f.descricao, SW, cabe, 0.86)){ texto(ln, SX, ly, C.texto, 0.86); ly += 25; }
-    }
-  }
-
-  // à direita, a ficha
-  const RX = 900, RW = 1180 - RX;
-  let ry = NY;
-  const campo = (r, desenha) => { rot(r, RX, ry); ry += 22; ry = desenha(ry) + 16; };
-  const linhas = (v, max) => yy => { for (const ln of quebrar(String(v), RW, max, 0.9)){ texto(ln, RX, yy, C.texto, 0.9); yy += 25; } return yy; };
-  if (f.dev) campo('DEVELOPER', linhas(f.dev, 2));
-  if (f.pub) campo('PUBLISHER', linhas(f.pub, 2));
-  if (f.metacritic) campo('METACRITIC', yy => {
-    ctx.fillStyle = corMetacritic(f.metacritic); ctx.fillRect(RX, yy, 40, 30);
-    texto(String(f.metacritic), RX + 20, yy + 2, 'rgb(20,20,20)', 0.95, 'center');
-    return yy + 34;
-  });
-  else if (f.jogadores_nota) campo('USER RATING', yy => {
-    const cheias = Math.round(f.jogadores_nota);
-    let sx = RX;
-    for (let i = 0; i < 5; i++){ texto(String.fromCharCode(0x145), sx, yy, i < cheias ? C.estrela : C.rotulo, 0.9); sx += 22; }
-    texto(String(f.jogadores_nota) + ' of 5', sx + 8, yy, C.texto, 0.9);
-    return yy + 25;
-  });
+// O que existe para mostrar, já com rótulo e texto; quem desenha escolhe onde.
+function dadosDoJogo(g){
+  const f = g.ficha || {};
+  const d = { f, genero: f.genero ? f.genero.toLowerCase() : '' };
+  d.coop = f.coop ? (f.coop > 1 ? `up to ${f.coop} players` : '1 player') : '';
+  d.coopExtras = f.coop && f.coopExtras ? f.coopExtras.join('  ·  ') : '';
+  d.coopTexto = f.coop ? (f.coopTexto || '') : '';
+  d.ficha = [];
+  if (f.dev) d.ficha.push(['DEVELOPER', f.dev]);
+  if (f.pub) d.ficha.push(['PUBLISHER', f.pub]);
+  d.tempo = [];
   if (f.tempo){
-    const t = [];
-    if (f.tempo.main) t.push(['main story', f.tempo.main]);
-    if (f.tempo.plus) t.push(['main + extras', f.tempo.plus]);
-    if (f.tempo.cem)  t.push(['100%', f.tempo.cem]);
-    campo('HOW LONG TO BEAT', yy => {
-      for (const [n, h] of t){ texto(n, RX, yy, C.texto, 0.9); texto(horas(h), RX + 150, yy, C.texto, 0.9); yy += 25; }
-      return yy;
-    });
+    if (f.tempo.main) d.tempo.push(['main story', horas(f.tempo.main)]);
+    if (f.tempo.plus) d.tempo.push(['main + extras', horas(f.tempo.plus)]);
+    if (f.tempo.cem)  d.tempo.push(['100%', horas(f.tempo.cem)]);
+  }
+  d.tempoLinha = d.tempo.map(([n, h]) => n + ' ' + h).join('  ·  ');
+  return d;
+}
+// A nota: o quadrado do Metacritic ou as estrelas dos jogadores. Devolve o y de baixo.
+function nota(f, x, y, e){
+  e = e || 0.9;
+  if (f.metacritic){
+    ctx.fillStyle = corMetacritic(f.metacritic); ctx.fillRect(x, y, Math.round(44 * e), Math.round(32 * e));
+    texto(String(f.metacritic), x + Math.round(22 * e), y + 2, f.metacritic < 50 ? COR_TEXTO : 'rgb(20,20,20)', e, 'center');
+    return y + Math.round(34 * e);
+  }
+  if (f.jogadores_nota){
+    const cheias = Math.round(f.jogadores_nota); let sx = x;
+    for (let i = 0; i < 5; i++){ texto(String.fromCharCode(0x145), sx, y, i < cheias ? PAINEL.estrela : PAINEL.rotulo, e); sx += Math.round(24 * e); }
+    texto(String(f.jogadores_nota) + ' of 5', sx + 6, y, PAINEL.texto, e);
+    return y + Math.round(28 * e);
+  }
+  return y;
+}
+const rotuloDaNota = f => f.metacritic ? 'METACRITIC' : f.jogadores_nota ? 'USER RATING' : '';
+
+// Um campo empilhado: rótulo pequeno e o valor. Devolve o y de baixo.
+function campo(r, desenha, x, y){ rotulo(r, x, y); return desenha(y + 20) + 12; }
+function tempoEmLinhas(d, x, y, colL){
+  for (const [n, h] of d.tempo){ texto(n, x, y, PAINEL.texto, 0.82); texto(h, x + colL, y, PAINEL.texto, 0.82); y += 23; }
+  return y;
+}
+
+// ---- A: o diálogo do Metro, o mesmo painel do menu ---------------------------------
+function popupA(g, d){
+  const D = DIALOGO, X = D.x + 16, W = D.l - 32;
+  ctx.fillStyle = 'rgba(8,8,8,0.9)'; ctx.fillRect(0, 0, 1280, 720);
+  degrade(D.x, D.topo, D.l, D.barra, 'rgb(146,150,152)', 'rgb(130,136,139)');
+  texto(cortar(nomeLimpo(g), D.l - 28, 0.95), D.x + 14, D.topo + (D.barra - ALT_GLIFO*0.95)/2, COR_TEXTO, 0.95);
+  degrade(D.x, D.topo + D.barra, D.l, D.fim - D.topo - D.barra, PAINEL.de, PAINEL.para);
+
+  let y = D.topo + D.barra + 16;
+  const ca = capaEm(g, X, y, 96);
+  const TX = X + 112, TW = W - 112;
+  let ty = y;
+  if (d.genero){ texto(cortar(d.genero, TW, 0.8), TX, ty, PAINEL.rotulo, 0.8); ty += 26; }
+  const linhaFicha = (r, v) => { rotulo(r, TX, ty + 3); texto(cortar(String(v), TW - 112, 0.82), TX + 112, ty, PAINEL.texto, 0.82); ty += 24; };
+  for (const [r, v] of d.ficha) linhaFicha(r, v);
+  if (d.f.ano) linhaFicha('RELEASED', d.f.ano);
+  if (rotuloDaNota(d.f)){ rotulo(rotuloDaNota(d.f), TX, ty + 5); nota(d.f, TX + 112, ty, 0.8); ty += 30; }
+  y = Math.max(y + ca, ty) + 16;
+
+  const fimTexto = D.fim - 2 * D.linha - 14 - (d.tempo.length ? 46 : 0);
+  if (d.coop){
+    rotulo('COUCH CO-OP', X, y); y += 20;
+    texto(cortar(d.coop + (d.coopExtras ? '  ·  ' + d.coopExtras : ''), W, 0.82), X, y, PAINEL.texto, 0.82); y += 24;
+    if (d.coopTexto) y = linhasEm(d.coopTexto, X, y, W, 2, 0.78);
+    y += 10;
+  }
+  if (d.f.descricao){
+    const cabe = Math.floor((fimTexto - y - 20) / 23);
+    if (cabe >= 2){ rotulo('ABOUT', X, y); y += 20; linhasEm(d.f.descricao, X, y, W, cabe, 0.78); }
+  }
+  if (d.tempo.length){
+    const ty2 = D.fim - 2 * D.linha - 12 - 40;
+    rotulo('HOW LONG TO BEAT', X, ty2);
+    texto(cortar(d.tempoLinha, W, 0.78), X, ty2 + 20, PAINEL.texto, 0.78);
+  }
+  ['Play', 'Close'].forEach((op, i) => {
+    const ly = D.fim - (2 - i) * D.linha;
+    ctx.fillStyle = 'rgb(201,207,208)'; ctx.fillRect(D.x, ly, D.l, D.linha);
+    ctx.fillStyle = 'rgb(186,192,193)'; ctx.fillRect(D.x, ly, D.l, 1);
+    if (i === 0){ ctx.fillStyle = METRO.verde; ctx.fillRect(D.x, ly, D.l, D.linha); }
+    texto(op, D.x + 16, ly + (D.linha - ALT_GLIFO*0.95)/2, i === 0 ? COR_TEXTO : PAINEL.texto, 0.95);
+  });
+  texto(linhaDeBotoes([['A','Select'],['B','Back']]), D.x + 4, D.fim + 10, COR_TEXTO, 0.8);
+}
+
+// ---- B: o diálogo largo, com a organização da tela dedicada -------------------------
+function popupB(g, d){
+  // A altura sai do conteúdo (a coluna mais alta), e o painel fica centrado.
+  const PX = 140, PW = 1000, BAR = 47, CL = 170, MW = 430;
+  const caB = Math.round(CL * CAPA_A / CAPA_L);
+  const nLin = (t, l, max, e) => Math.min(max, quebrar(String(t), l, 99, e).length);
+  let hMeio = (d.coop || d.f.ano) ? 66 : 0;
+  if (d.coop && (d.coopExtras || d.coopTexto))
+    hMeio += 20 + (d.coopExtras ? nLin(d.coopExtras, MW, 2, 0.78) * 23 : 0) + (d.coopTexto ? nLin(d.coopTexto, MW, 3, 0.8) * 23 : 0) + 12;
+  if (d.f.descricao) hMeio += 20 + nLin(d.f.descricao, MW, 10, 0.8) * 23;
+  const RWe = PX + PW - 24 - (PX + 24 + CL + 32 + MW + 36);
+  let hDir = 0;
+  for (const [, v] of d.ficha) hDir += 20 + nLin(v, RWe, 2, 0.86) * 25 + 12;
+  if (rotuloDaNota(d.f)) hDir += 20 + 34 + 12;
+  if (d.tempo.length) hDir += 20 + d.tempo.length * 23 + 12;
+  const H = BAR + 22 + Math.max(caB + 16 + 42, hMeio, hDir) + 24;
+  const PY = Math.max(40, Math.round((720 - H) / 2) - 16), PF = Math.min(640, PY + H);
+  ctx.fillStyle = 'rgba(8,8,8,0.9)'; ctx.fillRect(0, 0, 1280, 720);
+  degrade(PX, PY, PW, BAR, 'rgb(146,150,152)', 'rgb(130,136,139)');
+  texto(cortar(nomeLimpo(g), PW - 260, 0.95), PX + 16, PY + (BAR - ALT_GLIFO*0.95)/2, COR_TEXTO, 0.95);
+  if (d.genero) texto(cortar(d.genero, 220, 0.8), PX + PW - 16, PY + (BAR - ALT_GLIFO*0.8)/2, 'rgb(225,228,229)', 0.8, 'right');
+  degrade(PX, PY + BAR, PW, PF - PY - BAR, PAINEL.de, PAINEL.para);
+
+  const top = PY + BAR + 22;
+  const ca = capaEm(g, PX + 24, top, CL);
+  botaoJogar(PX + 24, top + ca + 16, CL, 42);
+
+  const MX = PX + 24 + CL + 32;
+  let y = top, nx = MX;
+  const nums = [];
+  if (d.coop) nums.push(['COUCH CO-OP', d.coop]);
+  if (d.f.ano) nums.push(['RELEASED', String(d.f.ano)]);
+  for (const [r, v] of nums){
+    rotulo(r, nx, y); texto(v, nx, y + 20, PAINEL.texto, 1.1);
+    nx += Math.max(140, medir(v, 1.1), medir(r, 0.7)) + 40;
+  }
+  if (nums.length) y += 66;
+  if (d.coop && (d.coopExtras || d.coopTexto)){
+    rotulo('ON CO-OPTIMUS', MX, y); y += 20;
+    if (d.coopExtras) y = linhasEm(d.coopExtras, MX, y, MW, 2, 0.78);
+    if (d.coopTexto) y = linhasEm(d.coopTexto, MX, y, MW, 3, 0.8);
+    y += 12;
+  }
+  if (d.f.descricao){
+    const cabe = Math.floor((PF - 20 - y - 20) / 23);
+    if (cabe >= 2){ rotulo('ABOUT', MX, y); y += 20; linhasEm(d.f.descricao, MX, y, MW, cabe, 0.8); }
   }
 
-  rodape([['A','Play'],['B','Back']], '');
+  const RX = MX + MW + 36, RW = PX + PW - 24 - RX;
+  let ry = top;
+  for (const [r, v] of d.ficha) ry = campo(r, yy => linhasEm(v, RX, yy, RW, 2, 0.86), RX, ry);
+  if (rotuloDaNota(d.f)) ry = campo(rotuloDaNota(d.f), yy => nota(d.f, RX, yy, 0.9), RX, ry);
+  if (d.tempo.length) ry = campo('HOW LONG TO BEAT', yy => tempoEmLinhas(d, RX, yy, 130), RX, ry);
+  texto(linhaDeBotoes([['A','Play'],['B','Back']]), PX + 4, PF + 10, COR_TEXTO, 0.8);
+}
+
+// ---- C: o painel lateral, a grade continua à vista ---------------------------------
+function popupC(g, d){
+  const PX = 790, PW = 1280 - PX, X = PX + 32, W = PW - 64;
+  ctx.fillStyle = 'rgba(8,8,8,0.55)'; ctx.fillRect(0, 0, PX, 720);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(PX - 6, 0, 6, 720);
+  degrade(PX, 0, PW, 720, PAINEL.de, PAINEL.para);
+
+  let y = 40;
+  const ca = capaEm(g, X, y, 110);
+  const TX = X + 128, TW = W - 128;
+  let ty = y + 4;
+  if (d.genero){ texto(cortar(d.genero, TW, 0.78), TX, ty, PAINEL.rotulo, 0.78); ty += 26; }
+  ty = linhasEm(nomeLimpo(g), TX, ty, TW, 3, 1.05);
+  if (d.f.ano) texto(String(d.f.ano), TX, ty + 4, PAINEL.rotulo, 0.82);
+  y += ca + 22;
+  ctx.fillStyle = METRO.verde; ctx.fillRect(PX, y, PW, 44);
+  texto(linhaDeBotoes([['A', 'Play']]), X, y + (44 - ALT_GLIFO*0.9)/2, COR_TEXTO, 0.9);
+  y += 44 + 20;
+
+  if (d.coop){
+    rotulo('COUCH CO-OP', X, y); y += 20;
+    texto(d.coop, X, y, PAINEL.texto, 1.0); y += 28;
+    if (d.coopExtras) y = linhasEm(d.coopExtras, X, y, W, 2, 0.76);
+    if (d.coopTexto) y = linhasEm(d.coopTexto, X, y, W, 2, 0.76);
+    y += 12;
+  }
+  // duas colunas: desenvolvedora e publicadora; nota e tempo
+  const meio = X + W/2 + 8, CW = W/2 - 8;
+  if (d.ficha.length){
+    let y1 = y, y2 = y;
+    if (d.ficha[0]) y1 = campo(d.ficha[0][0], yy => linhasEm(d.ficha[0][1], X, yy, CW, 2, 0.8), X, y);
+    if (d.ficha[1]) y2 = campo(d.ficha[1][0], yy => linhasEm(d.ficha[1][1], meio, yy, CW, 2, 0.8), meio, y);
+    y = Math.max(y1, y2);
+  }
+  if (rotuloDaNota(d.f) || d.tempo.length){
+    let y1 = y, y2 = y;
+    if (rotuloDaNota(d.f)) y1 = campo(rotuloDaNota(d.f), yy => nota(d.f, X, yy, 0.82), X, y);
+    if (d.tempo.length) y2 = campo('HOW LONG TO BEAT', yy => tempoEmLinhas(d, rotuloDaNota(d.f) ? meio : X, yy, 110), rotuloDaNota(d.f) ? meio : X, y);
+    y = Math.max(y1, y2);
+  }
+  if (d.f.descricao){
+    const cabe = Math.floor((660 - y - 20) / 22);
+    if (cabe >= 2){ rotulo('ABOUT', X, y); y += 20; linhasEm(d.f.descricao, X, y, W, cabe, 0.76); }
+  }
+  rodapeNoPainel(PX, PW, [['A','Play'],['B','Back']]);
+}
+
+// ---- D: a faixa de baixo, com a capa saindo da borda --------------------------------
+function popupD(g, d){
+  const FY = 300;
+  ctx.fillStyle = 'rgba(8,8,8,0.6)'; ctx.fillRect(0, 0, 1280, FY);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(0, FY - 6, 1280, 6);
+  degrade(0, FY, 1280, 720 - FY, PAINEL.de, PAINEL.para);
+
+  const CX = MARGEM_X, CY = FY - 60, CL = 150;
+  sombra(CX - 6, CY - 6, CL + 12, Math.round(CL * CAPA_A / CAPA_L) + 12, 0);
+  const ca = capaEm(g, CX, CY, CL, 6);
+
+  const NX = CX + CL + 36, NW = 1180 - NX - 200;
+  let y = FY + 18;
+  if (d.genero){ texto(cortar(d.genero, NW, 0.8), NX, y, PAINEL.rotulo, 0.8); y += 26; }
+  texto(cortar(nomeLimpo(g), NW, 1.35), NX, y, PAINEL.texto, 1.35);
+  botaoJogar(1180 - 180, FY + 22, 180, 44);
+
+  // sob a capa, os números; no meio, co-op e sobre; à direita, a ficha
+  let ny = CY + ca + 24;
+  if (d.coop){ rotulo('COUCH CO-OP', CX, ny); linhasEm(d.coop, CX, ny + 20, CL + 10, 2, 0.9); ny += 74; }
+  if (d.f.ano){ rotulo('RELEASED', CX, ny); texto(String(d.f.ano), CX, ny + 20, PAINEL.texto, 0.9); }
+
+  const MX = NX, MW = 470;
+  let my = FY + 100;
+  if (d.coop && (d.coopExtras || d.coopTexto)){
+    rotulo('ON CO-OPTIMUS', MX, my); my += 20;
+    if (d.coopExtras) my = linhasEm(d.coopExtras, MX, my, MW, 1, 0.76);
+    if (d.coopTexto) my = linhasEm(d.coopTexto, MX, my, MW, 2, 0.78);
+    my += 12;
+  }
+  if (d.f.descricao){
+    const cabe = Math.floor((662 - my - 20) / 23);
+    if (cabe >= 2){ rotulo('ABOUT', MX, my); my += 20; linhasEm(d.f.descricao, MX, my, MW, cabe, 0.78); }
+  }
+  const RX = MX + MW + 40, RW = 1180 - RX;
+  let ry = FY + 100;
+  for (const [r, v] of d.ficha) ry = campo(r, yy => linhasEm(v, RX, yy, RW, 1, 0.82), RX, ry);
+  if (rotuloDaNota(d.f)) ry = campo(rotuloDaNota(d.f), yy => nota(d.f, RX, yy, 0.82), RX, ry);
+  if (d.tempo.length) ry = campo('HOW LONG TO BEAT', yy => tempoEmLinhas(d, RX, yy, 120), RX, ry);
+  rodapeNoPainel(0, 1280, [['A','Play'],['B','Back']]);
+}
+
+// ---- E: o cartão de jogo ampliado -------------------------------------------------
+function popupE(g, d){
+  const W = 780, H = 470, X0 = (1280 - W) / 2, Y0 = 110, P = 22;
+  ctx.fillStyle = 'rgba(8,8,8,0.55)'; ctx.fillRect(0, 0, 1280, 720);
+  sombra(X0, Y0, W, H, 0);
+  ctx.fillStyle = METRO.cartao; ctx.fillRect(X0, Y0, W, H);
+  const CL = 180, ca = capaEm(g, X0 + P, Y0 + P, CL);
+  botaoJogar(X0 + P, Y0 + P + ca + 14, CL, 42);
+
+  const TX = X0 + P + CL + 26, TW = X0 + W - P - TX;
+  let y = Y0 + P;
+  if (d.genero){ texto(cortar(d.genero, TW, 0.8), TX, y, METRO.cartaoSub, 0.8); y += 26; }
+  y = linhasEm(nomeLimpo(g), TX, y, TW, 2, 1.25, METRO.cartaoTexto) + 4;
+  const sub = [d.f.dev, d.f.pub && d.f.pub !== d.f.dev ? d.f.pub : null, d.f.ano].filter(Boolean).join('  ·  ');
+  if (sub){ y = linhasEm(sub, TX, y, TW, 2, 0.8, METRO.cartaoSub) + 8; }
+
+  // uma linha de três: co-op, nota, tempo para zerar (só a história)
+  let nx = TX;
+  const col = (r, desenha, l) => { rotulo(r, nx, y); desenha(nx, y + 20); nx += l; };
+  if (d.coop) col('COUCH CO-OP', (x, yy) => texto(d.coop, x, yy, METRO.cartaoTexto, 0.95), 190);
+  if (rotuloDaNota(d.f)) col(rotuloDaNota(d.f), (x, yy) => nota(d.f, x, yy, 0.85), 170);
+  if (d.tempo.length) col('HOW LONG TO BEAT', (x, yy) => texto(d.tempo.map(t => t[1]).join(' / '), x, yy, METRO.cartaoTexto, 0.95), 200);
+  if (nx > TX) y += 62;
+  if (d.coopTexto){ y = linhasEm(d.coopTexto, TX, y, TW, 2, 0.78, METRO.cartaoTexto) + 10; }
+  if (d.f.descricao){
+    const cabe = Math.floor((Y0 + H - P - y - 20) / 23);
+    if (cabe >= 2){ rotulo('ABOUT', TX, y); y += 20; linhasEm(d.f.descricao, TX, y, TW, cabe, 0.78, METRO.cartaoTexto); }
+  }
+  texto(linhaDeBotoes([['A','Play'],['B','Back']]), X0 + 4, Y0 + H + 12, COR_TEXTO, 0.8);
+}
+
+const POPUPS = { A: popupA, B: popupB, C: popupC, D: popupD, E: popupE };
+function telaDetalhes(){
+  // por baixo, a grade de onde ele veio; por cima, o popup
+  const embaixo = tela; tela = telaAntesDetalhes;
+  try { telaJogos(); } finally { tela = embaixo; }
+  POPUPS[DETALHE_POPUP](jogoDetalhe, dadosDoJogo(jogoDetalhe));
 }
 
 document.addEventListener('keydown', e => {
@@ -644,6 +856,10 @@ document.addEventListener('keydown', e => {
   if (menu) return;
   if (tela === 'detalhes'){
     if (k === 'Escape' || k === 'b' || k === 'B'){ tela = telaAntesDetalhes; jogoDetalhe = null; desenhar(); }
+    else if (k === 'v' || k === 'V'){
+      DETALHE_POPUP = DETALHE_FORMATOS[(DETALHE_FORMATOS.indexOf(DETALHE_POPUP) + 1) % DETALHE_FORMATOS.length];
+      desenhar();
+    }
     e.stopImmediatePropagation(); e.preventDefault();
     return;
   }
