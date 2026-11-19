@@ -108,8 +108,8 @@ python3 previa/montar.py --colecoes colecoes.txt --mock --proposta previa/metro.
 
 Os detalhes do jogo (Y na grade de jogos e no Soltos; o A continua jogando direto) abrem numa faixa
 que sobe de baixo por cima da grade, escolhida entre cinco formatos de popup. O quadrado de coleção
-tem quatro estilos em escolha, com e sem o encarte branco do cartão de jogo (V troca na tela de
-coleções). A organização vem do tema Reprise do Pegasus, com a capa no lugar da arte, e o
+é o de hoje dentro do encarte branco do cartão de jogo, que apaga junto com o texto quando a coleção
+não está selecionada. A organização vem do tema Reprise do Pegasus, com a capa no lugar da arte, e o
 desenho e a paleta são os do Metro. Os dados vêm do `previa/ficha.py`, que lê o xbox-vault
 (`~/Documentos/xbx/data`) pelo TitleId e cai no que a FreeStyle guarda quando o vault não tem. O
 co-op é só o do Co-Optimus e só o local: jogo que ele não lista fica sem co-op e sem número de

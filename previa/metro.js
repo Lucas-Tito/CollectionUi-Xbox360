@@ -183,17 +183,14 @@ function pintarCardGrafite(x, y, l, a, col, vivo, op){
   }
 }
 
-// O quadrado de coleção em quatro estilos para escolher (pedido de 19/11; V troca na prévia,
-// na tela de coleções). O tamanho do todo é sempre o de hoje (COL_LADO): o encarte branco
-// do cartão de jogo entra TIRANDO do quadrado, não somando.
-//   atual            o quadrado de hoje, sem encarte
-//   encarte          o de hoje dentro do encarte branco de 6 px (o CARTAO_PAD do jogo)
-//   encarte-nome     a colagem em cima e o nome no encarte, em texto escuro, como o jogo;
-//                    a contagem à direita do nome
-//   encarte-2linhas  igual, com o nome numa linha e "n games" na de baixo
-const COL_ESTILOS = ['atual', 'encarte', 'encarte-nome', 'encarte-2linhas'];
-let COL_ESTILO = 'encarte';
-const COL_FAIXA = { 'encarte-nome': 34, 'encarte-2linhas': 54 };
+// O quadrado de hoje dentro do encarte branco do cartão de jogo (escolhido em 19/11 entre
+// quatro estilos). O tamanho do todo é o de hoje (COL_LADO): o encarte de 6 px (o
+// CARTAO_PAD do jogo) entra TIRANDO do quadrado, não somando.
+// O encarte apaga junto com o resto no não selecionado (pedido de 19/11): o texto de
+// hoje apagado tem ~62% do brilho do aceso (142,156,148 contra 231,237,233), e o encarte
+// segue a mesma conta, (147,146,148) contra o (237,236,238) do cartão, acendendo com o
+// progresso do foco.
+const ENCARTE_APAGADO = [147, 146, 148], ENCARTE_ACESO = [237, 236, 238];
 
 function desenharCartao(x, y, col, sel, escolhendo){
   const prog = progressoDoFoco('c' + col.id, sel);
@@ -203,38 +200,23 @@ function desenharCartao(x, y, col, sel, escolhendo){
   const X = x - d, Y = y - d, LADO = COL_LADO + 2*d;
   if (prog > 0.02){ ctx.save(); ctx.globalAlpha = prog; sombra(X, Y, LADO, LADO, 0); ctx.restore(); }
 
-  const encarte = COL_ESTILO !== 'atual';
-  const nomeFora = !!COL_FAIXA[COL_ESTILO];
-  const P = encarte ? CARTAO_PAD : 0;
-  const ix = X + P, iy = Y + P, il = LADO - 2*P, ia = LADO - 2*P - (COL_FAIXA[COL_ESTILO] || 0);
-  if (encarte){ ctx.fillStyle = METRO.cartao; ctx.fillRect(X, Y, LADO, LADO); }
+  const P = CARTAO_PAD, ix = X + P, iy = Y + P, il = LADO - 2*P, ia = LADO - 2*P;
+  const enc = ENCARTE_APAGADO.map((c, i) => Math.round(c + (ENCARTE_ACESO[i] - c) * prog));
+  ctx.fillStyle = `rgb(${enc.join(',')})`; ctx.fillRect(X, Y, LADO, LADO);
 
   comAsCoresDeHoje(() => {
-    pintarCardGrafite(ix, iy, il, ia, col, prog, { veu: !nomeFora, contorno: !encarte });
+    pintarCardGrafite(ix, iy, il, ia, col, prog, { contorno: false });
     HOJE.emblema(ctx, ix, iy, il, col.tipo);
     if (escolhendo && !marcada(col)){
-      ctx.fillStyle = 'rgba(6,9,8,0.588)'; ctx.fillRect(ix, iy, il, ia);    // o véu de hoje
+      ctx.fillStyle = 'rgba(6,9,8,0.588)'; ctx.fillRect(X, Y, LADO, LADO);    // o véu de hoje
     }
-    if (!nomeFora){
-      const ALT_LINHA = 28, ALT_CONT = 24, meio = ix + il/2;
-      const linhas = quebrar(paraMaiusculas(col.nome), il - 28, 2, 1);
-      const topoTexto = iy + ia*0.86 - (linhas.length*ALT_LINHA + ALT_CONT);
-      const cor = sel ? COR_TEXTO : COR_APAGADO;
-      linhas.forEach((ln, n) => texto(ln, meio, topoTexto + n*ALT_LINHA, cor, 1, 'center'));
-      texto('( ' + conta(col) + ' )', meio, topoTexto + linhas.length*ALT_LINHA, COR_FRACO, 1, 'center');
-    }
+    const ALT_LINHA = 28, ALT_CONT = 24, meio = ix + il/2;
+    const linhas = quebrar(paraMaiusculas(col.nome), il - 28, 2, 1);
+    const topoTexto = iy + ia*0.86 - (linhas.length*ALT_LINHA + ALT_CONT);
+    const cor = sel ? COR_TEXTO : COR_APAGADO;
+    linhas.forEach((ln, n) => texto(ln, meio, topoTexto + n*ALT_LINHA, cor, 1, 'center'));
+    texto('( ' + conta(col) + ' )', meio, topoTexto + linhas.length*ALT_LINHA, COR_FRACO, 1, 'center');
   });
-  if (nomeFora){
-    const n = conta(col), ty = iy + ia + 6;
-    if (COL_ESTILO === 'encarte-nome'){
-      const q = String(n), lq = medir(q, 0.9) + 12;
-      texto(cortar(col.nome, il - lq, 0.9), ix, ty, METRO.cartaoTexto, 0.9);
-      texto(q, ix + il, ty, METRO.cartaoSub, 0.9, 'right');
-    } else {
-      texto(cortar(col.nome, il, 0.9), ix, ty, METRO.cartaoTexto, 0.9);
-      texto(n + (n === 1 ? ' game' : ' games'), ix, ty + 22, METRO.cartaoSub, 0.75);
-    }
-  }
   if (escolhendo && marcada(col)) marcadoHoje(ix, iy, il, ia, 0);
 }
 
@@ -732,10 +714,5 @@ document.addEventListener('keydown', e => {
     faixaFechando = false; faixaT0 = agoraMs();
     desenhar(); e.stopImmediatePropagation(); e.preventDefault();
     return;
-  }
-  // V troca o estilo do quadrado de coleção (só enquanto o estilo não é escolhido)
-  if ((k === 'v' || k === 'V') && tela === 'colecoes'){
-    COL_ESTILO = COL_ESTILOS[(COL_ESTILOS.indexOf(COL_ESTILO) + 1) % COL_ESTILOS.length];
-    desenhar(); e.stopImmediatePropagation(); e.preventDefault();
   }
 }, true);
