@@ -318,9 +318,12 @@ telaJogos = function(){
   desenharGrades(() => gradeJogos(escolhendo));
 
   if (escolhendo) rodape([['A','Select'],['B','Cancel'],['START','Done']], '');
-  else if (naSoltos) rodape([['A','Play'],['Y','Details'],['B','Back'],['X','Add to collections']], '');
-  else if (composta(atual)) rodape([['A','Play'],['Y','Details'],['B','Back'],['START','Options']], '');
-  else rodape([['A','Play'],['Y','Details'],['B','Back'],['X','Add games'],['START','Options']], '');
+  else {
+    const det = temDetalhes(lista()[iJogo]) ? [['Y','Details']] : [];
+    if (naSoltos) rodape([['A','Play'], ...det, ['B','Back'],['X','Add to collections']], '');
+    else if (composta(atual)) rodape([['A','Play'], ...det, ['B','Back'],['START','Options']], '');
+    else rodape([['A','Play'], ...det, ['B','Back'],['X','Add games'],['START','Options']], '');
+  }
 };
 
 function gradeJogos(escolhendo){
@@ -623,6 +626,12 @@ function nota(f, x, y, e){
   }
   return y;
 }
+// Os mesmos campos que a faixa mostra; capa e nome sozinhos não contam (sem eles, sem Y).
+function temDetalhes(g){
+  const f = (g && g.ficha) || {};
+  return !!(f.genero || f.coop || f.ano || f.descricao || f.dev || f.pub || f.metacritic ||
+            f.jogadores_nota || (f.tempo && (f.tempo.main || f.tempo.plus || f.tempo.cem)));
+}
 const rotuloDaNota = f => f.metacritic ? 'METACRITIC' : f.jogadores_nota ? 'USER RATING' : '';
 
 // Um campo empilhado: rótulo pequeno e o valor. Devolve o y de baixo.
@@ -709,7 +718,7 @@ document.addEventListener('keydown', e => {
   }
   if ((k === 'y' || k === 'Y') && (tela === 'jogos' || tela === 'soltos')){
     const L = lista();
-    if (!L[iJogo]) return;
+    if (!L[iJogo] || !temDetalhes(L[iJogo])) return;
     jogoDetalhe = L[iJogo]; telaAntesDetalhes = tela; tela = 'detalhes';
     faixaFechando = false; faixaT0 = agoraMs();
     desenhar(); e.stopImmediatePropagation(); e.preventDefault();

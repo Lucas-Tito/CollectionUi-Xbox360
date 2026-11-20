@@ -1249,7 +1249,22 @@ namespace
     {
         if (s == NULL || s[0] == L'\0') return;
         Escala(e);
-        g_fonte.DrawText(x, y, cor, s, alin);
+        if (x < 0.0f)
+        {
+            // A ATG lê x negativo como "a partir da borda direita" e o texto que sai pela
+            // esquerda na troca de aba reaparecia por cima da página que entra. A janela
+            // da fonte recua uma tela e o x vai positivo: o mesmo ponto, sem o salto.
+            if (x > -1280.0f)
+            {
+                D3DRECT w, recuo;
+                g_fonte.GetWindow(w);
+                recuo = w; recuo.x1 -= 1280; recuo.x2 -= 1280;
+                g_fonte.SetWindow(recuo);
+                g_fonte.DrawText(x + 1280.0f, y, cor, s, alin);
+                g_fonte.SetWindow(w);
+            }
+        }
+        else g_fonte.DrawText(x, y, cor, s, alin);
         Escala(1.0f);
     }
 
@@ -1821,6 +1836,8 @@ namespace
         g_fonte.End();
     }
 
+    bool TemDetalhes(const biblioteca::Jogo *g);
+
     void TelaJogos()
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
@@ -1882,14 +1899,16 @@ namespace
             swprintf_s(texto, 256, L"%d of %d", g_iJogo + 1, total);
             if (soltos) TituloDaTela(L"", texto);
             else { Larga(g_atual->nome, titulo, 256); TituloDaTela(titulo, texto); }
-            // Sem "Add games" numa composta: o jogo está ali por causa de uma origem.
-            Rodape(soltos ? GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
-                            GLYPH_X_BUTTON L" Add to collections"
-                 : colecoes::Composta(g_atual)
-                          ? GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
-                            GLYPH_START_BUTTON L" Options"
-                          : GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
-                            GLYPH_X_BUTTON L" Add games     " GLYPH_START_BUTTON L" Options");
+            // Sem "Add games" numa composta: o jogo está ali por causa de uma origem. Sem
+            // "Details" no jogo que não tem nada para a faixa mostrar.
+            WCHAR botoes[256];
+            wcscpy(botoes, GLYPH_A_BUTTON L" Play     ");
+            if (g_iJogo < total && TemDetalhes(L[g_iJogo])) wcscat(botoes, GLYPH_Y_BUTTON L" Details     ");
+            wcscat(botoes, GLYPH_B_BUTTON L" Back     ");
+            wcscat(botoes, soltos ? GLYPH_X_BUTTON L" Add to collections"
+                         : colecoes::Composta(g_atual) ? GLYPH_START_BUTTON L" Options"
+                         : GLYPH_X_BUTTON L" Add games     " GLYPH_START_BUTTON L" Options");
+            Rodape(botoes);
         }
         g_fonte.End();
     }
@@ -1902,6 +1921,22 @@ namespace
     {
         return !s.empty() && _stricmp(s.c_str(), "Not Available") != 0 &&
                _stricmp(s.c_str(), "N/A") != 0 && _stricmp(s.c_str(), "Unknown") != 0;
+    }
+
+    // Os mesmos campos que a FaixaDetalhes mostra; capa e nome sozinhos não contam.
+    bool TemDetalhes(const biblioteca::Jogo *g)
+    {
+        if (g == NULL) return false;
+        const fichas::Ficha *f = fichas::Por(g->titleId);
+        if (f && (f->coop > 0 || !f->genero.empty() || !f->dev.empty() || !f->pub.empty() || f->ano > 0 ||
+                  !f->descricao.empty() || f->metacritic > 0 || f->notaJogadores > 0.0f ||
+                  f->horas[0] > 0.0f || f->horas[1] > 0.0f || f->horas[2] > 0.0f))
+            return true;
+        if (Valido(g->genero) || Valido(g->desenvolvedora) || Valido(g->publicadora)) return true;
+        if (g->lancamento.size() >= 4 && isdigit((unsigned char)g->lancamento[0]) &&
+            atoi(g->lancamento.substr(0, 4).c_str()) > 0)
+            return true;
+        return Valido(g->nota) && atof(g->nota.c_str()) > 0.0;
     }
 
     void Horas(float h, WCHAR *saida, int cap)
@@ -3042,7 +3077,7 @@ namespace
     void AbrirDetalhes()
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
-        if (L.empty() || g_iJogo >= (int)L.size()) return;
+        if (L.empty() || g_iJogo >= (int)L.size() || !TemDetalhes(L[g_iJogo])) return;
         som::Tocar(som::SOM_MENU);
         g_detalheJogo = L[g_iJogo];
         g_detalhe = true; g_faixaFechando = false; g_faixaT0 = GetTickCount();
