@@ -716,3 +716,7 @@ document.addEventListener('keydown', e => {
     return;
   }
 }, true);
+
+// O template já desenhou o primeiro quadro antes deste arquivo carregar: redesenha com
+// o Metro, senão a primeira tela fica com o desenho de antes até a primeira tecla.
+desenhar();
