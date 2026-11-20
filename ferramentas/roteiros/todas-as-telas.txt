@@ -58,16 +58,16 @@ espera 500
 espera capas 15000
 espera 800
 foto 07-jogos
-# a faixa de detalhes (Y): sobe em ~210 ms; B a fecha
+# o foco num cartão do meio, para ver o crescer com sombra; e a faixa de detalhes (Y)
+# nele, que tem ficha completa (o primeiro da coleção não tem ficha nenhuma)
+aperta DIREITA 2
+espera 600
+foto 07c-jogos-foco
 aperta Y
 espera 900
 foto 07b-detalhes
 aperta B
 espera 700
-# o foco num cartão do meio, para ver o crescer com sombra
-aperta DIREITA 2
-espera 600
-foto 07c-jogos-foco
 aperta ESQUERDA 2
 espera 400
 aperta START

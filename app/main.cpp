@@ -270,11 +270,34 @@ namespace
             destino[0] = L'\0';
             return;
         }
+        // A pontuação tipográfica e o que o atlas Arial_16 não tem viram o que ele tem:
+        // o apóstrofo curvo saía "?" ("America?s Army") e o ® saía quadradinho
+        // ("Capcom® Digital"). Faltam no atlas, do Latin-1: A0 A4 A6 A8 A9 AC AD AE AF
+        // B1 B4 B6 B8 BC BD BE C5 D0 D7 DE E5 F0 F7 FE. Acima de 0xFF ficam os glifos
+        // de BOTÃO (0x100 em diante), então o resto continua virando "?".
+        std::wstring t;
         for (int i = 0; destino[i] != L'\0'; i++)
         {
-            if (destino[i] == 0x3000)        destino[i] = L' ';
-            else if (destino[i] >= 0x100)    destino[i] = L'?';
+            const WCHAR c = destino[i];
+            switch (c)
+            {
+            case 0x3000: case 0x00A0:                          t += L' '; break;
+            case 0x2018: case 0x2019: case 0x201A: case 0x201B:
+            case 0x2032: case 0x00B4:                          t += L'\''; break;
+            case 0x201C: case 0x201D: case 0x201E: case 0x2033: t += L'"'; break;
+            case 0x2010: case 0x2011: case 0x2012: case 0x2013:
+            case 0x2014: case 0x2015: case 0x2212:             t += L'-'; break;
+            case 0x2022:                                       t += (WCHAR)0x00B7; break;
+            case 0x2026:                                       t += L"..."; break;
+            case 0x2122: case 0x00AE: case 0x00AD: case 0x00A9: break;   // (tm), (r), hífen mole, (c)
+            case 0x00C5:                                       t += L'A'; break;
+            case 0x00E5:                                       t += L'a'; break;
+            case 0x00D7:                                       t += L'x'; break;
+            default:                                           t += (c >= 0x100) ? L'?' : c; break;
+            }
         }
+        wcsncpy(destino, t.c_str(), capacidade - 1);
+        destino[capacidade - 1] = L'\0';
     }
 
     const char *SemArtigo(const char *s)
@@ -1976,7 +1999,6 @@ namespace
         float y = y0 + 18.0f;
         if (genero[0]) { Cortar(genero, NW, 0.8f, linhas[0], LIN_CAP); Texto(NX, y, M_PAINEL_ROTULO, 0.8f, linhas[0]); y += 26.0f; }
         Larga(g->nome, buf, 1024);
-        for (WCHAR *c = buf; *c; c++) if (*c == 0x2122 || *c == 0x00AE) *c = L' ';
         Cortar(buf, NW, 1.35f, linhas[0], LIN_CAP);
         Texto(NX, y, M_PAINEL_TEXTO, 1.35f, linhas[0]);
 
