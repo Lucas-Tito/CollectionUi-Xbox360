@@ -23,6 +23,7 @@
 #include "lancador.h"
 #include "som.h"
 #include "roteiro.h"
+#include "fichas.h"
 #include "AtgDevice.h"
 #include "AtgFont.h"
 #include "AtgDebugDraw.h"
@@ -65,7 +66,7 @@ namespace
     // espaço de qualquer jeito -- com 5 colunas a grade terminava em x=1120 e as duas
     // linhas em y=454, numa tela que vai até 720.
     const int COL_LADO = 244, COL_GAP = 32;
-    const int COL_POR_LINHA = 4, COL_LINHAS = 2, COL_TOPO = 72;
+    const int COL_POR_LINHA = 4, COL_LINHAS = 2;
     // Centralizada: 4*244 + 3*32 = 1072, sobra 208 dividida nos dois lados.
     const int COL_MARGEM = (1280 - (COL_POR_LINHA * COL_LADO + (COL_POR_LINHA - 1) * COL_GAP)) / 2;
     const int COL_POR_PAGINA = COL_POR_LINHA * COL_LINHAS;
@@ -75,12 +76,11 @@ namespace
     // recortar a imagem, amostramos só essa parte ao desenhar.
     const float FRENTE_U0 = 1.0f - 0.468f;
 
-    const D3DCOLOR COR_FUNDO   = D3DCOLOR_XRGB(13, 17, 15);
-    const D3DCOLOR COR_PAINEL  = D3DCOLOR_XRGB(21, 27, 24);
+    // As cores de antes do Metro que ficaram: as do nome no quadrado de coleção (o de
+    // hoje, pedido de 17/11) e o verde do emblema. As do Metro são as M_*, mais abaixo.
     const D3DCOLOR COR_TEXTO   = D3DCOLOR_XRGB(231, 237, 233);
     const D3DCOLOR COR_APAGADO = D3DCOLOR_XRGB(142, 156, 148);
     const D3DCOLOR COR_FRACO   = D3DCOLOR_XRGB(92, 104, 98);
-    const D3DCOLOR COR_LINHA   = D3DCOLOR_XRGB(43, 53, 47);
     const D3DCOLOR COR_ANEL    = D3DCOLOR_XRGB(155, 203, 60);   // o verde do ring of light
 
     // Analógico: fora desta zona o eixo conta como direção. O repique imita tecla
@@ -164,11 +164,6 @@ namespace
     // varredura dos ids de cada colecao por item -- colecoes x jogos x ids a cada
     // quadro. Com ele e uma busca binaria.
     std::vector<unsigned int> g_cobertos;
-
-    // A janela da barra de abas, quando a fileira nao cabe inteira. Mesmo papel do
-    // g_primeiraLinha da grade: a janela segue o foco.
-    int  g_primeiraAba = 0;
-    bool g_lbVivo = false, g_rbVivo = false;   // ha aba para aquele lado?
 
     // O jogo sendo arquivado e o rascunho das colecoes marcadas. Rascunho pelo mesmo
     // motivo do escolhedor de jogos: sem ele o B nao teria o que desfazer.
@@ -825,33 +820,6 @@ namespace
         }
     }
 
-    // ---- desenho ---------------------------------------------------------------
-    void Cabecalho(const WCHAR *titulo, const WCHAR *sub)
-    {
-        g_fonte.SetScaleFactors(1.5f, 1.5f);
-        g_fonte.DrawText((FLOAT)MARGEM_X, 34.0f, COR_TEXTO, titulo, 0);
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-        // CORTADO por largura: o subtítulo de uma composta é a lista das origens, e
-        // com três nomes de 28 bytes ele passaria da borda direita da tela.
-        if (sub != NULL && sub[0] != L'\0')
-            g_fonte.DrawText((FLOAT)MARGEM_X + 260.0f, 46.0f, COR_FRACO, sub,
-                             ATGFONT_TRUNCATED, 1180.0f - ((FLOAT)MARGEM_X + 260.0f));
-    }
-
-    // UM TERCO MENOR. O par glifo+palavra vinha na altura do texto de conteudo e
-    // pesava mais que a grade a que serve -- o glifo do Start sozinho tem o dobro da
-    // altura de uma letra. Desce 4 px para continuar centrado na mesma faixa.
-    const float RODAPE_ESCALA = 0.67f;
-
-    void Rodape(const WCHAR *esquerda, const WCHAR *direita)
-    {
-        g_fonte.SetScaleFactors(RODAPE_ESCALA, RODAPE_ESCALA);
-        g_fonte.DrawText((FLOAT)MARGEM_X, 660.0f, COR_APAGADO, esquerda, 0);
-        if (direita != NULL && direita[0] != L'\0')
-            g_fonte.DrawText(1180.0f, 660.0f, COR_FRACO, direita, ATGFONT_RIGHT);
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-    }
-
     // ---- primitivas de desenho -------------------------------------------------
     //
     // Tudo aqui desenha com os QUATRO cantos explicitos, em triangulos. Nada de
@@ -1156,30 +1124,6 @@ namespace
                              CANTO_N, CANTO_N, RAIO_N, RAIO_N);
     }
 
-    // Uma fonte da verdade para o fundo: o gradiente da tela e a cor dos cantos saem
-    // dos MESMOS numeros, senao os cantos aparecem como quadradinhos de outro tom.
-    // Mais claros que os da previa de propósito: o console passa a saida por uma rampa
-    // de gama que o navegador nao aplica, e os mesmos numeros chegam visivelmente mais
-    // escuros na TV. Estes sao os da previa corrigidos por uma curva de 1/1,3 -- e sao
-    // um botao: se ainda ficar escuro, sobe; se lavar, desce.
-    const int FUNDO_DE[3]   = { 19, 40, 31 };
-    const int FUNDO_PARA[3] = { 43, 73, 57 };
-
-    D3DCOLOR CorDoFundo(float x, float y)
-    {
-        // A MESMA interpolacao do gradiente diagonal, que e bilinear com os cantos
-        // laterais na media: t = (x/largura + y/altura) / 2. Com (x+y)/2000 os dois
-        // coincidiam so nos extremos e divergiam ~3 de 255 no meio -- pouco, mas e um
-        // degrau de borda dura em fundo escuro, que e o pior caso para banding.
-        float t = 0.5f * (x / 1280.0f + y / 720.0f);
-        if (t < 0.0f) t = 0.0f;
-        if (t > 1.0f) t = 1.0f;
-        return D3DCOLOR_XRGB(
-            (int)(FUNDO_DE[0] + (FUNDO_PARA[0] - FUNDO_DE[0]) * t),
-            (int)(FUNDO_DE[1] + (FUNDO_PARA[1] - FUNDO_DE[1]) * t),
-            (int)(FUNDO_DE[2] + (FUNDO_PARA[2] - FUNDO_DE[2]) * t));
-    }
-
     // Retângulo CHEIO, com alfa de verdade.
     //
     // Não use DrawScreenSpaceTexturedRectColored com textura NULL para isto: ela faz
@@ -1225,1061 +1169,984 @@ namespace
         }
     }
 
-    // So os cards de colecao passam por aqui -- e por isso que o caixa alta fica so
-    // neles, e a grade de jogos continua com o nome como ele e.
-    int QuebrarNome(const std::string &nome, float maxLargura, WCHAR l1[96], WCHAR l2[96])
+    // =========================================================================
+    // O DESENHO METRO (decisão 149). Porte do previa/metro.js, tela por tela, com os
+    // mesmos números: a prévia é o desenho aprovado, e o que mudar aqui muda lá.
+    //
+    //   fundo       degradê vertical do tema padrão do Metro
+    //   abas        os hubs do Metro: nomes em minúsculas à esquerda, o ativo branco
+    //   título      título e contador no canto de cima à direita
+    //   coleções    o quadrado de hoje dentro do encarte branco do cartão de jogo; o
+    //               encarte e o texto apagam no não selecionado
+    //   jogos       os cartões do "My Games": encarte claro, capa e nome escuro
+    //   foco        cresce 8 px para cada lado e levanta com sombra; sem anel
+    //   marcado     o contorno verde de 2 px de hoje, e o véu no não marcado
+    //   menu        o diálogo "Delete Profile" do Metro, medido em 720p
+    //   detalhes    uma faixa que sobe de baixo (Y na grade de jogos)
+    //   animações   foco, troca de aba (as duas páginas ao mesmo tempo), troca de
+    //               tela (esmaecimento cruzado) e a faixa subindo, medidas num vídeo
+    //               de captura direta do Metro 2.0.14448
+    //   texto       sem a sombra do atlas (ATG::g_fonteSemSombra), menos no nome do
+    //               quadrado de coleção, que é o de hoje
+    // =========================================================================
+    const D3DCOLOR M_TEXTO         = D3DCOLOR_XRGB(251, 250, 255);
+    const D3DCOLOR M_APAGADO       = D3DCOLOR_XRGB(225, 224, 230);
+    const D3DCOLOR M_LINHA         = D3DCOLOR_XRGB(130, 129, 135);
+    const D3DCOLOR M_HUB           = D3DCOLOR_XRGB(178, 177, 184);
+    const D3DCOLOR M_VERDE         = D3DCOLOR_XRGB(  0, 126,   4);
+    const D3DCOLOR M_VERMELHO      = D3DCOLOR_XRGB(178,  34,  30);
+    const D3DCOLOR M_CARTAO        = D3DCOLOR_XRGB(237, 236, 238);
+    const D3DCOLOR M_CARTAO_TEXTO  = D3DCOLOR_XRGB( 45,  44,  45);
+    const D3DCOLOR M_PAINEL_TEXTO  = D3DCOLOR_XRGB( 46,  53,  54);
+    const D3DCOLOR M_PAINEL_ROTULO = D3DCOLOR_XRGB(104, 112, 114);
+    const D3DCOLOR M_MARCADO       = D3DCOLOR_XRGB(155, 203,  60);   // o verde de hoje
+    const D3DCOLOR M_SEM_CAPA      = D3DCOLOR_XRGB(120, 119, 124);
+
+    const int   CRESCE = 8, CARTAO_PAD = 6, CARTAO_NOME = 34;
+    const int   COL_TOPO_ABA = 96;          // a grade de coleções, embaixo das abas
+    const float TAU_FOCO = 40.0f, TAU_HUB = 220.0f, FADE_MS = 200.0f, TAU_FAIXA = 70.0f;
+    const float RODAPE_ESCALA = 0.67f;
+
+    // ---- texto ------------------------------------------------------------------
+    void Escala(float e) { g_fonte.SetScaleFactors(e, e); }
+
+    // GetTextExtent multiplica pela escala corrente (AtgFont.cpp:550): mede na escala
+    // em que desenha. É CPU pura, vale dentro ou fora do Begin.
+    float Largura(const WCHAR *s, float e)
     {
-        WCHAR largo[256];
-        Larga(nome, largo, 256);
-
-        // ANTES de medir: maiuscula e mais larga, e medir o original deixaria a quebra
-        // de linha errada por alguns pixels.
-        ParaMaiusculas(largo);
-
-        l1[0] = l2[0] = L'\0';
-
         FLOAT w = 0.0f, h = 0.0f;
-        g_fonte.GetTextExtent(largo, &w, &h);
-        if (w <= maxLargura)
-        {
-            wcsncpy(l1, largo, 95); l1[95] = L'\0';
-            return 1;
-        }
-
-        // O limite e o TAMANHO DE l1, nao um numero solto: corte maior que 95 escreve
-        // fora do buffer na pilha. Hoje nao dispara porque a tabela de larguras da
-        // fonte nao deixa 95 caracteres caberem em 216 px -- mas quem segura o buffer
-        // passa a ser a metrica da fonte, e nao o programa. Um colecoes.txt editado a
-        // mao basta para provar o ponto.
-        int corte = -1;
-        for (int i = 0; largo[i] != L'\0' && i < 95; i++)
-        {
-            if (largo[i] != L' ') continue;
-            WCHAR t[256];
-            wcsncpy(t, largo, i); t[i] = L'\0';
-            g_fonte.GetTextExtent(t, &w, &h);
-            if (w <= maxLargura) corte = i; else break;
-        }
-
-        if (corte <= 0)                      // palavra unica maior que a linha
-        {
-            wcsncpy(l1, largo, 95); l1[95] = L'\0';
-            while (l1[0] != L'\0')
-            {
-                g_fonte.GetTextExtent(l1, &w, &h);
-                if (w <= maxLargura) break;
-                l1[wcslen(l1) - 1] = L'\0';
-            }
-            return 1;
-        }
-
-        wcsncpy(l1, largo, corte); l1[corte] = L'\0';
-        wcsncpy(l2, largo + corte + 1, 95); l2[95] = L'\0';
-
-        // corta a segunda a mao, com reticencias
-        g_fonte.GetTextExtent(l2, &w, &h);
-        while (w > maxLargura && wcslen(l2) > 1)
-        {
-            size_t n = wcslen(l2);
-            l2[n - 1] = L'\0';
-            if (n >= 4) { l2[n - 2] = L'.'; l2[n - 3] = L'.'; l2[n - 4] = L'.'; }
-            g_fonte.GetTextExtent(l2, &w, &h);
-        }
-        return 2;
+        Escala(e);
+        g_fonte.GetTextExtent(s, &w, &h);
+        Escala(1.0f);
+        return w;
     }
 
-    // Card de coleção: colagem de três capas inclinadas, tom por cima, véu embaixo
-    // para o texto, e os quatro cantos arredondados por último -- eles comem o canto da
-    // colagem E do anel de foco, então o anel sai arredondado de brinde.
-    void DesenharCard(int x, int y, int lado, const colecoes::Colecao *col, bool focado)
+    // Dentro do Begin.
+    void Texto(float x, float y, D3DCOLOR cor, float e, const WCHAR *s, DWORD alin = 0)
+    {
+        if (s == NULL || s[0] == L'\0') return;
+        Escala(e);
+        g_fonte.DrawText(x, y, cor, s, alin);
+        Escala(1.0f);
+    }
+
+    // Corta com reticências o que passar de maxw. Busca binária pelo maior começo que
+    // cabe com "...": a descrição chega aqui com centenas de letras.
+    void Cortar(const WCHAR *txt, float maxw, float e, WCHAR *saida, int cap)
+    {
+        static WCHAR t[1100];
+        wcsncpy(saida, txt, cap - 1); saida[cap - 1] = L'\0';
+        if (Largura(saida, e) <= maxw) return;
+        int lo = 0, hi = (int)wcslen(saida);
+        if (hi > cap - 4) hi = cap - 4;
+        if (hi > 1090) hi = 1090;
+        while (lo < hi)
+        {
+            const int m = (lo + hi + 1) / 2;
+            wcsncpy(t, saida, m); t[m] = L'\0'; wcscat(t, L"...");
+            if (Largura(t, e) <= maxw) lo = m; else hi = m - 1;
+        }
+        saida[lo] = L'\0';
+        wcscat(saida, L"...");
+    }
+
+    // Quebra em até maxLinhas linhas de maxw; a última leva o resto, cortado com
+    // reticências. A mesma regra do quebrar() da prévia.
+    const int LIN_CAP = 200;
+    int Quebrar(const WCHAR *txt, float maxw, int maxLinhas, float e, WCHAR (*linhas)[LIN_CAP])
+    {
+        static WCHAR atual[1100], tenta[1100], resto[1100];
+        int n = 0;
+        atual[0] = L'\0';
+        if (maxLinhas <= 0) return 0;
+        const WCHAR *p = txt;
+        while (*p != L'\0')
+        {
+            while (*p == L' ') p++;
+            if (*p == L'\0') break;
+            const WCHAR *ini = p;
+            while (*p != L'\0' && *p != L' ') p++;
+            const int lp = (int)(p - ini), la = (int)wcslen(atual);
+            if (la + 1 + lp >= 1099) break;
+
+            wcscpy(tenta, atual);
+            if (la) wcscat(tenta, L" ");
+            wcsncat(tenta, ini, lp);
+            if (Largura(tenta, e) <= maxw) { wcscpy(atual, tenta); continue; }
+
+            if (n == maxLinhas - 1)
+            {
+                wcscpy(resto, atual);
+                if (la) wcscat(resto, L" ");
+                wcsncat(resto, ini, 1099 - wcslen(resto));
+                Cortar(resto, maxw, e, linhas[n], LIN_CAP);
+                return n + 1;
+            }
+            if (la) { Cortar(atual, maxw, e, linhas[n], LIN_CAP); n++; }
+            wcsncpy(atual, ini, lp); atual[lp] = L'\0';
+        }
+        if (atual[0] != L'\0') { Cortar(atual, maxw, e, linhas[n], LIN_CAP); n++; }
+        return n;
+    }
+
+    // Minúscula sem locale, pelo mesmo motivo do ParaMaiusculas: ASCII e a faixa
+    // 0xC0-0xDE do Latin-1 (menos o 0xD7, o sinal de vezes).
+    void ParaMinusculas(WCHAR *t)
+    {
+        for (; *t != L'\0'; t++)
+        {
+            if (*t >= L'A' && *t <= L'Z')          *t = (WCHAR)(*t + 0x20);
+            else if (*t >= 0x00C0 && *t <= 0x00DE && *t != 0x00D7)
+                                                   *t = (WCHAR)(*t + 0x20);
+        }
+    }
+
+    // ---- formas -----------------------------------------------------------------
+    void Ret(float x, float y, float l, float a, D3DCOLOR cor)
+    {
+        D3DRECT r;
+        r.x1 = (LONG)floorf(x + 0.5f);     r.y1 = (LONG)floorf(y + 0.5f);
+        r.x2 = (LONG)floorf(x + l + 0.5f); r.y2 = (LONG)floorf(y + a + 0.5f);
+        if (r.x2 <= r.x1 || r.y2 <= r.y1) return;
+        Preencher(r, cor);
+    }
+
+    D3DCOLOR ComAlfa(D3DCOLOR cor, float alfa)
+    {
+        if (alfa < 0.0f) alfa = 0.0f;
+        if (alfa > 1.0f) alfa = 1.0f;
+        return (cor & 0x00FFFFFF) | ((DWORD)(alfa * 255.0f + 0.5f) << 24);
+    }
+
+    D3DCOLOR Mistura3(const int de[3], const int para[3], float t)
+    {
+        return D3DCOLOR_XRGB((int)(de[0] + (para[0] - de[0]) * t + 0.5f),
+                             (int)(de[1] + (para[1] - de[1]) * t + 0.5f),
+                             (int)(de[2] + (para[2] - de[2]) * t + 0.5f));
+    }
+
+    // O levantado do foco (regra 2 do metro.js): duas camadas pretas deslocadas para
+    // baixo e para a direita; quem está em cima cobre o resto.
+    void Sombra(float x, float y, float l, float a, float alfa)
+    {
+        Ret(x + 2.0f, y + 3.0f, l + 4.0f, a + 4.0f, ComAlfa(0, 0.12f * alfa));
+        Ret(x + 4.0f, y + 6.0f, l, a, ComAlfa(0, 0.18f * alfa));
+    }
+
+    void Contorno(float x, float y, float l, float a, D3DCOLOR cor)
+    {
+        D3DRECT r;
+        r.x1 = (LONG)x; r.y1 = (LONG)y; r.x2 = (LONG)(x + l); r.y2 = (LONG)(y + a);
+        ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, cor);
+    }
+
+    // Disco cheio de raio r, com a máscara interna do canto nos quatro quadrantes.
+    void Disco(float cx, float cy, float r, D3DCOLOR cor)
+    {
+        if (g_cantoInt == NULL) { Ret(cx - r, cy - r, 2 * r, 2 * r, cor); return; }
+        const float px[4] = { cx - r, cx,     cx - r, cx };
+        const float py[4] = { cy - r, cy - r, cy,     cy };
+        const int fx[4] = { 0, 1, 0, 1 }, fy[4] = { 0, 0, 1, 1 };
+        Mistura(true);
+        for (int c = 0; c < 4; c++)
+        {
+            XMFLOAT2 pos[4], uv[4];
+            pos[0] = XMFLOAT2(px[c],     py[c]);
+            pos[1] = XMFLOAT2(px[c] + r, py[c]);
+            pos[2] = XMFLOAT2(px[c] + r, py[c] + r);
+            pos[3] = XMFLOAT2(px[c],     py[c] + r);
+            const float u0 = (float)fx[c], u1 = 1.0f - u0, v0 = (float)fy[c], v1 = 1.0f - v0;
+            uv[0] = XMFLOAT2(u0, v0); uv[1] = XMFLOAT2(u1, v0);
+            uv[2] = XMFLOAT2(u1, v1); uv[3] = XMFLOAT2(u0, v1);
+            QuadTex(pos, uv, g_cantoInt, cor, true);
+        }
+        Mistura(false);
+    }
+
+    void FundoMetro()
+    {
+        // (80,78,84) no topo, (177,176,180) a 78% da altura e um chão (162,160,164).
+        const float y78 = 720.0f * 0.78f;
+        Gradiente(0.0f, 0.0f, 1280.0f, y78, D3DCOLOR_XRGB(80, 78, 84), D3DCOLOR_XRGB(177, 176, 180), false);
+        Gradiente(0.0f, y78, 1280.0f, 720.0f, D3DCOLOR_XRGB(177, 176, 180), D3DCOLOR_XRGB(162, 160, 164), false);
+    }
+
+    // ---- animação: o foco ---------------------------------------------------------
+    // O em foco cresce ~10 px em ~120 ms, desacelerando; o que perdeu o foco encolhe ao
+    // mesmo tempo. Exponencial com constante de 40 ms. O que perdeu o foco é desenhado
+    // antes do novo, e é ali que a troca começa (a mesma conta do progressoDoFoco).
+    const int SEM_FOCO = 0x7FFFFFFF;
+    int   g_focoAtual = SEM_FOCO, g_focoAntes = SEM_FOCO;
+    DWORD g_focoT0 = 0;
+    bool  g_estatico = false;        // desenhando a página que sai na troca de aba
+
+    float ProgressoDoFoco(int chave, bool sel)
+    {
+        if (g_estatico) return sel ? 1.0f : 0.0f;
+        if (!sel && chave == g_focoAtual) { g_focoAntes = chave; g_focoAtual = SEM_FOCO; g_focoT0 = GetTickCount(); }
+        if (sel && chave != g_focoAtual)
+        {
+            if (g_focoAtual != SEM_FOCO) g_focoAntes = g_focoAtual;
+            g_focoAtual = chave; g_focoT0 = GetTickCount();
+        }
+        const float p = 1.0f - expf(-(float)(GetTickCount() - g_focoT0) / TAU_FOCO);
+        if (sel) return p;
+        return (chave == g_focoAntes) ? 1.0f - p : 0.0f;
+    }
+
+    // ---- animação: a troca de aba ---------------------------------------------------
+    // As duas grades no mesmo quadro: a nova entra de um lado enquanto a anterior sai
+    // pelo outro, com o estado que ela tinha. A distância que falta cai a ~63% a cada
+    // 100 ms (constante de 220 ms). Abas, título e rodapé ficam parados.
+    struct EstadoTela { Tela tela; int aba, iCol, primeiraLinhaCol, iJogo, primeiraLinha; };
+    EstadoTela g_hubAntes;
+    DWORD g_hubT0 = 0;
+    int   g_hubDir = 0;
+    bool  g_hubVivo = false;
+    int   g_dx = 0;                  // deslocamento das grades neste desenho
+
+    EstadoTela FotoDoEstado()
+    {
+        EstadoTela e;
+        e.tela = g_tela; e.aba = g_aba; e.iCol = g_iCol; e.primeiraLinhaCol = g_primeiraLinhaCol;
+        e.iJogo = g_iJogo; e.primeiraLinha = g_primeiraLinha;
+        return e;
+    }
+    void AplicarEstado(const EstadoTela &e)
+    {
+        g_tela = e.tela; g_aba = e.aba; g_iCol = e.iCol; g_primeiraLinhaCol = e.primeiraLinhaCol;
+        g_iJogo = e.iJogo; g_primeiraLinha = e.primeiraLinha;
+    }
+    void ComecarTrocaDeHub(const EstadoTela &antes, int dir)
+    {
+        g_hubAntes = antes; g_hubDir = dir; g_hubT0 = GetTickCount(); g_hubVivo = true;
+    }
+
+    // ---- animação: a faixa de detalhes ------------------------------------------------
+    bool  g_detalhe = false, g_faixaFechando = false;
+    DWORD g_faixaT0 = 0;
+    const biblioteca::Jogo *g_detalheJogo = NULL;
+
+    // ---- abas, título e rodapé (dentro do Begin) ---------------------------------
+    void Hubs()
+    {
+        if (g_abas.size() < 2) return;
+        float x = (float)MARGEM_X;
+        for (size_t i = 0; i < g_abas.size(); i++)
+        {
+            WCHAR nome[64];
+            wcsncpy(nome, NomeDaAba(g_abas[i]), 63); nome[63] = L'\0';
+            ParaMinusculas(nome);
+            Texto(x, 24.0f, (g_abas[i] == g_aba) ? M_TEXTO : M_HUB, 1.0f, nome);
+            x += Largura(nome, 1.0f) + 26.0f;
+        }
+    }
+
+    // Regra 5: título e contador no canto de cima à direita, como "My Games / 11 of 42".
+    void TituloDaTela(const WCHAR *titulo, const WCHAR *contador)
+    {
+        if (titulo != NULL && titulo[0] != L'\0')
+        {
+            WCHAR t[LIN_CAP];
+            Cortar(titulo, 560.0f, 1.5f, t, LIN_CAP);
+            Texto(1180.0f, 20.0f, M_TEXTO, 1.5f, t, ATGFONT_RIGHT);
+        }
+        if (contador != NULL && contador[0] != L'\0')
+            Texto(1180.0f, 60.0f, M_APAGADO, 0.8f, contador, ATGFONT_RIGHT);
+    }
+
+    void Rodape(const WCHAR *botoes)
+    {
+        Texto((float)MARGEM_X, 660.0f, M_TEXTO, RODAPE_ESCALA, botoes);
+    }
+
+    // ---- o quadrado de coleção ------------------------------------------------------
+    // A colagem de hoje no grafite neutro do Metro: base chapada, três capas a -30°, o
+    // tom por cima e o véu embaixo do nome. "vivo" (o progresso do foco) leva a
+    // colagem de 60% a 92% e tira metade do tom.
+    void Grafite(float x, float y, float l, float a, const colecoes::Colecao *col, float vivo)
     {
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
-        D3DRECT r;
-        r.x1 = x; r.y1 = y; r.x2 = x + lado; r.y2 = y + lado;
-
-        // Todas as cores do card passaram pela MESMA correcao de gama do fundo (curva
-        // de 1/1,3): sem isso o card fica escuro contra um fundo que clareou.
-        Preencher(r, D3DCOLOR_XRGB(33, 47, 39));
+        Ret(x, y, l, a, D3DCOLOR_XRGB(46, 46, 50));
 
         const biblioteca::Jogo *tres[3];
         int n = 0;
         TresDaColecao(col, tres, &n);
+        if (n <= 0) return;
 
-        if (n > 0)
-        {
-            // Scissor: é o recorte que o D3D oferece sem stencil, e o card é alinhado
-            // aos eixos, então serve exatamente.
-            RECT sc;
-            sc.left = x; sc.top = y; sc.right = x + lado; sc.bottom = y + lado;
-            d->SetScissorRect(&sc);
-            d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
+        // Scissor: o recorte sem stencil, e o quadrado é alinhado aos eixos. Preso à
+        // tela: na troca de aba o quadrado passa da borda.
+        RECT sc;
+        sc.left = (LONG)x; sc.top = (LONG)y; sc.right = (LONG)(x + l); sc.bottom = (LONG)(y + a);
+        if (sc.left < 0) sc.left = 0;
+        if (sc.right > 1280) sc.right = 1280;
+        if (sc.right <= sc.left) return;
+        d->SetScissorRect(&sc);
+        d->SetRenderState(D3DRS_SCISSORTESTENABLE, TRUE);
 
-            const float w = lado * 0.56f;
-            const float h = w * 1.425f;                 // proporção da frente do encarte
-            const float g = w * 0.14f;                  // folga entre as capas
-            const float ang = -30.0f * 3.14159265f / 180.0f;
-            const float co = cosf(ang), si = sinf(ang);
-            const float cx = x + lado * 0.5f, cy = y + lado * 0.5f;
-
-            const float ox[3] = { -(w + g), 0.0f,          0.0f  };
-            const float oy[3] = { -h * 0.5f, -(h + g * 0.5f), g * 0.5f };
-
-            Mistura(true);
-            for (int k = 0; k < n; k++)
-            {
-                bool inteira = true;
-                D3DTexture *capa = NoCache(tres[k]->id, true, &inteira);
-                if (capa == NULL) continue;
-
-                // DENTRO do laco: as tres capas da colagem podem ter origens
-                // diferentes -- uma ROM e um jogo da FreeStyle no mesmo card. Calculado
-                // uma vez so la fora, a origem da primeira valeria para as tres.
-                const float u0 = inteira ? 0.0f : FRENTE_U0;
-                XMFLOAT2 uv[4];
-                uv[0] = XMFLOAT2(u0,   0.0f);
-                uv[1] = XMFLOAT2(1.0f, 0.0f);
-                uv[2] = XMFLOAT2(1.0f, 1.0f);
-                uv[3] = XMFLOAT2(u0,   1.0f);
-
-                const float px = ox[k], py = oy[k];
-                const float canto[4][2] = {
-                    { px,     py     }, { px + w, py     },
-                    { px + w, py + h }, { px,     py + h }
-                };
-
-                XMFLOAT2 pos[4];
-                for (int c = 0; c < 4; c++)
-                    pos[c] = XMFLOAT2(cx + canto[c][0] * co - canto[c][1] * si,
-                                      cy + canto[c][0] * si + canto[c][1] * co);
-
-                QuadTex(pos, uv, capa, D3DCOLOR_ARGB(153, 255, 255, 255), true);
-            }
-            Mistura(false);
-
-            d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
-
-            // O tom por cima é GRADIENTE, mais forte em cima e aliviando embaixo --
-            // era chapado aqui, porque portei a versão anterior à decisão do gradiente.
-            Gradiente((float)x, (float)y, (float)(x + lado), (float)(y + lado),
-                      D3DCOLOR_ARGB(168, 19, 36, 26),
-                      D3DCOLOR_ARGB( 97, 27, 49, 36), false);
-
-            // Véu só na parte de baixo: é o que mantém nome e contagem legíveis.
-            Gradiente((float)x, (float)(y + lado * 0.42f),
-                      (float)(x + lado), (float)(y + lado),
-                      D3DCOLOR_ARGB(0, 18, 27, 21), D3DCOLOR_ARGB(240, 18, 27, 21), false);
-        }
-
-        // Emblema no canto superior direito: marca que esta colecao e composta, e
-        // QUAL das duas. Vai ANTES do contorno e dos cantos, para ser recortado junto
-        // se encostar.
-        D3DTexture *emb = NULL;
-        if (col != NULL)
-        {
-            if      (col->tipo == colecoes::TIPO_UNIAO)      emb = g_raio;
-            else if (col->tipo == colecoes::TIPO_INTERSECAO) emb = g_lentes;
-        }
-
-        if (emb != NULL)
-        {
-            const int M = 22, folga = 10;
-            XMFLOAT2 pos[4], uvr[4];
-            const float rx = (float)(x + lado - folga - M), ry = (float)(y + folga);
-            pos[0] = XMFLOAT2(rx,     ry);
-            pos[1] = XMFLOAT2(rx + M, ry);
-            pos[2] = XMFLOAT2(rx + M, ry + M);
-            pos[3] = XMFLOAT2(rx,     ry + M);
-            uvr[0] = XMFLOAT2(0.0f, 0.0f);
-            uvr[1] = XMFLOAT2(1.0f, 0.0f);
-            uvr[2] = XMFLOAT2(1.0f, 1.0f);
-            uvr[3] = XMFLOAT2(0.0f, 1.0f);
-
-            Mistura(true);
-            // Sombra um pixel abaixo, para o emblema nao sumir sobre capa clara.
-            XMFLOAT2 sombra[4];
-            for (int c = 0; c < 4; c++) sombra[c] = XMFLOAT2(pos[c].x + 1.0f, pos[c].y + 1.0f);
-            QuadTex(sombra, uvr, emb, D3DCOLOR_ARGB(170, 0, 0, 0), true);
-            QuadTex(pos,    uvr, emb, COR_ANEL, true);
-            Mistura(false);
-        }
-
-        // O contorno sai em QUATRO SEGMENTOS RETOS, parando antes dos cantos -- e a
-        // curva vem depois, da textura de arco. Desenhar o retângulo inteiro e deixar a
-        // máscara comer os cantos deixava o contorno CORTADO, com falha nas quinas, em
-        // vez de arredondado.
-        const int R = (g_canto != NULL) ? CANTO_N : 0;
-        const int esp = focado ? 3 : 1;
-        const D3DCOLOR corAnel = focado ? COR_ANEL : COR_LINHA;
-
-        {
-            D3DRECT seg;
-            seg.x1 = x + R; seg.x2 = x + lado - R;
-            seg.y1 = y;             seg.y2 = y + esp;            Preencher(seg, corAnel);
-            seg.y1 = y + lado - esp; seg.y2 = y + lado;          Preencher(seg, corAnel);
-
-            seg.y1 = y + R; seg.y2 = y + lado - R;
-            seg.x1 = x;              seg.x2 = x + esp;           Preencher(seg, corAnel);
-            seg.x1 = x + lado - esp; seg.x2 = x + lado;          Preencher(seg, corAnel);
-        }
-
-        if (g_canto != NULL)
-        {
-            const float u[2] = { 0.0f, 1.0f };
-            // superior esquerdo, superior direito, inferior esquerdo, inferior direito
-            const int px[4] = { x, x + lado - R, x,            x + lado - R };
-            const int py[4] = { y, y,            y + lado - R, y + lado - R };
-            const int fx[4] = { 0, 1, 0, 1 };      // espelha em U
-            const int fy[4] = { 0, 0, 1, 1 };      // espelha em V
-
-            D3DTexture *arco = g_arco[focado ? 1 : 0];
-
-            for (int c = 0; c < 4; c++)
-            {
-                XMFLOAT2 pos[4], uvc[4];
-                pos[0] = XMFLOAT2((float)px[c],     (float)py[c]);
-                pos[1] = XMFLOAT2((float)px[c] + R, (float)py[c]);
-                pos[2] = XMFLOAT2((float)px[c] + R, (float)py[c] + R);
-                pos[3] = XMFLOAT2((float)px[c],     (float)py[c] + R);
-
-                const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
-                const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
-                uvc[0] = XMFLOAT2(u0, v0);
-                uvc[1] = XMFLOAT2(u1, v0);
-                uvc[2] = XMFLOAT2(u1, v1);
-                uvc[3] = XMFLOAT2(u0, v1);
-
-                Mistura(true);
-                // Máscara primeiro: ela apaga o canto da colagem. Depois o arco, na cor
-                // do contorno -- se viesse antes, a máscara o apagaria junto.
-                QuadTex(pos, uvc, g_canto, CorDoFundo((float)px[c], (float)py[c]), true);
-                if (arco != NULL)
-                    QuadTex(pos, uvc, arco, corAnel, true);
-                Mistura(false);
-            }
-        }
-    }
-
-    void Caixa(int x, int y, int l, int a, bool focada)
-    {
-        D3DRECT r;
-        r.x1 = x; r.y1 = y; r.x2 = x + l; r.y2 = y + a;
-        Preencher(r, COR_PAINEL);
-        ATG::DebugDraw::DrawScreenSpaceRect(r, focada ? 3.0f : 1.0f,
-                                            focada ? COR_ANEL : COR_LINHA);
-    }
-
-    // Painel do modal, arredondado POR DENTRO: o corpo sai em dois retangulos e os
-    // quatro cantos sao a mascara interna pintada na cor do painel. Assim o canto e
-    // desenhado SOBRE o que ja esta na tela, sem depender de adivinhar a cor do fundo
-    // -- que sob o veu varia, porque ha card e capa por baixo. E por isso que aqui a
-    // mascara e a interna e nao a dos cards.
-    void PainelRedondo(int x, int y, int l, int a, D3DCOLOR cor, D3DCOLOR contorno)
-    {
-        const int R = (g_cantoInt != NULL) ? CANTO_N : 0;
-        D3DRECT r;
-
-        r.x1 = x + R; r.y1 = y;     r.x2 = x + l - R; r.y2 = y + a;      Preencher(r, cor);
-        if (R == 0)
-        {
-            if (contorno != 0) ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, contorno);
-            return;
-        }
-        r.x1 = x;     r.y1 = y + R; r.x2 = x + l;     r.y2 = y + a - R;  Preencher(r, cor);
-
-        const float u[2] = { 0.0f, 1.0f };
-        const int px[4] = { x, x + l - R, x,         x + l - R };
-        const int py[4] = { y, y,         y + a - R, y + a - R };
-        const int fx[4] = { 0, 1, 0, 1 };      // espelha em U
-        const int fy[4] = { 0, 0, 1, 1 };      // espelha em V
+        const float w = l * 0.56f, h = w * 1.425f, g = w * 0.14f;
+        const float ang = -30.0f * 3.14159265f / 180.0f, co = cosf(ang), si = sinf(ang);
+        const float cx = x + l * 0.5f, cy = y + a * 0.5f;
+        const float ox[3] = { -(w + g), 0.0f, 0.0f };
+        const float oy[3] = { -h * 0.5f, -(h + g * 0.5f), g * 0.5f };
+        const D3DCOLOR alfa = ComAlfa(0x00FFFFFF, 0.60f + 0.32f * vivo);
 
         Mistura(true);
-        for (int c = 0; c < 4; c++)
+        for (int k = 0; k < n; k++)
         {
-            XMFLOAT2 pos[4], uvc[4];
-            pos[0] = XMFLOAT2((float)px[c],           (float)py[c]);
-            pos[1] = XMFLOAT2((float)(px[c] + R),     (float)py[c]);
-            pos[2] = XMFLOAT2((float)(px[c] + R),     (float)(py[c] + R));
-            pos[3] = XMFLOAT2((float)px[c],           (float)(py[c] + R));
-
-            const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
-            const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
-            uvc[0] = XMFLOAT2(u0, v0);
-            uvc[1] = XMFLOAT2(u1, v0);
-            uvc[2] = XMFLOAT2(u1, v1);
-            uvc[3] = XMFLOAT2(u0, v1);
-
-            QuadTex(pos, uvc, g_cantoInt, cor, true);
-            // O contorno vem no MESMO laço, por cima do canto já pintado: separado,
-            // seria percorrer os quatro cantos duas vezes para o mesmo resultado.
-            if (contorno != 0 && g_arco[0] != NULL)
-                QuadTex(pos, uvc, g_arco[0], contorno, true);
+            bool inteira = true;
+            D3DTexture *capa = NoCache(tres[k]->id, true, &inteira);
+            if (capa == NULL) continue;
+            const float u0 = inteira ? 0.0f : FRENTE_U0;
+            XMFLOAT2 uv[4];
+            uv[0] = XMFLOAT2(u0, 0.0f); uv[1] = XMFLOAT2(1.0f, 0.0f);
+            uv[2] = XMFLOAT2(1.0f, 1.0f); uv[3] = XMFLOAT2(u0, 1.0f);
+            const float canto[4][2] = { { ox[k], oy[k] }, { ox[k] + w, oy[k] },
+                                        { ox[k] + w, oy[k] + h }, { ox[k], oy[k] + h } };
+            XMFLOAT2 pos[4];
+            for (int c = 0; c < 4; c++)
+                pos[c] = XMFLOAT2(cx + canto[c][0] * co - canto[c][1] * si,
+                                  cy + canto[c][0] * si + canto[c][1] * co);
+            QuadTex(pos, uv, capa, alfa, true);
         }
         Mistura(false);
+        d->SetRenderState(D3DRS_SCISSORTESTENABLE, FALSE);
 
-        if (contorno == 0) return;
-
-        // Os quatro segmentos RETOS param antes dos cantos; a curva já saiu do arco.
-        // Desenhar o retângulo inteiro deixaria o contorno cortado nas quinas.
-        r.x1 = x + R;     r.x2 = x + l - R;
-        r.y1 = y;         r.y2 = y + 1;         Preencher(r, contorno);
-        r.y1 = y + a - 1; r.y2 = y + a;         Preencher(r, contorno);
-        r.y1 = y + R;     r.y2 = y + a - R;
-        r.x1 = x;         r.x2 = x + 1;         Preencher(r, contorno);
-        r.x1 = x + l - 1; r.x2 = x + l;         Preencher(r, contorno);
+        const float tom = 1.0f - 0.5f * vivo;
+        Gradiente(x, y, x + l, y + a, ComAlfa(D3DCOLOR_XRGB(28, 28, 32), 0.659f * tom),
+                  ComAlfa(D3DCOLOR_XRGB(40, 40, 45), 0.38f * tom), false);
+        Gradiente(x, y + a * 0.42f, x + l, y + a, D3DCOLOR_ARGB(0, 26, 26, 29),
+                  D3DCOLOR_ARGB(240, 26, 26, 29), false);
     }
 
-    // ---- a barra de categorias -------------------------------------------------
-    //
-    // Mora no alto da tela, que NESTA tela sempre foi vazio: a grade de coleções não
-    // tem cabeçalho. A grade desce de COL_TOPO para COL_TOPO_ABA quando a barra
-    // existe, e volta sozinha quando não existe.
-    //
-    // 96 + 244 + 32 + 244 = 616, e o rodapé só começa em 656. Cabe sem apertar nada.
-    // UM TERCO MENOR que o primeiro desenho (altura 32, folga 14, vao 10, chip de
-    // 34x22, rotulo em tamanho cheio). A barra e orientacao, nao conteudo: ela estava
-    // ocupando a altura de um titulo para dizer em que aba se esta.
-    const int ABA_Y = 30, ABA_ALT = 22, ABA_PAD = 10, ABA_GAP = 8;
-    const int COL_TOPO_ABA = 96;
-    const int CHIP_L = 24, CHIP_ALT = 16;          // a caixinha do LB e do RB
-    const float ABA_ESCALA  = 0.72f;               // rotulo da pilula
-    const float CHIP_ESCALA = 0.52f;               // "LB" e "RB"
-
-    struct PilulaAba { int x, l, aba; };
-
-    // A faixa util vai de um chip ao outro, e e simetrica: 1280-1140 = 140 = ABA_X0.
-    // Por isso centrar a fileira nunca empurra um chip para fora -- a fileira mais
-    // larga que cabe e justamente a que ocupa a faixa inteira.
-    //
-    // Medido contra o atlas, com as pilulas um terco menores: as sete categorias da
-    // FreeStyle mais o Todos e o Soltos somam 713 px numa faixa de 1000, e este
-    // console (seis categorias) soma 636. ANTES da reducao o pior caso dava 989 em
-    // 980 e escondia uma pilula; agora nao ha arranjo que role. A rolagem fica, mas
-    // como rede de seguranca contra um nome de aba maior, nao como coisa do dia.
-    const int ABA_X0  = MARGEM_X + CHIP_L + 16;
-    const int ABA_FIM = 1180 - CHIP_L - 16;
-
-    // Quantas pilulas inteiras cabem a partir de 'de'. INTEIRAS: meia pilula cortada
-    // na TV parece defeito, e o scissor cortaria no meio de uma letra.
-    int AbasQueCabem(const int *larg, int n, int de)
+    // Raio para a junção, lentes para o cruzamento, no canto de cima à direita.
+    void Emblema(float x, float y, float lado, int tipo)
     {
-        int x = 0, quantas = 0;
-        for (int j = de; j < n; j++)
-        {
-            const int novo = x + larg[j] + (quantas ? ABA_GAP : 0);
-            if (novo > ABA_FIM - ABA_X0) break;
-            x = novo; quantas++;
-        }
-        return quantas;
+        D3DTexture *emb = (tipo == colecoes::TIPO_UNIAO) ? g_raio
+                        : (tipo == colecoes::TIPO_INTERSECAO) ? g_lentes : NULL;
+        if (emb == NULL) return;
+        const float M = 22.0f, folga = 10.0f, rx = x + lado - folga - M, ry = y + folga;
+        XMFLOAT2 pos[4], sombra[4], uv[4];
+        pos[0] = XMFLOAT2(rx, ry); pos[1] = XMFLOAT2(rx + M, ry);
+        pos[2] = XMFLOAT2(rx + M, ry + M); pos[3] = XMFLOAT2(rx, ry + M);
+        uv[0] = XMFLOAT2(0.0f, 0.0f); uv[1] = XMFLOAT2(1.0f, 0.0f);
+        uv[2] = XMFLOAT2(1.0f, 1.0f); uv[3] = XMFLOAT2(0.0f, 1.0f);
+        for (int c = 0; c < 4; c++) sombra[c] = XMFLOAT2(pos[c].x + 1.0f, pos[c].y + 1.0f);
+        Mistura(true);
+        QuadTex(sombra, uv, emb, D3DCOLOR_ARGB(170, 0, 0, 0), true);
+        QuadTex(pos, uv, emb, COR_ANEL, true);
+        Mistura(false);
     }
 
-    // Mede e posiciona a fileira VISIVEL. SEPARADO do desenho porque as pilulas sao
-    // retangulos e os rotulos sao texto: o Begin/End da fonte salva e restaura estado
-    // de render, e intercalar os dois embaralha o D3D -- a mesma razao pela qual a
-    // grade de capas desenha as imagens primeiro e os nomes todos depois.
-    int MedirAbas(PilulaAba *p, int capacidade, int *xRB)
+    int ItensDaColecao(const colecoes::Colecao *c)
     {
-        const int n = (int)g_abas.size();
-        if (n <= 0) { *xRB = ABA_X0; return 0; }
-
-        // MEDE NA ESCALA EM QUE DESENHA: GetTextExtent ja multiplica pelo fator de
-        // escala corrente (AtgFont.cpp:550). Medir a 1,0 e desenhar a 0,72 daria
-        // pilula larga demais, com o rotulo boiando -- a mesma pegadinha que a
-        // largura do modal pegou ao contrario.
-        g_fonte.SetScaleFactors(ABA_ESCALA, ABA_ESCALA);
-        int larg[biblioteca::ABA_QUANTAS + 1];
-        for (int i = 0; i < n && i < biblioteca::ABA_QUANTAS + 1; i++)
-        {
-            FLOAT w = 0.0f, h = 0.0f;
-            g_fonte.GetTextExtent(NomeDaAba(g_abas[i]), &w, &h);
-            larg[i] = (int)w + ABA_PAD * 2;
-        }
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-
-        // A janela segue o foco, como o SeguirFoco da grade.
-        const int foco = IndiceDaAba();
-        if (g_primeiraAba > foco) g_primeiraAba = foco;
-        while (foco >= g_primeiraAba + AbasQueCabem(larg, n, g_primeiraAba)) g_primeiraAba++;
-        // E volta assim que couber de novo: sem isto a barra ficava rolada para
-        // sempre depois de uma visita a ultima aba.
-        while (g_primeiraAba > 0 &&
-               AbasQueCabem(larg, n, g_primeiraAba - 1) > foco - g_primeiraAba + 1)
-            g_primeiraAba--;
-
-        const int ate = g_primeiraAba + AbasQueCabem(larg, n, g_primeiraAba);
-
-        // CENTRADA. Comecando colada na margem esquerda, duas ou tres abas deixavam
-        // meia tela vazia a direita e a fileira parecia ter sido cortada. Centrar
-        // tambem faz os dois chips emoldurarem a fileira em vez de marcarem bordas.
-        int total = 0;
-        for (int i = g_primeiraAba; i < ate; i++)
-            total += larg[i] + ((i > g_primeiraAba) ? ABA_GAP : 0);
-
-        int quantas = 0, x = (1280 - total) / 2;
-        for (int i = g_primeiraAba; i < ate && quantas < capacidade; i++)
-        {
-            p[quantas].aba = g_abas[i];
-            p[quantas].x   = x;
-            p[quantas].l   = larg[i];
-            x += larg[i] + ABA_GAP;
-            quantas++;
-        }
-        *xRB = x - ABA_GAP + 16;
-
-        // Chip apagado na ponta: LB na primeira aba e RB na ultima nao fazem nada, e
-        // a tela tem de dizer isso antes de a pessoa apertar. Vale desde sempre, sem
-        // o Soltos: no "All" o LB ja nao fazia nada e nada avisava.
-        g_lbVivo = (foco > 0);
-        g_rbVivo = (foco < n - 1);
-        return quantas;
+        int quantos = 0;
+        for (size_t j = 0; j < g_jogos.size(); j++)
+            if (NaAba(g_jogos[j]) && colecoes::Tem(c, g_jogos[j].titleId))
+                quantos++;
+        return quantos;
     }
 
-    void PilulaCheia(int x, int y, int l, int a, D3DCOLOR cor)
+    // O encarte (6 px, o CARTAO_PAD do jogo) entra TIRANDO do quadrado: o todo segue
+    // com COL_LADO. Apagado no não selecionado na proporção do texto de hoje (~62%:
+    // 142,156,148 contra 231,237,233), aceso com o progresso do foco.
+    void CartaoColecao(int x, int y, const colecoes::Colecao *col, bool sel, bool escolhendo)
     {
-        D3DRECT r;
-        r.x1 = x; r.y1 = y; r.x2 = x + l; r.y2 = y + a;
-        Preencher(r, cor);
+        static const int ENC_APAGADO[3] = { 147, 146, 148 }, ENC_ACESO[3] = { 237, 236, 238 };
+        const float prog = ProgressoDoFoco(-(col->id + 1), sel);
+        const int d = (int)floorf(CRESCE * prog + 0.5f);
+        const float X = (float)(x - d), Y = (float)(y - d), LADO = (float)(COL_LADO + 2 * d);
+        if (prog > 0.02f) Sombra(X, Y, LADO, LADO, prog);
 
-        if (g_canto == NULL) return;      // sem a máscara, fica reta e pronto
+        Ret(X, Y, LADO, LADO, Mistura3(ENC_APAGADO, ENC_ACESO, prog));
+        const float P = (float)CARTAO_PAD, ix = X + P, iy = Y + P, il = LADO - 2 * P, ia = LADO - 2 * P;
+        Grafite(ix, iy, il, ia, col, prog);
+        Emblema(ix, iy, il, col->tipo);
 
-        // O RAIO NAO PASSA DA METADE DO LADO MENOR. A mascara tem 16 px fixos, e
-        // numa pilula de 22 de altura os quads de cima e de baixo se sobreporiam por
-        // 10 px: cada um pinta o fundo no que esta FORA da sua curva, e na faixa
-        // comum os dois comem o mesmo pedaco da lateral -- a pilula sairia roida dos
-        // lados em vez de arredondada. Encolher o quad reamostra a mascara, que e
-        // sampleada de 0 a 1 na propria geometria; nada de textura nova.
-        int R = CANTO_N;
-        if (R > l / 2) R = l / 2;
-        if (R > a / 2) R = a / 2;
-        if (R <= 0) return;
-        const float u[2] = { 0.0f, 1.0f };
-        const int px[4] = { x, x + l - R, x,         x + l - R };
-        const int py[4] = { y, y,         y + a - R, y + a - R };
-        const int fx[4] = { 0, 1, 0, 1 };
-        const int fy[4] = { 0, 0, 1, 1 };
-
-        for (int c = 0; c < 4; c++)
+        bool marcada = false;
+        if (escolhendo)
         {
-            XMFLOAT2 pos[4], uvc[4];
-            pos[0] = XMFLOAT2((float)px[c],     (float)py[c]);
-            pos[1] = XMFLOAT2((float)px[c] + R, (float)py[c]);
-            pos[2] = XMFLOAT2((float)px[c] + R, (float)py[c] + R);
-            pos[3] = XMFLOAT2((float)px[c],     (float)py[c] + R);
-
-            const float u0 = u[fx[c]], u1 = u[1 - fx[c]];
-            const float v0 = u[fy[c]], v1 = u[1 - fy[c]];
-            uvc[0] = XMFLOAT2(u0, v0);
-            uvc[1] = XMFLOAT2(u1, v0);
-            uvc[2] = XMFLOAT2(u1, v1);
-            uvc[3] = XMFLOAT2(u0, v1);
-
-            Mistura(true);
-            QuadTex(pos, uvc, g_canto, CorDoFundo((float)px[c], (float)py[c]), true);
-            Mistura(false);
+            marcada = (g_tela == TELA_ORIGENS) ? OrigemMarcada(col->id) : ColecaoEscolhida(col->id);
+            if (!marcada) Ret(X, Y, LADO, LADO, D3DCOLOR_ARGB(150, 6, 9, 8));   // o véu de hoje
         }
+
+        // O nome é o de hoje: maiúsculas, centrado, ancorado a 86% da altura, com a
+        // sombra do atlas e as cores de hoje.
+        WCHAR nome[256], linhas[2][LIN_CAP], texto[32];
+        Larga(col->nome, nome, 256);
+        ParaMaiusculas(nome);
+        const int n = Quebrar(nome, il - 28.0f, 2, 1.0f, linhas);
+        const float ALT_LINHA = 28.0f, ALT_CONT = 24.0f, meio = ix + il * 0.5f;
+        const float topo = iy + ia * 0.86f - (n * ALT_LINHA + ALT_CONT);
+        swprintf_s(texto, 32, L"( %d )", ItensDaColecao(col));
+
+        ATG::g_fonteSemSombra = FALSE;
+        g_fonte.Begin();
+        for (int k = 0; k < n; k++)
+            Texto(meio, topo + k * ALT_LINHA, sel ? COR_TEXTO : COR_APAGADO, 1.0f, linhas[k], ATGFONT_CENTER_X);
+        Texto(meio, topo + n * ALT_LINHA, COR_FRACO, 1.0f, texto, ATGFONT_CENTER_X);
+        g_fonte.End();
+        ATG::g_fonteSemSombra = TRUE;
+
+        if (escolhendo && marcada) Contorno(ix + 1.0f, iy + 1.0f, il - 2.0f, ia - 2.0f, M_MARCADO);
     }
 
-    void AbasFundo(const PilulaAba *p, int n, int xRB)
-    {
-        if (n <= 0) return;
-        Caixa(p[0].x - 16 - CHIP_L, ABA_Y + 3, CHIP_L, CHIP_ALT, false);
-        Caixa(xRB,                  ABA_Y + 3, CHIP_L, CHIP_ALT, false);
-
-        for (int i = 0; i < n; i++)
-            if (p[i].aba == g_aba)
-            {
-                // FOCO NEUTRO, o mesmo vocabulario do modal: faixa clara de fundo e
-                // uma barra verde embaixo. O verde chapado com o rotulo escuro por
-                // cima -- o desenho anterior -- fica ilegivel na TV: o
-                // antisserrilhado engorda o traco escuro contra o fundo claro e a
-                // palavra vira borrao. Agora o verde marca, e quem le e o branco.
-                PilulaCheia(p[i].x, ABA_Y, p[i].l, ABA_ALT,
-                            D3DCOLOR_ARGB(26, 233, 240, 235));
-                D3DRECT r;
-                r.x1 = p[i].x + 6;          r.y1 = ABA_Y + ABA_ALT;
-                r.x2 = p[i].x + p[i].l - 6; r.y2 = r.y1 + 3;
-                Preencher(r, COR_ANEL);
-            }
-    }
-
-    // Dentro do Begin da fonte.
-    void AbasTexto(const PilulaAba *p, int n, int xRB)
-    {
-        if (n <= 0) return;
-        const FLOAT xLB = (FLOAT)(p[0].x - 16 - CHIP_L);
-        g_fonte.SetScaleFactors(CHIP_ESCALA, CHIP_ESCALA);
-        g_fonte.DrawText(xLB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 4.0f,
-                         g_lbVivo ? COR_FRACO : COR_LINHA, L"LB", ATGFONT_CENTER_X);
-        g_fonte.DrawText((FLOAT)xRB + CHIP_L * 0.5f, (FLOAT)ABA_Y + 4.0f,
-                         g_rbVivo ? COR_FRACO : COR_LINHA, L"RB", ATGFONT_CENTER_X);
-
-        g_fonte.SetScaleFactors(ABA_ESCALA, ABA_ESCALA);
-        for (int i = 0; i < n; i++)
-        {
-            const bool ativa = (p[i].aba == g_aba);
-            g_fonte.DrawText((FLOAT)(p[i].x + ABA_PAD), (FLOAT)ABA_Y + 1.0f,
-                             ativa ? COR_TEXTO : COR_APAGADO,
-                             NomeDaAba(p[i].aba), 0);
-        }
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-    }
-
-    void TelaColecoes()
+    void GradeColecoes()
     {
         std::vector<colecoes::Colecao *> L = ListaDeColecoes();
-        WCHAR texto[256];
-
-        if (L.empty())
-        {
-            g_fonte.Begin();
-            g_fonte.SetScaleFactors(1.3f, 1.3f);
-            // Interseção aceita junção como origem, junção não aceita -- então a
-            // frase tem de dizer o que FALTA, e não a mesma coisa para os dois.
-            const WCHAR *vazia = L"No collections yet";
-            if (g_tela == TELA_ARQUIVAR)
-                vazia = L"No collections to add it to";
-            else if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
-                vazia = (g_editandoComposta->tipo == colecoes::TIPO_UNIAO)
-                      ? L"No game collections to combine"
-                      : L"No collections to intersect";
-            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO, vazia, ATGFONT_CENTER_X);
-            g_fonte.SetScaleFactors(1.0f, 1.0f);
-            // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
-            Rodape((g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
-                   ? GLYPH_B_BUTTON L" Cancel"
-                   : GLYPH_X_BUTTON L" New collection     " GLYPH_BACK_BUTTON L" Export",
-                   L"");
-            g_fonte.End();
-            return;
-        }
-
-        // A barra de categorias, quando houver categoria para escolher. Nas telas de
-        // origens e de arquivar ela não aparece: ali a aba não vale, e mostrá-la
-        // acesa no "Unsorted" enquanto se escolhe coleção seria dizer que a lista
-        // abaixo está filtrada por ela -- não está.
-        PilulaAba pilulas[biblioteca::ABA_QUANTAS + 1];   // +1: o Soltos
-        int xRB = 0, nAbas = 0;
-        if (g_tela == TELA_COLECOES && g_abas.size() >= 2)
-            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS + 1, &xRB);
-        if (nAbas >= 2) AbasFundo(pilulas, nAbas, xRB);
-
-        const int topo = (nAbas >= 2) ? COL_TOPO_ABA : COL_TOPO;
-
-        // Rola de uma linha por vez, como a tela de jogos -- não troca a página
-        // inteira. Paginar fazia a tela mudar de uma vez ao passar do 8º item, e com
-        // tudo saindo junto perde-se a referência de onde se estava.
-        int paginaInicio = g_primeiraLinhaCol * COL_POR_LINHA;
-
+        if (L.empty()) return;
+        const bool escolhendo = (g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR);
+        const int base = g_primeiraLinhaCol * COL_POR_LINHA;
+        int foco = -1, fx = 0, fy = 0;
         for (int k = 0; k < COL_POR_PAGINA; k++)
         {
-            int i = paginaInicio + k;
+            const int i = base + k;
             if (i >= (int)L.size()) break;
+            const int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP) + g_dx;
+            const int y = COL_TOPO_ABA + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
+            if (i == g_iCol) { foco = i; fx = x; fy = y; continue; }   // o em foco por cima
+            CartaoColecao(x, y, L[i], false, escolhendo);
+        }
+        if (foco >= 0) CartaoColecao(fx, fy, L[foco], true, escolhendo);
+    }
 
-            int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            int y = topo + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            DesenharCard(x, y, COL_LADO, L[i], i == g_iCol);
+    // ---- o cartão de jogo ("My Games") ------------------------------------------------
+    void CartaoJogo(int x1, int y1, const biblioteca::Jogo *g, bool sel, bool adicionando)
+    {
+        const float prog = ProgressoDoFoco(g->id + 1, sel);
+        const int d = (int)floorf(CRESCE * prog + 0.5f);
+        const float cx = (float)(x1 - CARTAO_PAD - d), cy = (float)(y1 - CARTAO_PAD - d);
+        const float cl = (float)(CAPA_L + 2 * CARTAO_PAD + 2 * d);
+        const float ca = (float)(CAPA_A + 2 * CARTAO_PAD + CARTAO_NOME + 2 * d);
+        if (prog > 0.02f) Sombra(cx, cy, cl, ca, prog);
+        Ret(cx, cy, cl, ca, M_CARTAO);
 
-            // Escolhendo origens -- ou arquivando um jogo --, a não marcada recebe
-            // o mesmo véu dos jogos não marcados, e a marcada ganha o anel verde. O
-            // vocabulário é o mesmo de propósito: é o mesmo gesto.
-            if (g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR)
+        D3DRECT r;
+        r.x1 = x1 - d; r.y1 = y1 - d; r.x2 = x1 + CAPA_L + d; r.y2 = y1 + CAPA_A + d;
+        bool inteira = true;
+        D3DTexture *capa = NoCache(g->id, true, &inteira);
+        if (capa != NULL)
+        {
+            // Da capa da FreeStyle sai só a frente; a de ROM vai inteira.
+            const float u0 = inteira ? 0.0f : FRENTE_U0;
+            ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
+                r, XMFLOAT2(u0, 0.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT2(u0, 1.0f), capa);
+        }
+        else Preencher(r, M_SEM_CAPA);
+
+        if (adicionando)
+        {
+            // Como hoje: o não marcado leva o véu na capa, o marcado o contorno verde.
+            if (SelecionadoNoRascunho(g->titleId))
             {
-                const bool marcada = (g_tela == TELA_ORIGENS)
-                                   ? OrigemMarcada(L[i]->id)
-                                   : ColecaoEscolhida(L[i]->id);
-                D3DRECT rc;
-                rc.x1 = x; rc.y1 = y; rc.x2 = x + COL_LADO; rc.y2 = y + COL_LADO;
-                if (!marcada) Preencher(rc, D3DCOLOR_ARGB(150, 6, 9, 8));
-                else          ATG::DebugDraw::DrawScreenSpaceRect(rc, 2.0f, COR_ANEL);
+                if (g_anelMarcado) ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, M_MARCADO);
             }
+            else Preencher(r, D3DCOLOR_ARGB(140, 6, 9, 8));
         }
 
+        WCHAR nome[256], cortado[LIN_CAP];
+        Larga(g->nome, nome, 256);
+        const float il = (float)(r.x2 - r.x1);
+        Cortar(nome, il, 0.9f, cortado, LIN_CAP);
         g_fonte.Begin();
-        if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
-
-        for (int k = 0; k < COL_POR_PAGINA; k++)
-        {
-            int i = paginaInicio + k;
-            if (i >= (int)L.size()) break;
-
-            int x = COL_MARGEM + (k % COL_POR_LINHA) * (COL_LADO + COL_GAP);
-            int y = topo + (k / COL_POR_LINHA) * (COL_LADO + COL_GAP);
-
-            // Nome e contagem centrados na HORIZONTAL, e o bloco ancorado pela base a
-            // 86% da altura do card, crescendo para cima quando o nome ocupa duas
-            // linhas. Nem centralizado na vertical, nem colado no rodapé.
-            const float ALT_LINHA = 28.0f, ALT_CONT = 24.0f;
-            const float meio = (FLOAT)x + COL_LADO * 0.5f;
-
-            WCHAR l1[96], l2[96];
-            int nLinhas = QuebrarNome(L[i]->nome, (FLOAT)COL_LADO - 28.0f, l1, l2);
-
-            float topo = (FLOAT)y + COL_LADO * 0.86f - (nLinhas * ALT_LINHA + ALT_CONT);
-
-            g_fonte.DrawText(meio, topo, (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
-                             l1, ATGFONT_CENTER_X);
-            if (nLinhas == 2 && l2[0] != L'\0')
-                g_fonte.DrawText(meio, topo + ALT_LINHA,
-                                 (i == g_iCol) ? COR_TEXTO : COR_APAGADO,
-                                 l2, ATGFONT_CENTER_X);
-
-            // Conta os ITENS que a coleção mostra, não quantos TitleIds guarda: um
-            // TitleId de multi-disco casa com dois itens. Entre parênteses e sem a
-            // palavra "jogos" -- vazia vira "( 0 )".
-            int quantos = 0;
-            for (size_t j = 0; j < g_jogos.size(); j++)
-                if (NaAba(g_jogos[j]) && colecoes::Tem(L[i], g_jogos[j].titleId))
-                    quantos++;
-
-            swprintf_s(texto, 256, L"( %d )", quantos);
-            g_fonte.DrawText(meio, topo + nLinhas * ALT_LINHA, COR_FRACO,
-                             texto, ATGFONT_CENTER_X);
-        }
-
-        swprintf_s(texto, 256, L"%d of %d", g_iCol + 1, (int)L.size());
-        if (g_tela == TELA_ARQUIVAR)
-        {
-            // Sem cabeçalho, como a tela de origens -- quem diz QUAL jogo está sendo
-            // arquivado é esta linha. Cortado em 420 px: nome de jogo passa disso
-            // fácil, e o que importa aqui é a contagem no fim.
-            WCHAR nome[256];
-            Larga(g_arquivando != NULL ? g_arquivando->nome : "", nome, 256);
-            FLOAT w = 0.0f, h = 0.0f;
-            g_fonte.GetTextExtent(nome, &w, &h);
-            if (w > 420.0f)
-            {
-                size_t n = wcslen(nome);
-                while (n > 1 && w > 420.0f)
-                {
-                    nome[--n] = L'\0';
-                    if (n >= 3) { nome[n-1] = L'.'; nome[n-2] = L'.'; nome[n-3] = L'.'; }
-                    g_fonte.GetTextExtent(nome, &w, &h);
-                }
-            }
-            const int q = (int)g_escolhidas.size();
-            swprintf_s(texto, 256, L"%s · %d %s", nome, q,
-                       (q == 1) ? L"collection" : L"collections");
-            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
-                   GLYPH_START_BUTTON L" Done", texto);
-        }
-        else if (g_tela == TELA_ORIGENS)
-        {
-            // Quantos jogos o rascunho daria SE fosse concluido agora. E a razao de
-            // ser desta linha: um cruzamento esvazia facil, e descobrir o ( 0 ) so
-            // depois de gravar e tarde. O '·' e U+00B7, que ESTA no atlas Arial_16
-            // (glifo 107) -- o '•' de U+2022 nao estaria, e sairia quadradinho.
-            //
-            // Uma colecao de pilha, so para perguntar: o rascunho ainda nao esta na
-            // composta de verdade, e escrever nela antes do Concluir tiraria do B o
-            // que ele tem para desfazer.
-            colecoes::Colecao rascunho;
-            rascunho.id = 0;
-            rascunho.tipo = (g_editandoComposta != NULL) ? g_editandoComposta->tipo
-                                                         : colecoes::TIPO_UNIAO;
-            rascunho.origens = g_origens;
-
-            int quantos = 0;
-            for (size_t j = 0; j < g_jogos.size(); j++)
-                if (colecoes::Tem(&rascunho, g_jogos[j].titleId))
-                    quantos++;
-
-            WCHAR sub[64];
-            swprintf_s(sub, 64, L"%d chosen · %d games",
-                       (int)g_origens.size(), quantos);
-            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
-                   GLYPH_START_BUTTON L" Done", sub);
-        }
-        else
-            Rodape(GLYPH_A_BUTTON L" Open     " GLYPH_X_BUTTON L" New collection     "
-                   GLYPH_START_BUTTON L" Options     " GLYPH_BACK_BUTTON L" Export", texto);
+        Texto((float)r.x1, (float)r.y2 + 6.0f, M_CARTAO_TEXTO, 0.9f, cortado);
         g_fonte.End();
     }
 
     void IndiceAlfabetico(const std::vector<const biblioteca::Jogo *> &L)
     {
         if (L.empty()) return;
-
         bool tem[27];
         for (int i = 0; i < 27; i++) tem[i] = false;
         for (size_t i = 0; i < L.size(); i++)
         {
-            char c = Inicial(L[i]->nome);
+            const char c = Inicial(L[i]->nome);
             tem[(c == '#') ? 26 : (c - 'A')] = true;
         }
+        const char atual = Inicial(L[g_iJogo < (int)L.size() ? g_iJogo : 0]->nome);
+        const float passo = (640.0f - 92.0f) / 27.0f, ESCALA = 0.72f, ALT_LETRA = 27.0f * ESCALA;
+        const float dx = (float)g_dx;
 
-        char atual = Inicial(L[g_iJogo]->nome);
-        const float passo = (640.0f - 92.0f) / 27.0f;      // 20,3 px por letra
+        for (int i = 0; i < 27; i++)
+            if (((i == 26) ? '#' : (char)('A' + i)) == atual)
+                Ret(1204.0f + dx, 92.0f + i * passo, 28.0f, passo, M_VERDE);
 
-        // A fonte tem 27 px de altura e o passo e 20,3: no tamanho cheio a letra nao
-        // cabe na propria faixa -- transborda da caixa verde e encosta nas vizinhas.
-        // Reduzida, ela cabe, e aí a caixa pode ser exatamente a faixa.
-        const float ESCALA = 0.72f;
-        const float ALT_LETRA = 27.0f * ESCALA;
-
-        g_fonte.SetScaleFactors(ESCALA, ESCALA);
         g_fonte.Begin();
         for (int i = 0; i < 27; i++)
         {
-            float y = 92.0f + i * passo;
-            bool acesa = ((i == 26) ? '#' : (char)('A' + i)) == atual;
-
-            // Centra a letra na faixa, e a caixa É a faixa.
-            float yLetra = y + (passo - ALT_LETRA) * 0.5f;
-
-            if (acesa)
-            {
-                // Caixa ESCURA com a letra clara, nao o contrario. Letra escura sobre
-                // verde forte fica com cara de negrito borrado nesse tamanho -- o
-                // antisserrilhado engorda o traco contra o fundo claro.
-                D3DRECT r;
-                r.x1 = 1204; r.y1 = (LONG)y;
-                r.x2 = 1232; r.y2 = (LONG)(y + passo);
-                Preencher(r, D3DCOLOR_ARGB(215, 20, 34, 16));
-                g_fonte.End();          // o retângulo trocou estado; refaz o lote
-                g_fonte.Begin();
-            }
-
+            const float y = 92.0f + i * passo;
             WCHAR letra[2] = { (WCHAR)((i == 26) ? L'#' : (L'A' + i)), L'\0' };
-            // A acesa sai em BRANCO, nao no verde: verde sobre a caixa escura tem
-            // pouco contraste nesse corpo de letra, e era tao dificil de ler quanto a
-            // aba. Quem diz "e aqui" e a caixa; quem se le e a letra.
-            g_fonte.DrawText(1218.0f, yLetra, acesa ? COR_TEXTO
-                             : (tem[i] ? COR_APAGADO : COR_LINHA), letra, ATGFONT_CENTER_X);
+            const bool acesa = ((i == 26) ? '#' : (char)('A' + i)) == atual;
+            Texto(1218.0f + dx, y + (passo - ALT_LETRA) * 0.5f,
+                  (acesa || tem[i]) ? M_TEXTO : M_LINHA, ESCALA, letra, ATGFONT_CENTER_X);
         }
         g_fonte.End();
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
+    }
+
+    void GradeJogos()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        const int total = (int)L.size();
+        if (total == 0) return;
+        const bool adicionando = (g_tela == TELA_ADICIONAR);
+        const int base = g_primeiraLinha * COLUNAS;
+        int foco = -1, fx = 0, fy = 0;
+        for (int k = 0; k < POR_PAGINA; k++)
+        {
+            const int i = base + k;
+            if (i >= total) break;
+            const int x1 = GRID_MARGEM + (k % COLUNAS) * (CAPA_L + ESPACO_X) + g_dx;
+            const int y1 = TOPO + 4 + (k / COLUNAS) * (CAPA_A + ESPACO_Y);
+            if (i == g_iJogo) { foco = i; fx = x1; fy = y1; continue; }
+            CartaoJogo(x1, y1, L[i], false, adicionando);
+        }
+        if (foco >= 0) CartaoJogo(fx, fy, L[foco], true, adicionando);
+        IndiceAlfabetico(L);
+    }
+
+    void GradeDaTela()
+    {
+        if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS || g_tela == TELA_ARQUIVAR) GradeColecoes();
+        else GradeJogos();
+    }
+
+    // A grade da tela e, durante a troca de aba, a anterior um passo de página atrás.
+    void Grades()
+    {
+        g_dx = 0;
+        if (!g_hubVivo || (g_tela != TELA_COLECOES && g_tela != TELA_SOLTOS)) { GradeDaTela(); return; }
+        const float t = (float)(GetTickCount() - g_hubT0);
+        if (t >= 5.0f * TAU_HUB) { g_hubVivo = false; GradeDaTela(); return; }
+        const float dx = g_hubDir * 1280.0f * expf(-t / TAU_HUB);
+
+        g_dx = (int)floorf(dx + 0.5f);
+        GradeDaTela();
+
+        const EstadoTela agora = FotoDoEstado();
+        AplicarEstado(g_hubAntes);
+        g_estatico = true;
+        g_dx = (int)floorf(dx - g_hubDir * 1280.0f + 0.5f);
+        GradeDaTela();
+        g_estatico = false;
+        AplicarEstado(agora);
+        g_dx = 0;
+    }
+
+    // ---- as telas ---------------------------------------------------------------------
+    void TelaColecoes()
+    {
+        std::vector<colecoes::Colecao *> L = ListaDeColecoes();
+        const bool arquivando = (g_tela == TELA_ARQUIVAR);
+        const bool escolhendo = (g_tela == TELA_ORIGENS || arquivando);
+        WCHAR texto[256];
+
+        if (L.empty())
+        {
+            // Interseção aceita junção como origem, junção não aceita: a frase diz o
+            // que FALTA, e não a mesma coisa para os dois.
+            const WCHAR *vazia = L"No collections yet";
+            if (arquivando) vazia = L"No collections to add it to";
+            else if (g_tela == TELA_ORIGENS && g_editandoComposta != NULL)
+                vazia = (g_editandoComposta->tipo == colecoes::TIPO_UNIAO)
+                      ? L"No game collections to combine" : L"No collections to intersect";
+            g_fonte.Begin();
+            Texto(640.0f, 320.0f, M_TEXTO, 1.3f, vazia, ATGFONT_CENTER_X);
+            // Sem coleção nenhuma o exportar continua valendo: ele é da biblioteca.
+            Rodape(escolhendo ? GLYPH_B_BUTTON L" Cancel"
+                              : GLYPH_X_BUTTON L" New collection     " GLYPH_BACK_BUTTON L" Export");
+            g_fonte.End();
+            return;
+        }
+
+        Grades();
+
+        g_fonte.Begin();
+        if (!escolhendo)
+        {
+            Hubs();
+            swprintf_s(texto, 256, L"%d of %d", g_iCol + 1, (int)L.size());
+            TituloDaTela(L"", texto);
+            Rodape(GLYPH_A_BUTTON L" Open     " GLYPH_X_BUTTON L" New collection     "
+                   GLYPH_START_BUTTON L" Options     " GLYPH_BACK_BUTTON L" Export");
+        }
+        else if (arquivando)
+        {
+            // Quem diz QUAL jogo está sendo arquivado é o contador, cortado em 400 px.
+            WCHAR nome[256], curto[LIN_CAP];
+            Larga(g_arquivando != NULL ? g_arquivando->nome : "", nome, 256);
+            Cortar(nome, 400.0f, 0.8f, curto, LIN_CAP);
+            const int q = (int)g_escolhidas.size();
+            swprintf_s(texto, 256, L"%s · %d %s", curto, q, (q == 1) ? L"collection" : L"collections");
+            TituloDaTela(L"add to collections", texto);
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     " GLYPH_START_BUTTON L" Done");
+        }
+        else
+        {
+            // Quantos jogos o rascunho daria se fosse concluído agora: um cruzamento
+            // esvazia fácil, e descobrir o ( 0 ) depois de gravar é tarde.
+            colecoes::Colecao rascunho;
+            rascunho.id = 0;
+            rascunho.tipo = (g_editandoComposta != NULL) ? g_editandoComposta->tipo : colecoes::TIPO_UNIAO;
+            rascunho.origens = g_origens;
+            int quantos = 0;
+            for (size_t j = 0; j < g_jogos.size(); j++)
+                if (colecoes::Tem(&rascunho, g_jogos[j].titleId)) quantos++;
+            swprintf_s(texto, 256, L"%d chosen · %d games", (int)g_origens.size(), quantos);
+            TituloDaTela(L"choose collections", texto);
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     " GLYPH_START_BUTTON L" Done");
+        }
+        g_fonte.End();
     }
 
     void TelaJogos()
     {
         std::vector<const biblioteca::Jogo *> L = ListaAtual();
         const bool adicionando = (g_tela == TELA_ADICIONAR);
-        // A grade dos soltos é esta mesma, com três diferenças: no lugar do
-        // cabeçalho vai a barra de categorias (a pílula acesa já é o título, como na
-        // grade de coleções), a frase de vazio é outra e o rodapé oferece arquivar.
         const bool soltos = (g_tela == TELA_SOLTOS);
-
-        PilulaAba pilulas[biblioteca::ABA_QUANTAS + 1];
-        int xRB = 0, nAbas = 0;
-        if (soltos && g_abas.size() >= 2)
-        {
-            nAbas = MedirAbas(pilulas, biblioteca::ABA_QUANTAS + 1, &xRB);
-            if (nAbas >= 2) AbasFundo(pilulas, nAbas, xRB);
-        }
         const int total = (int)L.size();
-        WCHAR texto[256], sub[64];
+        WCHAR texto[256], titulo[256];
 
         if (total == 0)
         {
-            g_fonte.Begin();
-            if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
-            g_fonte.SetScaleFactors(1.3f, 1.3f);
-            // Composta vazia nao se resolve adicionando jogos -- nao ha o que
-            // adicionar nela. O cruzamento vazio e o caso que mais vai acontecer,
-            // entao ele diz o porque em vez de so dizer que esta vazio.
+            // Composta vazia não se resolve adicionando jogos; o cruzamento vazio diz o
+            // porquê. E a aba pode ter esvaziado a coleção por dentro: aí a frase diz.
             const WCHAR *vazia = L"No games in this collection";
             if (!adicionando && g_atual != NULL)
             {
                 if      (g_atual->tipo == colecoes::TIPO_INTERSECAO) vazia = L"No game is in all of them";
                 else if (g_atual->tipo == colecoes::TIPO_UNIAO)      vazia = L"No games in the chosen collections";
             }
-
-            // A ABA pode ter esvaziado a coleção por dentro -- tire o último jogo de
-            // 360 de uma coleção que tem 40 de XBLA, na aba Xbox 360, e sobra isto.
-            // A frase genérica estaria MENTINDO: a coleção não está vazia. O
-            // subtítulo com a aba não serve de consolo aqui, porque este ramo volta
-            // antes do Cabecalho -- então quem diz o porquê é a própria frase.
             WCHAR porCausaDaAba[128];
-            if (!adicionando && g_aba != biblioteca::ABA_AUTOMATICA)
+            if (!adicionando && !soltos && g_aba != biblioteca::ABA_AUTOMATICA)
             {
-                swprintf_s(porCausaDaAba, 128, L"No %s games in this collection",
-                           NomeDaAba(g_aba));
+                swprintf_s(porCausaDaAba, 128, L"No %s games in this collection", NomeDaAba(g_aba));
                 vazia = porCausaDaAba;
             }
-
             if (soltos) vazia = L"No games outside your collections";
-
-            g_fonte.DrawText(640.0f, 320.0f, COR_APAGADO,
-                             adicionando ? L"The library is empty" : vazia,
-                             ATGFONT_CENTER_X);
-            g_fonte.SetScaleFactors(1.0f, 1.0f);
-            Rodape(soltos
-                   ? GLYPH_B_BUTTON L" Back"
-                   : (adicionando
-                   ? GLYPH_B_BUTTON L" Cancel"
-                   : (colecoes::Composta(g_atual)
-                      ? GLYPH_B_BUTTON L" Back     " GLYPH_START_BUTTON L" Options"
-                      : GLYPH_B_BUTTON L" Back     " GLYPH_X_BUTTON L" Add games")),
-                   L"");
+            g_fonte.Begin();
+            if (soltos) Hubs();
+            Texto(640.0f, 320.0f, M_TEXTO, 1.3f, adicionando ? L"The library is empty" : vazia, ATGFONT_CENTER_X);
+            Rodape(soltos ? GLYPH_B_BUTTON L" Back"
+                 : adicionando ? GLYPH_B_BUTTON L" Cancel"
+                 : colecoes::Composta(g_atual) ? GLYPH_B_BUTTON L" Back     " GLYPH_START_BUTTON L" Options"
+                 : GLYPH_B_BUTTON L" Back     " GLYPH_X_BUTTON L" Add games");
             g_fonte.End();
             return;
         }
 
-        int base = g_primeiraLinha * COLUNAS;
-
-        // As capas primeiro: o texto vai todo num lote depois, porque o Begin/End da
-        // fonte salva e restaura estado de render e intercalar os dois embaralha o D3D.
-        struct Nome { FLOAT x, y; int i; };
-        Nome nomes[POR_PAGINA];
-        int qtdNomes = 0;
-
-        // Composição do que está sendo desenhado. O crash só aparece MARCANDO DURANTE O
-        // CARREGAMENTO, e a combinação que só existe nesse caso é item marcado com a
-        // capa ainda nula -- aí saem três DrawScreenSpaceRect seguidos no mesmo item.
-        // Registrado só quando MUDA, senão seria uma linha por quadro.
-        int marcadosVisiveis = 0, semCapaVisiveis = 0;
-
-        for (int k = 0; k < POR_PAGINA; k++)
-        {
-            int i = base + k;
-            if (i >= total) break;
-
-            D3DRECT r;
-            r.x1 = GRID_MARGEM + (k % COLUNAS) * (CAPA_L + ESPACO_X);
-            r.y1 = TOPO + (k / COLUNAS) * (CAPA_A + ESPACO_Y);
-            r.x2 = r.x1 + CAPA_L;
-            r.y2 = r.y1 + CAPA_A;
-
-            // A capa é pelo ContentItemId (a pasta de arte é GameData\<id em hex>);
-            // a marcação é por TitleId, que é o que a coleção guarda.
-            bool inteira = true;
-            D3DTexture *capa = NoCache(L[i]->id, true, &inteira);
-            bool marcado = !adicionando || SelecionadoNoRascunho(L[i]->titleId);
-
-            if (capa != NULL)
-            {
-                // Do encarte da FreeStyle sai so a frente, de U 0,532 ate 1,0. A capa
-                // de ROM vem pronta do PC, so com a arte, e vai inteira -- o mesmo
-                // recorte aplicado nela comia a metade esquerda do desenho.
-                const float u0 = inteira ? 0.0f : FRENTE_U0;
-                ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
-                    r, XMFLOAT2(u0, 0.0f), XMFLOAT2(1.0f, 0.0f),
-                    XMFLOAT2(u0, 1.0f), capa);
-
-                // Apagar é um véu por cima, não um desenho diferente: a variante
-                // Colored fixa UV 0..1 lá dentro (AtgDebugDraw.cpp:662) e mostrava o
-                // encarte INTEIRO -- contracapa e lombada espremidas no 5:7 -- justo
-                // no jogo não marcado, que é o estado inicial de todos eles.
-                if (!marcado)
-                    Preencher(r, D3DCOLOR_ARGB(140, 6, 9, 8));
-            }
-            else
-            {
-                ATG::DebugDraw::DrawScreenSpaceRect(r, 1.0f, COR_FRACO);
-            }
-
-            if (g_anelMarcado && adicionando && SelecionadoNoRascunho(L[i]->titleId))
-                ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, COR_ANEL);
-
-            if (i == g_iJogo)
-            {
-                D3DRECT anel = r;
-                anel.x1 -= 4; anel.y1 -= 4; anel.x2 += 4; anel.y2 += 4;
-                ATG::DebugDraw::DrawScreenSpaceRect(anel, 3.0f, COR_ANEL);
-            }
-
-            if (marcado)   marcadosVisiveis++;
-            if (capa == NULL) semCapaVisiveis++;
-
-            nomes[qtdNomes].x = (FLOAT)r.x1;
-            nomes[qtdNomes].y = (FLOAT)r.y2 + 8.0f;
-            nomes[qtdNomes].i = i;
-            qtdNomes++;
-        }
+        Grades();
 
         g_fonte.Begin();
-        if (soltos)
+        if (soltos) Hubs();
+        // O "show me" do My Games: a aba que filtra, no alto à esquerda. Só quando filtra:
+        // no All, que é o padrão, não diz nada. Ao adicionar a aba não filtra.
+        if (!soltos && !adicionando && g_aba != biblioteca::ABA_AUTOMATICA)
         {
-            // SEM CABEÇALHO: a barra ocupa o alto, e a pílula acesa já é o título --
-            // a mesma razão de a grade de coleções não ter cabeçalho. Os dois no
-            // mesmo lugar brigariam pelos mesmos 36 px.
-            if (nAbas >= 2) AbasTexto(pilulas, nAbas, xRB);
+            WCHAR aba[64];
+            wcsncpy(aba, NomeDaAba(g_aba), 63); aba[63] = L'\0';
+            ParaMinusculas(aba);
+            Texto((float)MARGEM_X, 18.0f, M_APAGADO, 0.8f, L"showing");
+            Texto((float)MARGEM_X, 38.0f, M_TEXTO, 1.0f, aba);
         }
-        else if (adicionando)
-        {
-            swprintf_s(sub, 64, L"%d of %d selected", ItensMarcados(), (int)g_jogos.size());
-            Cabecalho(L"Add games", sub);
-        }
-        else
-        {
-            Larga(g_atual->nome, texto, 256);
-
-            // SEM A FORMULA DA COMPOSTA. O subtitulo listava as origens ("em todas:
-            // co-op 2 players, nao zerados") e isso era texto de explicacao dentro da
-            // tela: quem abriu a colecao acabou de escolhe-la pelo nome, e a lista
-            // repetia na tela de conteudo o que a tela anterior ja disse.
-            //
-            // A ABA fica, e nao e explicacao: ela foi escolhida na tela anterior e
-            // uma colecao de 40 jogos mostrando 6 sem dizer por que parece defeito.
-            Cabecalho(texto, (g_aba != biblioteca::ABA_AUTOMATICA)
-                             ? NomeDaAba(g_aba) : L"");
-        }
-
-        for (int k = 0; k < qtdNomes; k++)
-        {
-            Larga(L[nomes[k].i]->nome, texto, 256);
-            g_fonte.DrawText(nomes[k].x, nomes[k].y,
-                             (nomes[k].i == g_iJogo) ? COR_TEXTO : COR_APAGADO,
-                             texto, ATGFONT_TRUNCATED, (FLOAT)CAPA_L);
-        }
-
         if (adicionando)
         {
-            swprintf_s(texto, 256, L"%d selected", ItensMarcados());
-            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     "
-                   GLYPH_START_BUTTON L" Done", texto);
-        }
-        else if (soltos)
-        {
-            swprintf_s(texto, 256, L"%d of %d", g_iJogo + 1, total);
-            // O B volta para Todos. Nas outras abas ele não faz nada, mas esta é uma
-            // TELA, e sair dela por onde se sai de toda tela é mais barato que
-            // lembrar do LB.
-            Rodape(GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
-                   GLYPH_X_BUTTON L" Add to collections", texto);
+            swprintf_s(texto, 256, L"%d of %d selected", ItensMarcados(), (int)g_jogos.size());
+            TituloDaTela(L"add games", texto);
+            Rodape(GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Cancel     " GLYPH_START_BUTTON L" Done");
         }
         else
         {
             swprintf_s(texto, 256, L"%d of %d", g_iJogo + 1, total);
-            // Sem "Adicionar jogos" numa composta: o jogo está ali por causa de uma
-            // origem, e para tirá-lo tira-se da origem. Oferecer o botão seria
-            // oferecer um que não faz nada.
-            Rodape(colecoes::Composta(g_atual)
-                   ? GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
-                     GLYPH_START_BUTTON L" Options"
-                   : GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back     "
-                     GLYPH_X_BUTTON L" Add games     " GLYPH_START_BUTTON L" Options",
-                   texto);
+            if (soltos) TituloDaTela(L"", texto);
+            else { Larga(g_atual->nome, titulo, 256); TituloDaTela(titulo, texto); }
+            // Sem "Add games" numa composta: o jogo está ali por causa de uma origem.
+            Rodape(soltos ? GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
+                            GLYPH_X_BUTTON L" Add to collections"
+                 : colecoes::Composta(g_atual)
+                          ? GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
+                            GLYPH_START_BUTTON L" Options"
+                          : GLYPH_A_BUTTON L" Play     " GLYPH_Y_BUTTON L" Details     " GLYPH_B_BUTTON L" Back     "
+                            GLYPH_X_BUTTON L" Add games     " GLYPH_START_BUTTON L" Options");
         }
         g_fonte.End();
-
-        IndiceAlfabetico(L);
-
-        static int ultMarcados = -1, ultSemCapa = -1, ultBase = -1;
-        if (marcadosVisiveis != ultMarcados || semCapaVisiveis != ultSemCapa || base != ultBase)
-        {
-            ultMarcados = marcadosVisiveis; ultSemCapa = semCapaVisiveis; ultBase = base;
-            diario::Detalhe("tela: base=%d visiveis=%d marcados=%d semCapa=%d",
-                            base, qtdNomes, marcadosVisiveis, semCapaVisiveis);
-        }
     }
 
-    // ---- o modal ---------------------------------------------------------------
-    //
-    // Uma funcao so para os cinco casos do MenuDe. O desenho saiu do estudo em
-    // previa/modais.html: rotulo pequeno, nome, regua, linhas de borda a borda e o
-    // rodape dentro da caixa.
-    //
-    // O veu e mais leve que o antigo (172 contra 200): este painel nao cobre a tela
-    // inteira, e ver a grade por tras e metade da ideia.
-    //
-    // A linha em foco e NEUTRA, faixa branca a 9% com a barra verde. A destrutiva nao
-    // tem cor propria parada -- so fica vermelha quando esta em foco.
-    const int MOD_PAD = 26, MOD_ALT = 48, MOD_CABECA = 128, MOD_PE = 80;
-    const int MOD_MIN = 460, MOD_MAX = 760;
-    const D3DCOLOR COR_VEU       = D3DCOLOR_ARGB(172, 6, 9, 8);
-    const D3DCOLOR COR_FAIXA     = D3DCOLOR_ARGB( 23, 233, 240, 235);   // branco a 9%
-    const D3DCOLOR COR_PERIGO    = D3DCOLOR_XRGB(201, 66, 58);
-    const D3DCOLOR COR_FAIXA_MAL = D3DCOLOR_ARGB( 56, 201, 66, 58);     // vermelho a 22%
-    const D3DCOLOR COR_TEXTO_MAL = D3DCOLOR_XRGB(255, 226, 223);
-
-    const WCHAR *RODAPE_MODAL = GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Close";
-
-    // Largura pelo CONTEUDO, e nao os 460 fixos de antes: com um item so sobrava caixa
-    // vazia, e um nome de jogo comprido era cortado. GetTextExtent e CPU pura (le a
-    // tabela de glifos), entao pode ser chamado fora do Begin/End.
-    int LarguraDoModal(const WCHAR *titulo)
+    // ---- a faixa de detalhes ---------------------------------------------------------
+    // Sobe de baixo até y 300, com a capa saindo da borda e o resto num bloco centrado:
+    // capa (150) + 36 + meio (470) + 40 + ficha (300). Co-op só do Co-Optimus, e só o
+    // local: sem ele, nada. O resto cai no que a FreeStyle guarda quando não há ficha.
+    bool Valido(const std::string &s)
     {
-        FLOAT w = 0.0f, h = 0.0f;
-        WCHAR largo[256];
-
-        // O GetTextExtent multiplica pelo m_fXScaleFactor (AtgFont.cpp:550). Todo
-        // mundo devolve a escala a 1,0 antes de sair, mas a largura do painel inteiro
-        // depende disto: medir a 1,3 por engano grudaria o painel no teto de 760 px
-        // em todos os casos.
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-
-        g_fonte.GetTextExtent(titulo, &w, &h);
-        FLOAT maior = w * 1.3f;                 // o titulo e desenhado a 1,3x
-
-        for (int i = 0; i < g_menuQtd; i++)
-        {
-            Larga(g_menuItens[i], largo, 256);
-            g_fonte.GetTextExtent(largo, &w, &h);
-            if (w > maior) maior = w;
-        }
-        g_fonte.GetTextExtent(RODAPE_MODAL, &w, &h);
-        if (w > maior) maior = w;
-
-        int L = (int)maior + (MOD_PAD + 18) * 2;
-        if (L < MOD_MIN) L = MOD_MIN;
-        if (L > MOD_MAX) L = MOD_MAX;
-        return L;
+        return !s.empty() && _stricmp(s.c_str(), "Not Available") != 0 &&
+               _stricmp(s.c_str(), "N/A") != 0 && _stricmp(s.c_str(), "Unknown") != 0;
     }
 
+    void Horas(float h, WCHAR *saida, int cap)
+    {
+        if (h < 1.0f) { swprintf_s(saida, cap, L"%d min", (int)(h * 60.0f + 0.5f)); return; }
+        const float m = floorf(h * 2.0f + 0.5f) / 2.0f;
+        if (m == floorf(m)) swprintf_s(saida, cap, L"%d h", (int)m);
+        else                swprintf_s(saida, cap, L"%.1f h", m);
+    }
+
+    const WCHAR *CorDoMetacritic(int n, D3DCOLOR *fundo, D3DCOLOR *letra)
+    {
+        *fundo = (n >= 75) ? D3DCOLOR_XRGB(102, 204, 51) : (n >= 50) ? D3DCOLOR_XRGB(255, 204, 51) : D3DCOLOR_XRGB(255, 0, 0);
+        *letra = (n < 50) ? M_TEXTO : D3DCOLOR_XRGB(20, 20, 20);
+        return NULL;
+    }
+
+    void FaixaDetalhes()
+    {
+        const biblioteca::Jogo *g = g_detalheJogo;
+        if (g == NULL) { g_detalhe = false; return; }
+
+        // k: 0 = no lugar, 1 = escondida embaixo. Sobe com constante de 70 ms (95% do
+        // caminho em ~210 ms) e desce igual ao fechar.
+        const float t = (float)(GetTickCount() - g_faixaT0);
+        float k = expf(-t / TAU_FAIXA);
+        if (g_faixaFechando) k = 1.0f - k;
+        if (t >= 5.0f * TAU_FAIXA)
+        {
+            if (g_faixaFechando) { g_detalhe = false; g_faixaFechando = false; g_detalheJogo = NULL; return; }
+            k = 0.0f;
+        }
+
+        const fichas::Ficha *f = fichas::Por(g->titleId);
+        const float FY = 300.0f, SOBE = 720.0f - (FY - 60.0f), off = floorf(SOBE * k + 0.5f);
+        const float CL = 150.0f, MW = 470.0f, RWf = 300.0f, LARG = CL + 36.0f + MW + 40.0f + RWf;
+        const float CX = floorf((1280.0f - LARG) / 2.0f + 0.5f), CY = FY - 60.0f + off;
+        const float CA = floorf(CL * CAPA_A / CAPA_L + 0.5f);
+        const float NX = CX + CL + 36.0f, NW = LARG - CL - 36.0f, MX = NX, RX = MX + MW + 40.0f;
+        const float y0 = FY + off;
+
+        // os dados, com a FreeStyle de reserva
+        WCHAR genero[96] = L"", dev[160] = L"", pub[160] = L"", ano[16] = L"";
+        std::string sGen = (f && !f->genero.empty()) ? f->genero : (Valido(g->genero) ? g->genero : "");
+        std::string sDev = (f && !f->dev.empty()) ? f->dev : (Valido(g->desenvolvedora) ? g->desenvolvedora : "");
+        std::string sPub = (f && !f->pub.empty()) ? f->pub : (Valido(g->publicadora) ? g->publicadora : "");
+        Larga(sGen, genero, 96); ParaMinusculas(genero);
+        Larga(sDev, dev, 160); Larga(sPub, pub, 160);
+        int nAno = f ? f->ano : 0;
+        if (nAno == 0 && g->lancamento.size() >= 4 && isdigit((unsigned char)g->lancamento[0]))
+            nAno = atoi(g->lancamento.substr(0, 4).c_str());
+        if (nAno > 0) swprintf_s(ano, 16, L"%d", nAno);
+        const int metacritic = f ? f->metacritic : 0;
+        float notaJog = f ? f->notaJogadores : 0.0f;
+        if (metacritic == 0 && notaJog == 0.0f && Valido(g->nota)) notaJog = (float)atof(g->nota.c_str());
+        const int coop = f ? f->coop : 0;
+
+        // a coluna da direita tem altura fixa por campo (uma linha cada), então a caixa
+        // do Metacritic tem lugar conhecido antes do texto
+        int nFicha = 0;
+        if (dev[0]) nFicha++;
+        if (pub[0]) nFicha++;
+        const float yNota = y0 + 100.0f + 56.0f * nFicha + 20.0f;
+
+        // ---- formas
+        Ret(0.0f, 0.0f, 1280.0f, 720.0f, ComAlfa(D3DCOLOR_XRGB(8, 8, 8), 0.6f * (1.0f - k)));
+        Ret(0.0f, y0 - 6.0f, 1280.0f, 6.0f, ComAlfa(0, 0.25f));
+        Gradiente(0.0f, y0, 1280.0f, 720.0f + off, D3DCOLOR_XRGB(231, 234, 233), D3DCOLOR_XRGB(206, 210, 211), false);
+        Sombra(CX - 6.0f, CY - 6.0f, CL + 12.0f, CA + 12.0f, 1.0f);
+        Ret(CX - 6.0f, CY - 6.0f, CL + 12.0f, CA + 12.0f, M_CARTAO);
+        {
+            D3DRECT r;
+            r.x1 = (LONG)CX; r.y1 = (LONG)CY; r.x2 = (LONG)(CX + CL); r.y2 = (LONG)(CY + CA);
+            bool inteira = true;
+            D3DTexture *capa = NoCache(g->id, true, &inteira);
+            if (capa != NULL)
+            {
+                const float u0 = inteira ? 0.0f : FRENTE_U0;
+                ATG::DebugDraw::DrawScreenSpaceTexturedRectPatch(
+                    r, XMFLOAT2(u0, 0.0f), XMFLOAT2(1.0f, 0.0f), XMFLOAT2(u0, 1.0f), capa);
+            }
+            else Preencher(r, M_SEM_CAPA);
+        }
+        D3DCOLOR mcFundo = 0, mcLetra = 0;
+        if (metacritic > 0)
+        {
+            CorDoMetacritic(metacritic, &mcFundo, &mcLetra);
+            Ret(RX, yNota, floorf(44.0f * 0.82f + 0.5f), floorf(32.0f * 0.82f + 0.5f), mcFundo);
+        }
+        Gradiente(0.0f, 676.0f + off, 1280.0f, 720.0f + off, D3DCOLOR_XRGB(146, 150, 152), D3DCOLOR_XRGB(130, 136, 139), false);
+
+        // ---- texto
+        WCHAR linhas[12][LIN_CAP], buf[1024];
+        g_fonte.Begin();
+        float y = y0 + 18.0f;
+        if (genero[0]) { Cortar(genero, NW, 0.8f, linhas[0], LIN_CAP); Texto(NX, y, M_PAINEL_ROTULO, 0.8f, linhas[0]); y += 26.0f; }
+        Larga(g->nome, buf, 1024);
+        for (WCHAR *c = buf; *c; c++) if (*c == 0x2122 || *c == 0x00AE) *c = L' ';
+        Cortar(buf, NW, 1.35f, linhas[0], LIN_CAP);
+        Texto(NX, y, M_PAINEL_TEXTO, 1.35f, linhas[0]);
+
+        // sob a capa, os números
+        float ny = CY + CA + 24.0f;
+        if (coop > 0)
+        {
+            Texto(CX, ny, M_PAINEL_ROTULO, 0.7f, L"COUCH CO-OP");
+            if (coop > 1) swprintf_s(buf, 1024, L"up to %d players", coop); else wcscpy(buf, L"1 player");
+            const int n = Quebrar(buf, CL + 10.0f, 2, 0.9f, linhas);
+            for (int i = 0; i < n; i++) Texto(CX, ny + 20.0f + i * 26.0f, M_PAINEL_TEXTO, 0.9f, linhas[i]);
+            ny += 74.0f;
+        }
+        if (ano[0])
+        {
+            Texto(CX, ny, M_PAINEL_ROTULO, 0.7f, L"RELEASED");
+            Texto(CX, ny + 20.0f, M_PAINEL_TEXTO, 0.9f, ano);
+        }
+
+        // no meio, o Co-Optimus e o sobre
+        float my = y0 + 100.0f;
+        if (coop > 0 && f && (!f->coopExtras.empty() || !f->coopTexto.empty()))
+        {
+            Texto(MX, my, M_PAINEL_ROTULO, 0.7f, L"ON CO-OPTIMUS");
+            my += 20.0f;
+            if (!f->coopExtras.empty())
+            {
+                Larga(f->coopExtras, buf, 1024);
+                const int n = Quebrar(buf, MW, 2, 0.76f, linhas);
+                for (int i = 0; i < n; i++) { Texto(MX, my, M_PAINEL_TEXTO, 0.76f, linhas[i]); my += 22.0f; }
+            }
+            if (!f->coopTexto.empty())
+            {
+                Larga(f->coopTexto, buf, 1024);
+                const int n = Quebrar(buf, MW, 2, 0.78f, linhas);
+                for (int i = 0; i < n; i++) { Texto(MX, my, M_PAINEL_TEXTO, 0.78f, linhas[i]); my += 23.0f; }
+            }
+            my += 12.0f;
+        }
+        if (f && !f->descricao.empty())
+        {
+            const int cabe = (int)floorf((662.0f + off - my - 20.0f) / 23.0f);
+            if (cabe >= 2)
+            {
+                Texto(MX, my, M_PAINEL_ROTULO, 0.7f, L"ABOUT");
+                my += 20.0f;
+                Larga(f->descricao, buf, 1024);
+                const int n = Quebrar(buf, MW, cabe > 12 ? 12 : cabe, 0.78f, linhas);
+                for (int i = 0; i < n; i++) { Texto(MX, my, M_PAINEL_TEXTO, 0.78f, linhas[i]); my += 23.0f; }
+            }
+        }
+
+        // à direita, a ficha
+        float ry = y0 + 100.0f;
+        if (dev[0])
+        {
+            Texto(RX, ry, M_PAINEL_ROTULO, 0.7f, L"DEVELOPER");
+            Cortar(dev, RWf, 0.82f, linhas[0], LIN_CAP); Texto(RX, ry + 20.0f, M_PAINEL_TEXTO, 0.82f, linhas[0]);
+            ry += 56.0f;
+        }
+        if (pub[0])
+        {
+            Texto(RX, ry, M_PAINEL_ROTULO, 0.7f, L"PUBLISHER");
+            Cortar(pub, RWf, 0.82f, linhas[0], LIN_CAP); Texto(RX, ry + 20.0f, M_PAINEL_TEXTO, 0.82f, linhas[0]);
+            ry += 56.0f;
+        }
+        if (metacritic > 0)
+        {
+            Texto(RX, ry, M_PAINEL_ROTULO, 0.7f, L"METACRITIC");
+            swprintf_s(buf, 1024, L"%d", metacritic);
+            Texto(RX + 18.0f, yNota + 2.0f, mcLetra, 0.82f, buf, ATGFONT_CENTER_X);
+            ry = yNota + 28.0f + 12.0f;
+        }
+        else if (notaJog > 0.0f)
+        {
+            Texto(RX, ry, M_PAINEL_ROTULO, 0.7f, L"USER RATING");
+            const int cheias = (int)floorf(notaJog + 0.5f);
+            float sx = RX;
+            for (int i = 0; i < 5; i++)
+            {
+                Texto(sx, ry + 20.0f, (i < cheias) ? M_VERDE : M_PAINEL_ROTULO, 0.82f, L"\x0145");
+                sx += 20.0f;
+            }
+            swprintf_s(buf, 1024, L"%.1f of 5", notaJog);
+            Texto(sx + 6.0f, ry + 20.0f, M_PAINEL_TEXTO, 0.82f, buf);
+            ry += 20.0f + 23.0f + 12.0f;
+        }
+        if (f && (f->horas[0] > 0.0f || f->horas[1] > 0.0f || f->horas[2] > 0.0f))
+        {
+            static const WCHAR *NOMES[3] = { L"main story", L"main + extras", L"100%" };
+            Texto(RX, ry, M_PAINEL_ROTULO, 0.7f, L"HOW LONG TO BEAT");
+            float ty = ry + 20.0f;
+            for (int i = 0; i < 3; i++)
+            {
+                if (f->horas[i] <= 0.0f) continue;
+                Horas(f->horas[i], buf, 1024);
+                Texto(RX, ty, M_PAINEL_TEXTO, 0.82f, NOMES[i]);
+                Texto(RX + 120.0f, ty, M_PAINEL_TEXTO, 0.82f, buf);
+                ty += 23.0f;
+            }
+        }
+        Texto(CX, 676.0f + off + (44.0f - 27.0f * 0.75f) / 2.0f, M_TEXTO, 0.75f,
+              GLYPH_A_BUTTON L" Play     " GLYPH_B_BUTTON L" Back");
+        g_fonte.End();
+    }
+
+    // ---- o menu: o diálogo "Delete Profile" do Metro ---------------------------------
+    // Painel de 548 px centrado, de y 45 a 618, altura FIXA (sobra vazio entre o texto e
+    // as opções, como lá); barra de 47 px em degradê com o título em branco; corpo em
+    // degradê com o texto escuro no alto; opções encostadas embaixo, linhas de 40 px com
+    // separador, a em foco verde (vermelha na destrutiva); véu quase preto atrás.
     void DesenharMenu()
     {
-        WCHAR titulo[256], rotulo[64], texto[256];
+        const float DX = 366.0f, DL = 548.0f, TOPO_D = 45.0f, BARRA = 47.0f, FIM = 618.0f, LINHA = 40.0f;
+        WCHAR titulo[256], rotulo[64], texto[256], linhas[4][LIN_CAP];
         Larga(g_menuTitulo, titulo, 256);
         Larga(g_menuRotulo, rotulo, 64);
-        ParaMaiusculas(rotulo);
 
-        const int L = LarguraDoModal(titulo);
-        const int A = MOD_CABECA + g_menuQtd * MOD_ALT + MOD_PE;
-        const int x = (1280 - L) / 2, y = (720 - A) / 2;
+        const WCHAR *barra = (g_menuDe == MENU_EXPORTAR) ? L"Export to Xbox Vault" : rotulo;
+        const bool semNome = (g_menuDe == MENU_EXPORTAR);
+        const WCHAR *frase =
+            (g_menuDe == MENU_COLECAO)  ? L"What do you want to do with this collection?" :
+            (g_menuDe == MENU_JOGO)     ? L"What do you want to do with this game in this collection?" :
+            (g_menuDe == MENU_EXPORTAR) ? L"Saves your collections to vault.txt" :
+            (g_menuDe == MENU_TIPO)     ? L"What kind of collection will it be?" :
+                                          L"Delete this collection? The games stay on the console; only the collection goes away.";
 
-        D3DRECT r;
-        r.x1 = 0; r.y1 = 0; r.x2 = 1280; r.y2 = 720;
-        Preencher(r, COR_VEU);
-
-        PainelRedondo(x, y, L, A, COR_PAINEL, COR_LINHA);
-
-        // As duas reguas: uma sob o cabecalho, outra sobre o rodape.
-        r.x1 = x + MOD_PAD; r.x2 = x + L - MOD_PAD;
-        r.y1 = y + 108;     r.y2 = r.y1 + 1;         Preencher(r, COR_LINHA);
-        r.y1 = y + A - 56;  r.y2 = r.y1 + 1;         Preencher(r, COR_LINHA);
-
-        // A faixa de foco vai de borda a borda. Nao encosta em canto nenhum: a
-        // primeira linha comeca 128 px abaixo do topo e a ultima termina 80 px acima
-        // do fim, contra os 16 px de raio -- por isso ela pode ser retangulo cheio.
-        if (g_menuFoco >= 0 && g_menuFoco < g_menuQtd)
+        Ret(0.0f, 0.0f, 1280.0f, 720.0f, D3DCOLOR_ARGB(230, 8, 8, 8));
+        Gradiente(DX, TOPO_D, DX + DL, TOPO_D + BARRA, D3DCOLOR_XRGB(146, 150, 152), D3DCOLOR_XRGB(130, 136, 139), false);
+        Gradiente(DX, TOPO_D + BARRA, DX + DL, FIM, D3DCOLOR_XRGB(231, 234, 233), D3DCOLOR_XRGB(206, 210, 211), false);
+        float tx = DX + 14.0f;
+        if (g_menuDe == MENU_APAGAR)
         {
-            const bool mau = (g_menuFoco == g_menuPerigo);
-            const int ly = y + MOD_CABECA + g_menuFoco * MOD_ALT;
-
-            r.x1 = x + 1; r.x2 = x + L - 1;
-            r.y1 = ly;    r.y2 = ly + MOD_ALT;
-            Preencher(r, mau ? COR_FAIXA_MAL : COR_FAIXA);
-
-            r.x2 = x + 5;
-            Preencher(r, mau ? COR_PERIGO : COR_ANEL);
+            Disco(DX + 22.0f, TOPO_D + BARRA / 2.0f, 11.0f, D3DCOLOR_XRGB(249, 190, 55));   // o "!" amarelo
+            tx = DX + 42.0f;
+        }
+        for (int i = 0; i < g_menuQtd; i++)
+        {
+            const float ly = FIM - (g_menuQtd - i) * LINHA;
+            Ret(DX, ly, DL, LINHA, D3DCOLOR_XRGB(201, 207, 208));
+            Ret(DX, ly, DL, 1.0f, D3DCOLOR_XRGB(186, 192, 193));
+            if (i == g_menuFoco) Ret(DX, ly, DL, LINHA, (i == g_menuPerigo) ? M_VERMELHO : M_VERDE);
         }
 
         g_fonte.Begin();
+        if (g_menuDe == MENU_APAGAR)
+            Texto(DX + 22.0f, TOPO_D + BARRA / 2.0f - 11.0f, D3DCOLOR_XRGB(60, 50, 20), 0.85f, L"!", ATGFONT_CENTER_X);
+        Cortar(barra, DL - (tx - DX) - 14.0f, 0.95f, linhas[0], LIN_CAP);
+        Texto(tx, TOPO_D + (BARRA - 27.0f * 0.95f) / 2.0f, M_TEXTO, 0.95f, linhas[0]);
 
-        g_fonte.SetScaleFactors(0.72f, 0.72f);
-        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + 26.0f, COR_FRACO, rotulo, 0);
-
-        g_fonte.SetScaleFactors(1.3f, 1.3f);
-        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + 48.0f, COR_TEXTO, titulo,
-                         ATGFONT_TRUNCATED, (FLOAT)(L - MOD_PAD * 2));
-        g_fonte.SetScaleFactors(1.0f, 1.0f);
-
+        float ty = TOPO_D + BARRA + 16.0f;
+        if (!semNome)
+        {
+            const int n = Quebrar(titulo, DL - 32.0f, 2, 1.0f, linhas);
+            for (int i = 0; i < n; i++) { Texto(DX + 16.0f, ty, M_PAINEL_TEXTO, 1.0f, linhas[i]); ty += 28.0f; }
+            ty += 12.0f;
+        }
+        {
+            const int n = Quebrar(frase, DL - 32.0f, 4, 0.9f, linhas);
+            for (int i = 0; i < n; i++) { Texto(DX + 16.0f, ty, M_PAINEL_TEXTO, 0.9f, linhas[i]); ty += 25.0f; }
+        }
         for (int i = 0; i < g_menuQtd; i++)
         {
-            const bool mau = (i == g_menuPerigo);
-            // Parada, a destrutiva e uma linha como as outras.
-            const D3DCOLOR cor = (i != g_menuFoco) ? COR_APAGADO
-                                                   : (mau ? COR_TEXTO_MAL : COR_TEXTO);
+            const float ly = FIM - (g_menuQtd - i) * LINHA;
             Larga(g_menuItens[i], texto, 256);
-            g_fonte.DrawText((FLOAT)x + MOD_PAD,
-                             (FLOAT)(y + MOD_CABECA + i * MOD_ALT) + (MOD_ALT - 27) / 2.0f,
-                             cor, texto, ATGFONT_TRUNCATED, (FLOAT)(L - MOD_PAD * 2));
+            Cortar(texto, DL - 32.0f, 0.95f, linhas[0], LIN_CAP);
+            Texto(DX + 16.0f, ly + (LINHA - 27.0f * 0.95f) / 2.0f,
+                  (i == g_menuFoco) ? M_TEXTO : M_PAINEL_TEXTO, 0.95f, linhas[0]);
         }
-
-        // Dentro da caixa. No rodape da tela ficaria por cima do rodape que a tela de
-        // baixo continua desenhando.
-        g_fonte.DrawText((FLOAT)x + MOD_PAD, (FLOAT)y + (FLOAT)A - 42.0f, COR_FRACO,
-                         RODAPE_MODAL, 0);
+        Texto(DX + 4.0f, FIM + 10.0f, M_TEXTO, 0.8f, GLYPH_A_BUTTON L" Select     " GLYPH_B_BUTTON L" Close");
         g_fonte.End();
     }
 
@@ -2382,28 +2249,81 @@ namespace
         return ok != FALSE;
     }
 
+    // ---- o esmaecimento cruzado (troca de tela e menu) ----------------------------
+    // Abrir uma página ou o menu é um esmaecimento cruzado de ~200 ms, como no Metro.
+    // O quadro anterior fica numa textura, resolvido no fim de cada quadro (o mesmo
+    // Resolve da foto do roteiro), e é desenhado por cima do novo apagando. Durante o
+    // esmaecimento ele não é regravado: segura o quadro de antes da troca. Coleções e
+    // Unsorted são troca de ABA (deslizam), e a faixa de detalhes tem animação própria.
+    D3DTexture *g_antesTex = NULL;
+    bool  g_temAntes = false, g_fadeVivo = false, g_ultimoMenu = false;
+    DWORD g_fadeT0 = 0;
+    int   g_ultimaTela = -1;
+    const int TELA_DE_DETALHES = 100;
+
     void Desenhar()
     {
         ATG::D3DDevice *d = ATG::g_pd3dDevice;
-        d->Clear(0, NULL, D3DCLEAR_TARGET, COR_FUNDO, 1.0f, 0);
+        d->Clear(0, NULL, D3DCLEAR_TARGET, D3DCOLOR_XRGB(80, 78, 84), 1.0f, 0);
 
-        // Fundo em gradiente, na diagonal. Nao e imagem: e cor por vertice, entao custa
-        // um retangulo e nenhum arquivo -- e nao tem como ser cortado por overscan.
-        Gradiente(0.0f, 0.0f, 1280.0f, 720.0f,
-                  D3DCOLOR_XRGB(FUNDO_DE[0],   FUNDO_DE[1],   FUNDO_DE[2]),
-                  D3DCOLOR_XRGB(FUNDO_PARA[0], FUNDO_PARA[1], FUNDO_PARA[2]), true);
+        const int telaAgora = g_detalhe ? TELA_DE_DETALHES : (int)g_tela;
+        const bool trocaDeHub = (telaAgora == TELA_SOLTOS && g_ultimaTela == TELA_COLECOES) ||
+                                (telaAgora == TELA_COLECOES && g_ultimaTela == TELA_SOLTOS);
+        const bool semFade = trocaDeHub || telaAgora == TELA_DE_DETALHES || g_ultimaTela == TELA_DE_DETALHES;
+        const bool mudou = g_ultimaTela != -1 &&
+                           ((telaAgora != g_ultimaTela && !semFade) || g_menuAberto != g_ultimoMenu);
+        if (mudou && g_temAntes) { g_fadeVivo = true; g_fadeT0 = GetTickCount(); }
+        g_ultimaTela = telaAgora; g_ultimoMenu = g_menuAberto;
+
+        FundoMetro();
 
         // TELA_ARQUIVAR é uma grade de coleções; TELA_SOLTOS é uma grade de capas.
         if (g_tela == TELA_COLECOES || g_tela == TELA_ORIGENS ||
             g_tela == TELA_ARQUIVAR)                           TelaColecoes();
         else                                                   TelaJogos();
 
+        if (g_detalhe)
+            FaixaDetalhes();
         if (g_menuAberto)
             DesenharMenu();
+
+        if (g_fadeVivo)
+        {
+            const float t = (float)(GetTickCount() - g_fadeT0);
+            if (t >= FADE_MS) g_fadeVivo = false;
+            else if (g_antesTex != NULL)
+            {
+                XMFLOAT2 pos[4], uv[4];
+                pos[0] = XMFLOAT2(0.0f, 0.0f);     pos[1] = XMFLOAT2(1280.0f, 0.0f);
+                pos[2] = XMFLOAT2(1280.0f, 720.0f); pos[3] = XMFLOAT2(0.0f, 720.0f);
+                uv[0] = XMFLOAT2(0.0f, 0.0f); uv[1] = XMFLOAT2(1.0f, 0.0f);
+                uv[2] = XMFLOAT2(1.0f, 1.0f); uv[3] = XMFLOAT2(0.0f, 1.0f);
+                Mistura(true);
+                QuadTex(pos, uv, g_antesTex, ComAlfa(0x00FFFFFF, 1.0f - t / FADE_MS), true);
+                Mistura(false);
+                d->SetTexture(0, NULL);
+            }
+        }
 
         // A foto antes do Present: o Resolve lê o render target, que o Present troca.
         if (const char *foto = roteiro::FotoPedida())
             roteiro::FotoTirada(TirarFoto(foto));
+
+        if (!g_fadeVivo)
+        {
+            if (g_antesTex == NULL &&
+                FAILED(d->CreateTexture(1280, 720, 1, 0, D3DFMT_X8R8G8B8, 0, &g_antesTex, NULL)))
+            {
+                g_antesTex = NULL;
+                static bool avisado = false;
+                if (!avisado) { avisado = true; diario::Escrever("AVISO: sem textura do quadro anterior; troca de tela sem esmaecer"); }
+            }
+            if (g_antesTex != NULL)
+            {
+                d->Resolve(D3DRESOLVE_RENDERTARGET0, NULL, g_antesTex, NULL, 0, 0, NULL, 0.0f, 0, NULL);
+                g_temAntes = true;
+            }
+        }
 
         d->Present(NULL, NULL, NULL, NULL);
     }
@@ -2523,6 +2443,7 @@ namespace
     {
         if (g_abas.size() < 2) return;
 
+        const EstadoTela antes = FotoDoEstado();
         int i = IndiceDaAba() + dir;
         // SEM dar a volta. O ombro repete sozinho quando segurado, e com a volta
         // segurar passa reto pelo Todos -- perde-se a referência de onde a lista
@@ -2546,6 +2467,7 @@ namespace
         }
 
         som::Tocar(som::SOM_FOCO);
+        ComecarTrocaDeHub(antes, dir);
 
         // Troca a tela inteira de conteúdo: o que estava a caminho já não serve,
         // como ao abrir uma coleção.
@@ -3092,6 +3014,24 @@ namespace
         else Jogar();
     }
 
+    // A faixa de detalhes (Y na grade de jogos e no Unsorted). O A da grade continua
+    // jogando direto: os detalhes são um botão à parte, para não deixar mais lento o
+    // caminho de quem só quer jogar.
+    void AbrirDetalhes()
+    {
+        std::vector<const biblioteca::Jogo *> L = ListaAtual();
+        if (L.empty() || g_iJogo >= (int)L.size()) return;
+        som::Tocar(som::SOM_MENU);
+        g_detalheJogo = L[g_iJogo];
+        g_detalhe = true; g_faixaFechando = false; g_faixaT0 = GetTickCount();
+    }
+
+    void FecharDetalhes()
+    {
+        som::Tocar(som::SOM_VOLTA);
+        g_faixaFechando = true; g_faixaT0 = GetTickCount();
+    }
+
     // Sem saída pelo B.
     //
     // Houve uma tentativa: B na tela de coleções chamaria XLaunchNewImage(NULL, 0) para
@@ -3107,7 +3047,8 @@ namespace
         som::Tocar(som::SOM_VOLTA);
         if (g_tela == TELA_SOLTOS)
         {
-            // Volta para o Todos, que é de onde se veio.
+            // Volta para o Todos, que é de onde se veio, deslizando como no RB.
+            ComecarTrocaDeHub(FotoDoEstado(), 1);
             g_aba = biblioteca::ABA_AUTOMATICA;
             g_tela = TELA_COLECOES;
             g_iCol = 0; g_primeiraLinhaCol = 0;
@@ -3229,6 +3170,10 @@ void __cdecl main()
     // Um título só enxerga "game:" por padrão; sem montar, o HD não existe para nós.
     CriarCanto();
 
+    // O texto do Metro não tem a sombra do atlas (só o nome do quadrado de coleção,
+    // que liga e desliga em volta do próprio desenho).
+    ATG::g_fonteSemSombra = TRUE;
+
     // Ligado ANTES de ler o banco. Ficava la embaixo, junto das outras chaves do .ini,
     // e com isso nada do arranque entrava no canal de detalhe -- quem escreve detalhe
     // mais cedo e a propria leitura da biblioteca.
@@ -3291,6 +3236,7 @@ void __cdecl main()
     }
 
     colecoes::Carregar();
+    fichas::Carregar("game:\\fichas.txt");
     diario::Escrever("  [%u ms] colecoes / [%u ms] ARRANQUE TOTAL",
                      (unsigned)(GetTickCount() - tm), (unsigned)(GetTickCount() - t0));
     carregador::Iniciar();
@@ -3421,6 +3367,15 @@ void __cdecl main()
                 g_menuAberto = false;
             }
         }
+        else if (g_detalhe)
+        {
+            // A faixa tem o controle: A joga, B fecha. Fechando, nada mais.
+            if (!g_faixaFechando)
+            {
+                if      (novos & XINPUT_GAMEPAD_A) Jogar();
+                else if (novos & XINPUT_GAMEPAD_B) FecharDetalhes();
+            }
+        }
         else if (g_tela == TELA_ARQUIVAR)
         {
             // Mesmo gesto da escolha de origens: A marca, Start conclui, B desfaz.
@@ -3513,6 +3468,7 @@ void __cdecl main()
                 if      (novos & XINPUT_GAMEPAD_A) Confirmar();
                 else if (novos & XINPUT_GAMEPAD_B) Voltar();
                 else if (novos & XINPUT_GAMEPAD_X) AbrirArquivar();
+                else if (novos & XINPUT_GAMEPAD_Y) AbrirDetalhes();
             }
         }
         else
@@ -3527,6 +3483,7 @@ void __cdecl main()
             if      (salto) SaltoLetra(salto);
             else if (novos & XINPUT_GAMEPAD_A) Confirmar();
             else if (novos & XINPUT_GAMEPAD_B) Voltar();
+            else if ((novos & XINPUT_GAMEPAD_Y) && g_tela == TELA_JOGOS) AbrirDetalhes();
             else if (novos & XINPUT_GAMEPAD_X)
             {
                 // Composta não guarda jogos próprios: não há o que acrescentar nela.

@@ -58,6 +58,18 @@ espera 500
 espera capas 15000
 espera 800
 foto 07-jogos
+# a faixa de detalhes (Y): sobe em ~210 ms; B a fecha
+aperta Y
+espera 900
+foto 07b-detalhes
+aperta B
+espera 700
+# o foco num cartão do meio, para ver o crescer com sombra
+aperta DIREITA 2
+espera 600
+foto 07c-jogos-foco
+aperta ESQUERDA 2
+espera 400
 aperta START
 espera 600
 foto 08-menu-jogo
@@ -73,7 +85,7 @@ espera 600
 aperta B
 espera 600
 
-# abas de categoria (RB), voltando ao Todos
+# abas de categoria (RB), voltando ao Todos. A troca de aba desliza por ~1 s.
 aperta RB
 espera 500
 espera capas 15000

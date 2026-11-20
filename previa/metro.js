@@ -1,9 +1,9 @@
 // ===========================================================================
-// PROPOSTA: o app na linguagem do dashboard Metro do Xbox 360 (2011 em diante).
-// NADA DISTO ESTÁ NO C++.
+// O app na linguagem do dashboard Metro do Xbox 360 (2011 em diante). Nasceu como
+// proposta e foi para o C++ em 19/11 (decisão 149, app/main.cpp, "O DESENHO METRO"):
+// agora é parte do espelho e o montar.py o carrega sempre. Mudou aqui, muda lá.
 //
-//     python3 previa/montar.py --colecoes colecoes.txt --mock \
-//             --proposta previa/metro.js --saida previa/build/metro.html
+//     python3 previa/montar.py --colecoes colecoes.txt --mock
 //
 // CADA TELA SEGUE A TELA EQUIVALENTE DO METRO, com as cores medidas nela (capturas
 // diretas da saída de vídeo, tema padrão; ver previa/README.md):

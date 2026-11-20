@@ -5,7 +5,8 @@ Uso: fotos-console.py ROTEIRO [--saida DIR] [--sem-subir] [--limite MIN] [--ip I
 
   1. pega a trava de uso do console (a mesma do bt3xbx: ~/.config/console360/uso.lock)
   2. confere pelo xbdm que o console está parado na dashboard (senão recusa: alguém jogando)
-  3. pelo FTP da FreeStyle: guarda o colecoes.txt de antes, sobe o .xex (Release; --sem-subir pula) e o roteiro
+  3. pelo FTP da FreeStyle: guarda o colecoes.txt de antes, sobe o .xex (Release; --sem-subir pula), o fichas.txt
+     da faixa de detalhes (ferramentas/fichas.py, do vault.txt do próprio console ou do de CUI_VAULT_TXT) e o roteiro
      como roteiro.txt, com nome temporário, DELE, RNFR/RNTO e md5 de volta
   4. abre o app pelo xbdm (magicboot) e vigia até ele voltar à dashboard (o roteiro termina com `sai`), com limite
   5. baixa o diário, cada foto que o roteiro pede (game:\\fotos\\NOME.bmp) e confere que o colecoes.txt não mudou
@@ -183,6 +184,22 @@ def sobe(f, dados, nome):
     avisa("ftp: ok %s (%d bytes, md5 %s)" % (nome, len(dados), hashlib.md5(dados).hexdigest()))
 
 
+def sobe_fichas(f, saida):
+    """O fichas.txt da faixa de detalhes, a partir do inventário do próprio console (o
+    vault.txt que o app exporta, se existir) ou do vault.txt local de CUI_VAULT_TXT."""
+    import fichas
+    vault = os.path.join(saida, "vault-do-console.txt")
+    try:
+        open(vault, "wb").write(baixa(f, "vault.txt"))
+        avisa("fichas: inventário do vault.txt do console")
+    except ftplib.error_perm:
+        vault = os.path.expanduser(conf("CUI_VAULT_TXT") or "~/Downloads/vault.txt")
+        avisa("fichas: o console não tem vault.txt; uso o de %s" % vault)
+    texto, n, total = fichas.gerar(vault, os.path.join(AQUI, "..", "prototipo", "build", "games.json"), None)
+    avisa("fichas: %d fichas de %d jogos" % (n, total))
+    sobe(f, texto.encode("utf-8"), "fichas.txt")
+
+
 def dispositivo(pasta):
     m = re.match(r"^/?Hdd1/(.*)$", pasta.strip("/") and "/" + pasta.strip("/"), re.I)
     if not m:
@@ -225,6 +242,7 @@ def main():
         open(os.path.join(saida, "colecoes-antes.txt"), "wb").write(antes)
     if not a.sem_subir:
         sobe(f, open(XEX_LOCAL, "rb").read(), "collectionui.xex")
+        sobe_fichas(f, saida)
     sobe(f, texto, "roteiro.txt")
     f.close()  # nunca QUIT
 

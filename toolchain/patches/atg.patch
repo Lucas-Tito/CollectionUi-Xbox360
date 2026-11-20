@@ -1,6 +1,92 @@
 --- a/AtgFont.cpp
 +++ b/AtgFont.cpp
-@@ -905,14 +905,29 @@
+@@ -121,6 +121,25 @@
+         "{\n"
+             "return FontTexel * In.Diffuse;\n"
+         "}\n"
++    "}\n"
++    // CollectionUI: a mesma letra SEM a sombra preta que vem no atlas (o valor abaixo de
++    // 0,5). A cor e a do texto e o alfa e o do antisserrilhado (2v - 1). A previa faz a
++    // mesma conta (previa/template.html, FONTE_SOMBRA). Escolhida por g_fonteSemSombra.
++    "float4 FontPixelShaderSemSombra( VS_OUT In ) : COLOR0\n"
++    "{\n"
++        "float4 FontTexel = tex2D( FontTexture, In.TexCoord0 );\n"
++        "if( dot( In.ChannelSelector, float4(1,1,1,1) ) )\n"
++        "{\n"
++            "float value = dot( FontTexel, In.ChannelSelector );\n"
++            "float4 Color;\n"
++            "Color.rgb = 1.0f;\n"
++            "Color.a = ( value > 0.5f ? 2*value-1 : 0.0f );\n"
++            "return Color * In.Diffuse;\n"
++        "}\n"
++        "else\n"
++        "{\n"
++            "return FontTexel * In.Diffuse;\n"
++        "}\n"
+     "}\n";
+ 
+ //
+@@ -131,8 +150,13 @@
+     D3DVertexDeclaration* m_pFontVertexDecl;    // Shared vertex buffer
+     D3DVertexShader* m_pFontVertexShader;       // Created vertex shader
+     D3DPixelShader* m_pFontPixelShader;         // Created pixel shader
++    D3DPixelShader* m_pFontPixelShaderSemSombra; // CollectionUI: a letra sem a sombra
+ } AtgFont_Locals_t;
+ 
++// CollectionUI: com TRUE, o proximo Begin() desenha a letra sem a sombra do atlas.
++// Lido so no Begin de fora (o aninhado nao troca o shader): troque entre um End e um Begin.
++BOOL g_fonteSemSombra = FALSE;
++
+ // All elements are defaulted to NULL
+ static AtgFont_Locals_t s_AtgFontLocals;    // Global static instance
+ 
+@@ -205,6 +229,16 @@
+ 
+                             if ( SUCCEEDED( Result ) ) 
+                             {
++                                // CollectionUI: o segundo pixel shader. Se falhar, fica NULL
++                                // e o Begin cai no de sempre, com sombra.
++                                if ( SUCCEEDED( D3DXCompileShader( g_strFontShader, sizeof(g_strFontShader)-1 ,
++                                         NULL, NULL, "FontPixelShaderSemSombra", "ps.2.0", 0, &pShaderCode, NULL, NULL ) ) )
++                                {
++                                    if ( FAILED( pd3dDevice->CreatePixelShader( ( DWORD* )pShaderCode->GetBufferPointer(),
++                                             &s_AtgFontLocals.m_pFontPixelShaderSemSombra ) ) )
++                                        s_AtgFontLocals.m_pFontPixelShaderSemSombra = NULL;
++                                    pShaderCode->Release();
++                                }
+                                 Result = S_OK;      // I'm good. 
+                                 break;              // Skip the teardown code
+                             }
+@@ -233,6 +267,8 @@
+         s_AtgFontLocals.m_pFontVertexDecl->AddRef();
+         s_AtgFontLocals.m_pFontVertexShader->AddRef();
+         s_AtgFontLocals.m_pFontPixelShader->AddRef();
++        if( s_AtgFontLocals.m_pFontPixelShaderSemSombra != NULL )
++            s_AtgFontLocals.m_pFontPixelShaderSemSombra->AddRef();
+         Result = S_OK;      // Everything is fine
+     }
+     return Result;          // Return the error code if any
+@@ -249,6 +285,8 @@
+     // NOTE: They are released in reverse order of creation
+     // to make sure any interdependencies are dealt with
+ 
++    if( ( s_AtgFontLocals.m_pFontPixelShaderSemSombra != NULL ) && ( s_AtgFontLocals.m_pFontPixelShaderSemSombra->Release() == 0 ) )
++        s_AtgFontLocals.m_pFontPixelShaderSemSombra = NULL;
+     if( ( s_AtgFontLocals.m_pFontPixelShader != NULL ) && ( s_AtgFontLocals.m_pFontPixelShader->Release() == 0 ) )
+         s_AtgFontLocals.m_pFontPixelShader = NULL;
+     if( ( s_AtgFontLocals.m_pFontVertexShader != NULL ) && ( s_AtgFontLocals.m_pFontVertexShader->Release() == 0 ) )
+@@ -636,7 +674,9 @@
+         
+         pD3dDevice->SetVertexDeclaration( s_AtgFontLocals.m_pFontVertexDecl );
+         pD3dDevice->SetVertexShader( s_AtgFontLocals.m_pFontVertexShader );
+-        pD3dDevice->SetPixelShader( s_AtgFontLocals.m_pFontPixelShader );
++        pD3dDevice->SetPixelShader( ( g_fonteSemSombra && s_AtgFontLocals.m_pFontPixelShaderSemSombra != NULL )
++                                    ? s_AtgFontLocals.m_pFontPixelShaderSemSombra
++                                    : s_AtgFontLocals.m_pFontPixelShader );
+ 
+         // Set the texture scaling factor as a vertex shader constant
+         // Call here to avoid load hit store from writing to vTexScale above
+@@ -905,14 +945,29 @@
          reinterpret_cast<volatile DWORD *>(pVertex)[15] = dwChannelSelector;
          pVertex+=16;
  
@@ -32,6 +118,18 @@
      }
  
      // Since we allocated vertex data space based on the string length, we now need to
+--- a/AtgFont.h
++++ b/AtgFont.h
+@@ -106,6 +106,9 @@
+ //       pre-rendered font is used to create the texture. A .abc file contains info for
+ //       spacing the font characters (aka glyphs).
+ //--------------------------------------------------------------------------------------
++// CollectionUI: TRUE faz o proximo Begin() desenhar a letra sem a sombra do atlas.
++extern BOOL g_fonteSemSombra;
++
+ class Font
+ {
+ public:
 --- a/AtgUtil.cpp
 +++ b/AtgUtil.cpp
 @@ -9,6 +9,7 @@

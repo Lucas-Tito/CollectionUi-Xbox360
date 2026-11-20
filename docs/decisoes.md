@@ -1654,3 +1654,29 @@ erradas minhas. O que resolveu não foi nenhuma delas.
      `vault.txt` e o código. Os nomes das coleções são do usuário e não se traduzem. Da prévia, só
      a moldura (a barra de cima, a ajuda e o rodapé da página) continua em português, porque não é
      tela do app. O atlas `Arial_16` já tinha tudo o que o inglês usa, inclusive o apóstrofo.
+
+149. **O desenho Metro no app.** O desenho escolhido entre 17 e 19/11 na prévia (`previa/metro.js`)
+     foi portado para o C++ tela por tela, com os mesmos números (`app/main.cpp`, bloco "O DESENHO
+     METRO"). Cada tela segue a equivalente do dashboard Metro do 360, com as cores medidas em
+     capturas diretas do tema padrão:
+     - fundo em degradê vertical, de (80,78,84) no topo a (177,176,180) a 78% da altura;
+     - as abas viram os hubs do Metro, em minúsculas à esquerda; título e contador ficam no
+       canto de cima à direita;
+     - o quadrado de coleção é o de hoje dentro do encarte branco do cartão de jogo, no mesmo
+       tamanho; o encarte e o texto apagam no não selecionado;
+     - os jogos são os cartões do "My Games": encarte claro, capa e nome escuro;
+     - o foco cresce 8 px para cada lado e levanta com sombra, sem anel; o marcado continua o
+       contorno verde de 2 px de hoje;
+     - o menu é o diálogo "Delete Profile" do Metro, medido em 720p;
+     - os detalhes do jogo abrem com Y numa faixa que sobe de baixo, com os dados do xbox-vault
+       (`game:\fichas.txt`, gerado por `ferramentas/fichas.py`); o A continua jogando direto.
+
+     As animações foram medidas quadro a quadro num vídeo de captura direta do dash 2.0.14448. O
+     foco é exponencial com constante de 40 ms. Na troca de aba as duas páginas aparecem ao mesmo
+     tempo, com constante de 220 ms. A troca de tela é um esmaecimento cruzado de 200 ms, com o
+     quadro anterior resolvido numa textura. A faixa sobe com constante de 70 ms. O app já
+     redesenhava a cada quadro, então tudo é conta com o tempo desde a troca.
+
+     O texto perdeu a sombra preta que vem no atlas, com um segundo pixel shader na fonte da ATG
+     (`ATG::g_fonteSemSombra`). Só o nome do quadrado de coleção a mantém, porque é o de hoje. A
+     prévia continua sendo o espelho: o `montar.py` carrega o `metro.js` sempre.

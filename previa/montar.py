@@ -121,9 +121,15 @@ def main():
     html = html.replace('__COLECOES__', json.dumps(cols, ensure_ascii=False).replace('</', '<\\/'))
     html = html.replace('__FONTE__', json.dumps(atlas.ler(), separators=(',', ':')))
 
+    # O desenho Metro (previa/metro.js) foi para o C++ em 19/11 (decisão 149): ele
+    # passa a ser parte do espelho e entra sempre, por cima do template, que segue
+    # sendo a base comum (texto pelo atlas, listas, navegação).
+    metro = open(os.path.join(AQUI, 'metro.js'), encoding='utf-8').read()
+    html += '\n<script>\n' + metro + '\n</script>\n'
+
     # A prévia é o ESPELHO do que o console desenha. Proposta não entra nela: entra
     # por cima, num arquivo cujo nome diz o que é, e que gera uma página separada.
-    if a.proposta:
+    if a.proposta and os.path.abspath(a.proposta) != os.path.join(AQUI, 'metro.js'):
         patch = open(a.proposta, encoding='utf-8').read()
         html += '\n<script>\n' + patch + '\n</script>\n'
 
