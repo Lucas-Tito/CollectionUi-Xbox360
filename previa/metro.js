@@ -200,24 +200,26 @@ function desenharCartao(x, y, col, sel, escolhendo){
   const X = x - d, Y = y - d, LADO = COL_LADO + 2*d;
   if (prog > 0.02){ ctx.save(); ctx.globalAlpha = prog; sombra(X, Y, LADO, LADO, 0); ctx.restore(); }
 
+  // Escolhendo, a marcada fica acesa como a em foco, sem crescer (pedido de 19/11).
+  const marcadaAqui = escolhendo && marcada(col), vivo = marcadaAqui ? 1 : prog;
   const P = CARTAO_PAD, ix = X + P, iy = Y + P, il = LADO - 2*P, ia = LADO - 2*P;
-  const enc = ENCARTE_APAGADO.map((c, i) => Math.round(c + (ENCARTE_ACESO[i] - c) * prog));
+  const enc = ENCARTE_APAGADO.map((c, i) => Math.round(c + (ENCARTE_ACESO[i] - c) * vivo));
   ctx.fillStyle = `rgb(${enc.join(',')})`; ctx.fillRect(X, Y, LADO, LADO);
 
   comAsCoresDeHoje(() => {
-    pintarCardGrafite(ix, iy, il, ia, col, prog, { contorno: false });
+    pintarCardGrafite(ix, iy, il, ia, col, vivo, { contorno: false });
     HOJE.emblema(ctx, ix, iy, il, col.tipo);
-    if (escolhendo && !marcada(col)){
+    if (escolhendo && !marcadaAqui){
       ctx.fillStyle = 'rgba(6,9,8,0.588)'; ctx.fillRect(X, Y, LADO, LADO);    // o véu de hoje
     }
     const ALT_LINHA = 28, ALT_CONT = 24, meio = ix + il/2;
     const linhas = quebrar(paraMaiusculas(col.nome), il - 28, 2, 1);
     const topoTexto = iy + ia*0.86 - (linhas.length*ALT_LINHA + ALT_CONT);
-    const cor = sel ? COR_TEXTO : COR_APAGADO;
+    const cor = (sel || marcadaAqui) ? COR_TEXTO : COR_APAGADO;
     linhas.forEach((ln, n) => texto(ln, meio, topoTexto + n*ALT_LINHA, cor, 1, 'center'));
     texto('( ' + conta(col) + ' )', meio, topoTexto + linhas.length*ALT_LINHA, COR_FRACO, 1, 'center');
   });
-  if (escolhendo && marcada(col)) marcadoHoje(ix, iy, il, ia, 0);
+  if (marcadaAqui) marcadoHoje(X, Y, LADO, LADO, 0);     // a borda fina, no encarte
 }
 
 telaColecoes = function(){
@@ -346,10 +348,10 @@ function gradeJogos(escolhendo){
     else { ctx.fillStyle = 'rgb(120,119,124)'; ctx.fillRect(ix, iy, il, ia); }
     texto(cortar(g.nome, il, 0.9), ix, iy + ia + 6, METRO.cartaoTexto, 0.9);
     if (escolhendo){
-      // Como hoje: o não marcado leva o véu ARGB(140,6,9,8) na capa, o marcado o
-      // contorno verde de 2 px.
-      if (tem.has(g.id)) marcadoHoje(ix, iy, il, ia, 0);
-      else { ctx.fillStyle = 'rgba(6,9,8,0.549)'; ctx.fillRect(ix, iy, il, ia); }
+      // O não marcado leva o véu ARGB(140,6,9,8) no cartão inteiro; o marcado, a borda
+      // fina verde no encarte (pedido de 19/11).
+      if (tem.has(g.id)) marcadoHoje(cx, cy, cl, ca, 0);
+      else { ctx.fillStyle = 'rgba(6,9,8,0.549)'; ctx.fillRect(cx, cy, cl, ca); }
     }
   };
 
@@ -412,14 +414,7 @@ desenharMenu = function(){
   const m = menu, D = DIALOGO;
   ctx.fillStyle = 'rgba(8,8,8,0.9)'; ctx.fillRect(0, 0, 1280, 720);
   degrade(D.x, D.topo, D.l, D.barra, 'rgb(146,150,152)', 'rgb(130,136,139)');
-  let tx = D.x + 14;
-  if (m.de === 'apagar'){
-    // o "!" amarelo da barra do Delete Profile, só no que destrói
-    ctx.fillStyle = 'rgb(249,190,55)';
-    ctx.beginPath(); ctx.arc(D.x + 22, D.topo + D.barra/2, 11, 0, Math.PI*2); ctx.fill();
-    texto('!', D.x + 22, D.topo + D.barra/2 - 11, 'rgb(60,50,20)', 0.85, 'center');
-    tx = D.x + 42;
-  }
+  const tx = D.x + 14;          // sem o "!" amarelo no Delete (pedido de 19/11)
   texto(BARRA[m.de] || m.rotulo, tx, D.topo + (D.barra - ALT_GLIFO*0.95)/2, COR_TEXTO, 0.95);
 
   degrade(D.x, D.topo + D.barra, D.l, D.fim - D.topo - D.barra, 'rgb(231,234,233)', 'rgb(206,210,211)');
@@ -465,7 +460,9 @@ rodape = function(itens, direita){
 // redesenha a cada quadro); o esmaecimento cruzado usa o quadro anterior resolvido
 // numa textura, o mesmo Resolve que a foto do roteiro já faz.
 // ===========================================================================
-const ANIM = { tauFoco: 40, tauHub: 220, fade: 200, pagina: 768 };
+const ANIM = { tauFoco: 40, durHub: 660, fade: 200, pagina: 768 };
+// Para com velocidade zero no tempo certo (a exponencial cortada a 5 tau saltava ~9 px).
+const desacelera = (t, dur) => t >= dur ? 1 : 1 - Math.pow(1 - t / dur, 3);
 const agoraMs = () => performance.now();
 
 // --- foco -------------------------------------------------------------------
@@ -502,9 +499,9 @@ irParaAba = function(id){
     hubDir = para > de ? 1 : -1; hubT0 = agoraMs(); estadoAntes = foto;
   }
 };
-const emTrocaDeHub = () => agoraMs() - hubT0 < 5 * ANIM.tauHub && estadoAntes;
+const emTrocaDeHub = () => agoraMs() - hubT0 < ANIM.durHub && estadoAntes;
 function deslocamentoDoHub(){
-  return hubDir * 1280 * Math.exp(-(agoraMs() - hubT0) / ANIM.tauHub);
+  return hubDir * 1280 * (1 - desacelera(agoraMs() - hubT0, ANIM.durHub));
 }
 function comDeslocamento(dx, f){
   if (!dx) return f();
@@ -547,7 +544,7 @@ desenhar = function(){
     ctx.save(); ctx.globalAlpha = 1 - tf / ANIM.fade; ctx.drawImage(antes, 0, 0); ctx.restore();
   }
   // Enquanto algo anima, redesenha no próximo quadro.
-  const vivo = tf < ANIM.fade || agoraMs() - focoT0 < 6 * ANIM.tauFoco || agoraMs() - hubT0 < 5 * ANIM.tauHub;
+  const vivo = tf < ANIM.fade || agoraMs() - focoT0 < 6 * ANIM.tauFoco || agoraMs() - hubT0 < ANIM.durHub;
   if (vivo && !pedido) pedido = requestAnimationFrame(() => { pedido = 0; desenhar(); });
 };
 let pedido = 0;
@@ -563,7 +560,7 @@ let pedido = 0;
 // Dados: previa/ficha.py. Co-op só do Co-Optimus: sem ele, nada.
 // ===========================================================================
 let jogoDetalhe = null, telaAntesDetalhes = null;
-const FAIXA_TAU = 70;                 // ms; 95% do caminho em ~210 ms
+const FAIXA_DUR = 210;                // ms, parando com velocidade zero
 let faixaT0 = -1e9, faixaFechando = false, pedidoFaixa = 0;
 const horas = h => h < 1 ? Math.round(h * 60) + ' min' : (Math.round(h * 2) / 2).toString() + ' h';
 function corMetacritic(n){ return n >= 75 ? 'rgb(102,204,51)' : n >= 50 ? 'rgb(255,204,51)' : 'rgb(255,0,0)'; }
@@ -693,9 +690,9 @@ function telaDetalhes(){
   const embaixo = tela; tela = telaAntesDetalhes;
   try { telaJogos(); } finally { tela = embaixo; }
   const t = agoraMs() - faixaT0;
-  let k = Math.exp(-t / FAIXA_TAU);
+  let k = 1 - desacelera(t, FAIXA_DUR);
   if (faixaFechando) k = 1 - k;
-  const anda = t < 5 * FAIXA_TAU;
+  const anda = t < FAIXA_DUR;
   if (!anda) k = faixaFechando ? 1 : 0;
   faixaDetalhes(jogoDetalhe, dadosDoJogo(jogoDetalhe), k);
   if (anda){

@@ -1227,7 +1227,17 @@ namespace
 
     const int   CRESCE = 8, CARTAO_PAD = 6, CARTAO_NOME = 34;
     const int   COL_TOPO_ABA = 96;          // a grade de coleções, embaixo das abas
-    const float TAU_FOCO = 40.0f, TAU_HUB = 220.0f, FADE_MS = 200.0f, TAU_FAIXA = 70.0f;
+    const float TAU_FOCO = 40.0f, FADE_MS = 200.0f;
+    // A troca de aba e a faixa param com velocidade zero, no tempo certo: a exponencial
+    // nunca chegava e era cortada a 5 tau com ~9 px de salto (a "travada" antes de parar).
+    // A cúbica sai com a mesma velocidade que a exponencial de 220 ms e 70 ms tinha.
+    const float DUR_HUB = 660.0f, DUR_FAIXA = 210.0f;
+    float Desacelera(float t, float dur)
+    {
+        if (t >= dur) return 1.0f;
+        const float u = 1.0f - t / dur;
+        return 1.0f - u * u * u;
+    }
     const float RODAPE_ESCALA = 0.67f;
 
     // ---- texto ------------------------------------------------------------------
@@ -1596,17 +1606,17 @@ namespace
         const float X = (float)(x - d), Y = (float)(y - d), LADO = (float)(COL_LADO + 2 * d);
         if (prog > 0.02f) Sombra(X, Y, LADO, LADO, prog);
 
-        Ret(X, Y, LADO, LADO, Mistura3(ENC_APAGADO, ENC_ACESO, prog));
-        const float P = (float)CARTAO_PAD, ix = X + P, iy = Y + P, il = LADO - 2 * P, ia = LADO - 2 * P;
-        Grafite(ix, iy, il, ia, col, prog);
-        Emblema(ix, iy, il, col->tipo);
-
+        // Escolhendo, a marcada fica acesa como a em foco (sem crescer); a não marcada
+        // leva o véu por cima de tudo, encarte junto.
         bool marcada = false;
-        if (escolhendo)
-        {
-            marcada = (g_tela == TELA_ORIGENS) ? OrigemMarcada(col->id) : ColecaoEscolhida(col->id);
-            if (!marcada) Ret(X, Y, LADO, LADO, D3DCOLOR_ARGB(150, 6, 9, 8));   // o véu de hoje
-        }
+        if (escolhendo) marcada = (g_tela == TELA_ORIGENS) ? OrigemMarcada(col->id) : ColecaoEscolhida(col->id);
+        const float vivo = marcada ? 1.0f : prog;
+
+        Ret(X, Y, LADO, LADO, Mistura3(ENC_APAGADO, ENC_ACESO, vivo));
+        const float P = (float)CARTAO_PAD, ix = X + P, iy = Y + P, il = LADO - 2 * P, ia = LADO - 2 * P;
+        Grafite(ix, iy, il, ia, col, vivo);
+        Emblema(ix, iy, il, col->tipo);
+        if (escolhendo && !marcada) Ret(X, Y, LADO, LADO, D3DCOLOR_ARGB(150, 6, 9, 8));   // o véu de hoje
 
         // O nome é o de hoje: maiúsculas, centrado, ancorado a 86% da altura, com a
         // sombra do atlas e as cores de hoje.
@@ -1621,12 +1631,12 @@ namespace
         ATG::g_fonteSemSombra = FALSE;
         g_fonte.Begin();
         for (int k = 0; k < n; k++)
-            Texto(meio, topo + k * ALT_LINHA, sel ? COR_TEXTO : COR_APAGADO, 1.0f, linhas[k], ATGFONT_CENTER_X);
+            Texto(meio, topo + k * ALT_LINHA, (sel || marcada) ? COR_TEXTO : COR_APAGADO, 1.0f, linhas[k], ATGFONT_CENTER_X);
         Texto(meio, topo + n * ALT_LINHA, COR_FRACO, 1.0f, texto, ATGFONT_CENTER_X);
         g_fonte.End();
         ATG::g_fonteSemSombra = TRUE;
 
-        if (escolhendo && marcada) Contorno(ix + 1.0f, iy + 1.0f, il - 2.0f, ia - 2.0f, M_MARCADO);
+        if (marcada) Contorno(X, Y, LADO, LADO, M_MARCADO);   // a borda fina, no encarte
     }
 
     void GradeColecoes()
@@ -1672,16 +1682,6 @@ namespace
         }
         else Preencher(r, M_SEM_CAPA);
 
-        if (adicionando)
-        {
-            // Como hoje: o não marcado leva o véu na capa, o marcado o contorno verde.
-            if (SelecionadoNoRascunho(g->titleId))
-            {
-                if (g_anelMarcado) ATG::DebugDraw::DrawScreenSpaceRect(r, 2.0f, M_MARCADO);
-            }
-            else Preencher(r, D3DCOLOR_ARGB(140, 6, 9, 8));
-        }
-
         WCHAR nome[256], cortado[LIN_CAP];
         Larga(g->nome, nome, 256);
         const float il = (float)(r.x2 - r.x1);
@@ -1689,6 +1689,17 @@ namespace
         g_fonte.Begin();
         Texto((float)r.x1, (float)r.y2 + 6.0f, M_CARTAO_TEXTO, 0.9f, cortado);
         g_fonte.End();
+
+        if (adicionando)
+        {
+            // O não marcado leva o véu no cartão inteiro (encarte e nome junto); o marcado,
+            // a borda fina verde no encarte.
+            if (SelecionadoNoRascunho(g->titleId))
+            {
+                if (g_anelMarcado) Contorno(cx, cy, cl, ca, M_MARCADO);
+            }
+            else Ret(cx, cy, cl, ca, D3DCOLOR_ARGB(140, 6, 9, 8));
+        }
     }
 
     void IndiceAlfabetico(const std::vector<const biblioteca::Jogo *> &L)
@@ -1754,8 +1765,8 @@ namespace
         g_dx = 0;
         if (!g_hubVivo || (g_tela != TELA_COLECOES && g_tela != TELA_SOLTOS)) { GradeDaTela(); return; }
         const float t = (float)(GetTickCount() - g_hubT0);
-        if (t >= 5.0f * TAU_HUB) { g_hubVivo = false; GradeDaTela(); return; }
-        const float dx = g_hubDir * 1280.0f * expf(-t / TAU_HUB);
+        if (t >= DUR_HUB) { g_hubVivo = false; GradeDaTela(); return; }
+        const float dx = g_hubDir * 1280.0f * (1.0f - Desacelera(t, DUR_HUB));
 
         g_dx = (int)floorf(dx + 0.5f);
         GradeDaTela();
@@ -1962,9 +1973,9 @@ namespace
         // k: 0 = no lugar, 1 = escondida embaixo. Sobe com constante de 70 ms (95% do
         // caminho em ~210 ms) e desce igual ao fechar.
         const float t = (float)(GetTickCount() - g_faixaT0);
-        float k = expf(-t / TAU_FAIXA);
+        float k = 1.0f - Desacelera(t, DUR_FAIXA);
         if (g_faixaFechando) k = 1.0f - k;
-        if (t >= 5.0f * TAU_FAIXA)
+        if (t >= DUR_FAIXA)
         {
             if (g_faixaFechando) { g_detalhe = false; g_faixaFechando = false; g_detalheJogo = NULL; return; }
             k = 0.0f;
@@ -2164,12 +2175,7 @@ namespace
         Ret(0.0f, 0.0f, 1280.0f, 720.0f, D3DCOLOR_ARGB(230, 8, 8, 8));
         Gradiente(DX, TOPO_D, DX + DL, TOPO_D + BARRA, D3DCOLOR_XRGB(146, 150, 152), D3DCOLOR_XRGB(130, 136, 139), false);
         Gradiente(DX, TOPO_D + BARRA, DX + DL, FIM, D3DCOLOR_XRGB(231, 234, 233), D3DCOLOR_XRGB(206, 210, 211), false);
-        float tx = DX + 14.0f;
-        if (g_menuDe == MENU_APAGAR)
-        {
-            Disco(DX + 22.0f, TOPO_D + BARRA / 2.0f, 11.0f, D3DCOLOR_XRGB(249, 190, 55));   // o "!" amarelo
-            tx = DX + 42.0f;
-        }
+        const float tx = DX + 14.0f;
         for (int i = 0; i < g_menuQtd; i++)
         {
             const float ly = FIM - (g_menuQtd - i) * LINHA;
@@ -2179,8 +2185,6 @@ namespace
         }
 
         g_fonte.Begin();
-        if (g_menuDe == MENU_APAGAR)
-            Texto(DX + 22.0f, TOPO_D + BARRA / 2.0f - 11.0f, D3DCOLOR_XRGB(60, 50, 20), 0.85f, L"!", ATGFONT_CENTER_X);
         Cortar(barra, DL - (tx - DX) - 14.0f, 0.95f, linhas[0], LIN_CAP);
         Texto(tx, TOPO_D + (BARRA - 27.0f * 0.95f) / 2.0f, M_TEXTO, 0.95f, linhas[0]);
 
