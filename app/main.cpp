@@ -1,6 +1,6 @@
 ﻿// CollectionUI — coleções de jogos do Xbox 360.
 //
-// Três telas, como em docs/interface.md: coleções, os jogos de uma coleção, e a de
+// As telas (docs/technical-notes.md, Controls): coleções, os jogos de uma coleção, e a de
 // adicionar jogos. A regra dos botões é a mesma em todas: X acrescenta, ☰ abre opções
 // do que está em foco, A confirma, B volta ou cancela.
 //

@@ -2,7 +2,7 @@
 """Monta a prévia num .html autocontido.
 
 Reaproveita a extração do protótipo antigo (mesmos dados, mesmas capas já
-recortadas): rode antes `python3 prototipo/extrair.py`.
+recortadas): rode antes `python3 previa/extrair.py`.
 """
 import argparse, base64, json, os, sys
 
@@ -76,8 +76,8 @@ def do_colecoes(caminho, jogos):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--build', default=os.path.join(RAIZ, 'prototipo', 'build'),
-                    help='saída de prototipo/extrair.py')
+    ap.add_argument('--build', default=os.path.join(AQUI, 'build'),
+                    help='saída de previa/extrair.py')
     ap.add_argument('--saida', default=os.path.join(AQUI, 'build', 'previa.html'))
     ap.add_argument('--vault', help='vault.txt exportado pelo console; traz homebrew e ROM')
     ap.add_argument('--colecoes', help='colecoes.txt do console; vence o que o navegador guardou')

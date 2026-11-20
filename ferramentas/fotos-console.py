@@ -195,7 +195,7 @@ def sobe_fichas(f, saida):
     except ftplib.error_perm:
         vault = os.path.expanduser(conf("CUI_VAULT_TXT") or "~/Downloads/vault.txt")
         avisa("fichas: o console não tem vault.txt; uso o de %s" % vault)
-    texto, n, total = fichas.gerar(vault, os.path.join(AQUI, "..", "prototipo", "build", "games.json"), None)
+    texto, n, total = fichas.gerar(vault, os.path.join(AQUI, "..", "previa", "build", "games.json"), None)
     avisa("fichas: %d fichas de %d jogos" % (n, total))
     sobe(f, texto.encode("utf-8"), "fichas.txt")
 

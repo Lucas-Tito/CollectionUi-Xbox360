@@ -2,7 +2,7 @@
 """Lê os dados do FreeStyle e produz o que o protótipo consome.
 
 Entrada:  ~/Documentos/CollectionUI-dados  (cópia do console; ver LEIA-ME de lá)
-Saída:    prototipo/build/games.json  e  prototipo/build/img/c<id>.webp
+Saída:    previa/build/games.json  e  previa/build/img/c<id>.webp
 
 O trabalho de verdade está em ler o container FSDA e recortar a capa: o asset do tipo 128
 não é a capa, é o encarte inteiro (contracapa + lombada + frente), e a frente são os 46,8%

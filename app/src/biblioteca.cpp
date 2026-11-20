@@ -61,7 +61,7 @@ namespace
     }
 
     // Ordena ignorando o artigo inicial, para "The Darkness" cair no D e nao no T.
-    // Mesma regra do prototipo, decidida em docs/interface.md.
+    // A mesma regra da previa.
     const char *SemArtigo(const char *s)
     {
         static const char *ARTIGOS[] = { "the ", "a ", "an ", "o ", "os ", "as ", "um ", "uma " };

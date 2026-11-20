@@ -95,7 +95,7 @@ def gerar(vault, games, saida):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--vault', default=os.path.expanduser('~/Downloads/vault.txt'))
-    ap.add_argument('--games', default=os.path.join(RAIZ, 'prototipo', 'build', 'games.json'))
+    ap.add_argument('--games', default=os.path.join(RAIZ, 'previa', 'build', 'games.json'))
     ap.add_argument('--saida', default=os.path.join(RAIZ, 'local', 'fichas.txt'))
     a = ap.parse_args()
     _, n, total = gerar(a.vault, a.games, a.saida)
